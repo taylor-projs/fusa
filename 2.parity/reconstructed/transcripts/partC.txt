@@ -1,0 +1,266 @@
+### IMG 15 lines 515-549
+515|
+516|  def AnalyzeModuleName(self):
+517|    line = self.srclines[self.insStartPos]
+518|    #process paremeter
+519|    if re.search("\)",line) is None:  # thers is not parameter
+520|      s = re.search('^\s*([_a-zA-Z0-9]+)\s',line) #the first word is module name
+521|      if s is not None:
+522|        self.moduleName = s.group(1)
+523|      else:
+524|        myprint ("[ERROR][Coding] module name should be the first word of the line")
+525|        myprint (line)
+526|      #line = line.replace("/*"+DCLSAutoCommitStr+"*/","") #remove commit
+527|      newline = line.replace(" "+self.insName," "+self.insName+DCLSSuffix)
+528|
+529|      self.insLines.append(newline)
+530|    elif re.search("#\s*\(",line) is not None:
+531|      # thers is parameter, and parameter defination in one line
+532|      s = re.search('^\s*([_a-zA-Z0-9]+)\s',line) #the first word is module name
+533|      if s is not None:
+534|        self.moduleName = s.group(1)
+535|      else:
+536|        myprint ("[ERROR][Coding] module name should be the first word of the line")
+537|        myprint (line)
+538|      #line = line.replace("/*"+DCLSAutoCommitStr+"*/","") #remove commit
+539|      newline = line.replace(self.insName,self.insName+DCLSSuffix)
+540|      self.insLines.append(newline)
+541|    else: #parameter defination not in one line
+542|      #line = line.replace("/*"+DCLSAutoCommitStr+"*/","") #remove commit
+543|      newline = line.replace(self.insName,self.insName+DCLSSuffix)
+544|      self.insLines.append(newline)
+545|      searching = True
+546|      lastpos = self.insStartPos
+547|      while searching:
+548|        lastpos -= 1
+549|        lastline = self.srclines[lastpos]
+### IMG 16 lines 550-584
+550|        #myprint ("lastline is "+lastline)
+551|        self.insLines.insert(0,lastline)
+552|        if re.search("#\s*\(",lastline) is not None:
+553|          searching = False
+554|          s = re.search('^\s*([_a-zA-Z0-9]+)\s',lastline) #the first word is module name
+555|          if s is not None:
+556|            self.moduleName = s.group(1)
+557|          else:
+558|            myprint ("[ERROR][Coding] module name should be the first word of the line")
+559|            myprint (line)
+560|        if lastpos == 0:
+561|          myprint ("[ERROR] can not find module name for instance "+self.insName)
+562|          sys.exit()
+563|    myprint ("[INFO] module name :  " + self.moduleName)
+564|
+565|  def AnalyzeConnection(self):
+566|    "Analyze connection"
+567|    myprint ("[INFO] analyzing connection ")
+568|    #for eachline in self.srclines[]:
+569|    for eachline in self.srclines[self.insStartPos+1:self.insEndPos+1]:
+570|      if re.search("^\s*\)\s*;",eachline) :
+571|        #end instance in single line
+572|        break
+573|
+574|      dbgprint ("line : "+eachline.rstrip(),self.debug)
+575|      # format : .portname (refname)
+576|      s = re.search('^\s*\.([_a-zA-Z0-9]+)\s*\((.*)\)(.*)',eachline)
+577|
+578|      #dbgprint ("s0 : "+s.group(0),self.debug)
+579|      #dbgprint ("s1 : "+s.group(1),self.debug)
+580|      #dbgprint ("s2 : "+s.group(2),self.debug)
+581|      #dbgprint ("s3 : "+s.group(3),self.debug)
+582|      if s is not None :
+583|        cont = connectObj(eachline)
+584|        cont.portname = s.group(1)
+### IMG 17 lines 585-619
+585|      else:
+586|        continue
+587|      dbgprint ("portname : "+cont.portname,self.debug)
+588|
+589|      if re.search('{.*}',s.group(2)) is not None:
+590|        myprint ("[ERROR] connection with '{ }' is not surported")
+591|        sys.exit()
+592|
+593|
+594|      if re.search('.*//.*',s.group(3)) is None:
+595|      #if s.group(3) is None:
+596|        # a line with signals but no commit
+597|        cont.iotype = "ND"
+598|        #myprint ("[WARNING] the following line has no commit '//I' or '//O', defaultly considered as '//I' ")
+599|        #myprint (eachline)
+600|        self.autoWarning = True
+601|        commit = ""
+602|      else:
+603|        #commit = s.group(3)
+604|        #commit = re.sub(".*//","",s.group(3))# remove commit
+605|        commitplus = re.sub("//"," ",s.group(3))# remove commit
+606|        commit = re.sub(",","",commitplus).strip()
+607|      dbgprint ("commit : "+commit,self.debug)
+608|
+609|      if re.match('\s*(O|OUT|Output)\s*',commit) is not None :
+610|        #for output port
+611|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+612|        if s is not None:
+613|          cont.iotype      = "OUT"
+614|          cont.refname     = s.group(1)
+615|          #cont.refnameDCLS = cont.refname+DCLSSuffix
+616|          cont.refnameDCLS = cont.refname+DCLSSuffixO
+617|        else:
+618|          # for NC port
+619|          cont.iotype      = "NC"
+### IMG 18 lines 620-654
+620|          cont.refname     = ""
+621|          cont.refnameDCLS = ""
+622|          myprint ("[INFO] not connected output port :")
+623|          myprint ("     "+eachline.rstrip())
+624|      elif re.match('\s*(NOCMP)\s*',commit) is not None :
+625|          cont.iotype      = "NC"
+626|          cont.refname     = ""
+627|          cont.refnameDCLS = ""
+628|      elif re.match('\s*(MCLK)[!a-zA-Z_]*',commit) is not None :
+629|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+630|        if s is not None:
+631|          cont.iotype      = "MCLK"
+632|          cont.refname     = s.group(1)
+633|          myprint ("[INFO] get labeled DCLS clock signal :"+cont.refname)
+634|          self.clockMain.append(cont.refname)
+635|          self.clockMainNum += 1
+636|      elif re.match('\s*(CLK)[!a-zA-Z_]*',commit) is not None :
+637|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+638|        if s is not None:
+639|          cont.iotype      = "LCLK"
+640|          cont.refname     = s.group(1)
+641|          myprint ("[INFO] get labeled clock signal :"+cont.refname)
+642|          self.clockLabeled.append(cont.refname)
+643|          self.clockLabeledNum += 1
+644|      elif re.match('\s*(FORCEI)\s*',commit) is not None :
+645|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+646|        if s is not None:
+647|          cont.iotype      = "FORCEI"
+648|          cont.refname     = s.group(1)
+649|          cont.refnameDCLS = cont.refname+DCLSSuffixI
+650|          myprint ("[INFO] get labeled scan signal :"+cont.refname)
+651|          self.scan = cont.refname
+652|      elif re.match('\s*(FORCEO)\s*',commit) is not None :
+653|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+654|        if s is not None:
+### IMG 19 lines 655-689
+655|          cont.iotype      = "FORCEO"
+656|          cont.refname     = s.group(1)
+657|          cont.refnameDCLS = cont.refname+DCLSSuffixI
+658|          myprint ("[INFO] get labeled FORCEI signal :"+cont.refname)
+659|          self.scan = cont.refname
+660|      elif re.match('\s*(SCAN)\s*',commit) is not None :
+661|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+662|        if s is not None:
+663|          cont.iotype      = "SCAN"
+664|          cont.refname     = s.group(1)
+665|          myprint ("[INFO] get labeled FORCEO signal :"+cont.refname)
+666|          self.scan = cont.refname
+667|      elif re.match('\s*(ICG)\s*',commit) is not None :
+668|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+669|        if s is not None:
+670|          cont.iotype      = "ICG"
+671|          cont.refname     = s.group(1)
+672|          myprint ("[INFO] get labeled scan signal :"+cont.refname)
+673|          self.scan = cont.refname
+674|      elif re.match('\s*(RST)\s*',commit) is not None :
+675|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+676|        if s is not None:
+677|          cont.iotype      = "RST"
+678|          cont.refname     = s.group(1)
+679|          myprint ("[INFO] get labeled reset signal :"+cont.refname)
+680|          self.reset = cont.refname
+681|      elif re.match('\s*(I|IN|Input)\s*',commit) is not None :
+682|        #for input port
+683|        cont.iotype   = "IN"
+684|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+685|        if s is not None:
+686|          cont.refname     = s.group(1)
+687|          cont.refnameDCLS = cont.refname+DCLSSuffixI
+688|          if re.search("(clk|clock|mclk)",cont.portname) is not None:
+689|            cont.iotype   = "ICLK"
+### IMG 20 lines 690-724
+690|            myprint ("[INFO] get inferred clock port :"+cont.portname)
+691|            self.clockInfed.append(cont.refname)
+692|            self.clockInfedNum += 1
+693|
+694|#          elif re.search("(rst_n|reset_n|mreset_n|resetn)",cont.portname) is not None:
+695|#            cont.iotype   = "RST"
+696|#            myprint ("[INFO] get inferred reset port :"+cont.portname)
+697|#            self.reset = cont.refname
+698|          elif re.search("(rst_n|reset_n|mreset_n|resetn)",cont.portname) is not None:
+699|            s = re.search('^\s*\.([_a-zA-Z0-9]+)\s*\((.*)\)(.*)',eachline)
+700|            if s is not None and (s.group(2).strip()==self.reset):
+701|                cont.iotype   = "ISPRST"
+702|                myprint ("[INFO] inferred reset port used labeled reset port:"+s.group(2))
+703|            #else:
+704|            #    cont.iotype   = "IRST"
+705|            #    myprint ("[INFO] get inferred reset port :"+cont.portname)
+706|            #    self.resetInfed.append(cont.refname)
+707|            #    self.resetInfedNum += 1
+708|
+709|        else:
+710|          # const input
+711|          s = re.search('\(\s*({*[1-9][0-9`bdh_BDH]*}*)',eachline)
+712|          if s is not None:
+713|            cont.iotype   = "CONST"
+714|            cont.refname     = s.group(1)
+715|            cont.refnameDCLS = s.group(1)
+716|            myprint ("[INFO] connected to const value :")
+717|            myprint ("     "+eachline.rstrip())
+718|          else:
+719|            cont.refname     = ""
+720|            cont.refnameDCLS = ""
+721|            myprint ("[ERROR] not connected input port :")
+722|            myprint ("     "+eachline.rstrip())
+723|            self.autoError = True
+724|        if re.search('\s*(CHK)\s*',commit) is not None :#match no use
+### IMG 21 lines 725-759
+725|            cont.iotypeplus = "ICHK"
+726|            self.chksignal.append(cont.refname)
+727|      else :
+728|        # a line with signals but no IN/OUT commit
+729|        cont.iotype = "IN"
+730|        myprint ("[WARNING] the following line has no commit '//I' or '//O', defaultly considered as '//I' ")
+731|        myprint (eachline)
+732|        self.autoWarning = True
+733|        s = re.search('\(\s*([a-zA-Z][_a-zA-Z0-9]*)',eachline)
+734|        if s is not None:
+735|          cont.refname     = s.group(1)
+736|          cont.refnameDCLS = cont.refname+DCLSSuffixI
+737|        else:
+738|          cont.refname     = ""
+739|          cont.refnameDCLS = ""
+740|          myprint ("[ERROR] not connected input port :")
+741|          myprint ("     "+eachline.rstrip())
+742|          self.autoError = True
+743|
+744|      self.getRefWidth(cont)
+745|      self.getDefaultValue(cont)
+746|      self.contObjs.append(cont)
+747|      if re.search("\)\s*;",eachline) is not None:  #end instance
+748|        #end instance not in single line
+749|        break
+750|    for cont in self.contObjs:
+751|      if cont.iotypeplus is "ICHK":
+752|#        print(cont.widthStr,"@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+753|        self.chksignalwidth.append(cont.widthStr)
+754|
+755|    #check clock
+756|    if self.clockMainNum is 0:
+757|      if self.clockLabeledNum is 0 and self.clockInfedNum is 0:
+758|        myprint ("[FATAL] no labeled and inferred clock :")
+759|        #fatal()
+
+# REPORT
+- Line ranges: IMG15=515-549, IMG16=550-584, IMG17=585-619, IMG18=620-654, IMG19=655-689, IMG20=690-724, IMG21=725-759.
+- Overlaps: NONE — the screenshots are exactly consecutive (img N ends at line L, img N+1 starts at L+1). No duplicated lines.
+- INDENTATION: the file uses 2-SPACE indent steps (def at col 2, method body at col 4, then 6/8/10/12...). This was pixel-verified (font pitch exactly 8px, measured via the @ string on line 752 and gutter-anchored crops). Quirky 4-space jumps (2 skipped levels) confirmed by pixels at: 625-627 (NOCMP body, 6->10), 701-702 (if body, 12->16), 725-726 (ICHK body, 8->12). Line 563 dedents to col 4 (after the if/elif/else chain). Lines 750-759: for at 4, if at 6, body at 8.
+- Cursor-block obscured characters (all inferred from context, high confidence): line 519 (block over "a" of re.search), line 554 (block between "re.search" and "('"), line 589 (block over "h" of re.search), line 624 (block over "c" of re.match), line 659 (block over space after "self.scan ="), line 694 (block over "re.se" of re.search), line 729 (block right after the closing quote of "IN").
+- Line 752: commented print — "#" at col 0, then 8 spaces, then print(...); the @" string contains EXACTLY 27 @ characters (pixel-verified by single-row scan: glyph pitch exactly 8px, 27 glyphs).
+- Lines 623, 717, 722, 741: the string literal in myprint ("     "+eachline.rstrip()) contains EXACTLY 5 spaces (pixel-verified: opening quote to closing quote spans 6 char cells). It visually looks like more.
+- Line 711 regex contains a literal BACKTICK inside the character class: ({*[1-9][0-9`bdh_BDH]}*) — verified on zoomed crop.
+- Commented blocks: 694-697 have "#" at col 0 (elif after 10 spaces -> col 11; body lines after 12 spaces -> col 13). Lines 703-707 have "#" at col 12; 703 is "#else:" (no space after #); 704-707 have "#" + 4 spaces + content (content at col 17). Line 752 "#" at col 0 + 8 spaces.
+- Copy-paste quirks in the original (transcribed as shown, NOT errors): line 650 (FORCEI branch) prints "get labeled scan signal"; line 658 (FORCEO branch) prints "get labeled FORCEI signal"; line 665 (SCAN branch) prints "get labeled FORCEO signal"; line 672 (ICG branch) prints "get labeled scan signal".
+- Typos preserved verbatim: "paremeter" (518), "thers" (519, 531), "defination" (531, 541), "surported" (590), "defaultly" (598, 730).
+- Python 2 idioms preserved: print without parens is not present in this range, but "is None"/"is not None" and "is 0" comparisons (756, 757) are as shown; "is \"ICHK\"" (751) as shown.
+- Nothing illegible remains; all cursor-blocked spots resolved via context. If a cross-check is needed, the weakest spots are the exact space counts inside the commented lines 704-707 (4 spaces after #, confidence ~90%) and 694-697 (10/12 spaces after #, confidence ~90%).

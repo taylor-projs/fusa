@@ -1,0 +1,13 @@
+# 仿真构建产物（Verilator / Icarus Verilog 生成）
+sim/obj/
+sim/obj_cov/
+
+# 波形与中间文件
+*.fst
+*.vcd
+*.vvp
+*.o
+*.a
+*.gch
+*.exe
+*.dat

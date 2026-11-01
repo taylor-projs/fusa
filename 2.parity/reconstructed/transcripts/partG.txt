@@ -1,0 +1,329 @@
+### SLICE 43_0 lines 1447-1493
+1447|        self.dlyLines.append("    end\n")
+1448|    #### delay with reset
+1449|    #for i in range(1,self.delayNum+1):
+1450|    #  self.dlyLines.append("always @(posedge "+self.clock+" or negedge "+self.reset+")\n")
+1451|    #  self.dlyLines.append("    if (!"+self.reset+") begin\n")
+1452|    #  if i is 1:
+1453|    #    srcsignal = "cmp_ref_"+self.insName+self.delaySuffix(i-1)
+1454|    #  else:
+1455|    #    srcsignal = "cmp_ref_"+self.insName+DCLSSuffixD+self.delaySuffix(i-1)
+1456|    #  dstsignal = "cmp_ref_"+self.insName+DCLSSuffixD+self.delaySuffix(i)
+1457|    #  #newline = "reg ["+self.cmpDWParam+"-1:0] "+dstsignal+";\n"
+1458|    #  #self.sigLines.append(newline)
+1459|    #  newline = "        "+dstsignal+" <= {("+self.cmpDWParam+"){1'b0}};\n"
+1460|    #  self.dlyLines.append(newline)
+1461|    #  self.dlyLines.append("    end else if (dcls_fault_injection"+self.delaySuffix(i-1)+") begin\n")
+1462|    #  newline = "        "+dstsignal+" <= "+srcsignal+";\n"
+1463|    #  self.dlyLines.append(newline)
+1464|    #  self.dlyLines.append("    end\n")
+1465|        self.dlyLines.append("\n")
+1466|
+1467|
+1468|    def NewProcCmpLines(self):
+1469|        "generate comparator logic"
+1470|        myprint ("[INFO] generating comparator logic")
+1471|        #  local_comp_name = self.insName+"_dcls_fault_injection"
+1472|        local_comp_name = "dcls_fault_injection"
+1473|        #  if self.delayNum is not 0:
+1474|        #      for i in range(1,self.delayNum+1): #fault injection delay
+1475|        #          if self.isDeclared(local_comp_name+self.delaySuffix(i)) is False:
+1476|        #              self.delaySignals.append(local_comp_name+self.delaySuffix(i))
+1477|        #              self.sigLines.append("reg [1:0] "+local_comp_name+self.delaySuffix(i)+";\n")
+1478|        #              self.dlyLines.append("always @(posedge "+self.clock+" or negedge "+self.reset+")\n")
+1479|        #              self.dlyLines.append("    if (!"+self.reset+")\n")
+1480|        #              self.dlyLines.append("        "+local_comp_name+self.delaySuffix(i)+" <= 2'b00;\n")
+1481|        #              self.dlyLines.append("    else\n")
+1482|        #              if i == 1:
+1483|        #                  self.dlyLines.append("            "+local_comp_name+self.delaySuffix(i)+" <= dcls_fault_injection"+self.delaySuffix(i-1)+";\n")
+1484|        #              else:
+1485|        #                  self.dlyLines.append("            "+local_comp_name+self.delaySuffix(i)+" <= "+local_comp_name+self.delaySuffix(i-1)+";\n")
+1486|
+1487|
+1488|        #if self.isDeclared(self.clockGated) is False: #gating clock
+1489|        #  self.delaySignals.append(self.clockGated)
+1490|        #  self.dlyLines.append("wire "+self.clockGated+";\n")
+1491|        #  self.dlyLines.append("cell_ckgate u_cg_"+self.insName+" (.TE(1'b0),.CP("+self.clock+"),.E("+local_comp_name+self.delaySuffix(self.delayNum)+")),.Q("+self.clockGated+"));\n")
+1492|
+1493|        # use adaptive_comparator
+
+### SLICE 43_1 lines 1486-1548
+1486|
+1487|
+1488|        #if self.isDeclared(self.clockGated) is False: #gating clock
+1489|        #  self.delaySignals.append(self.clockGated)
+1490|        #  self.dlyLines.append("wire "+self.clockGated+";\n")
+1491|        #  self.dlyLines.append("cell_ckgate u_cg_"+self.insName+" (.TE(1'b0),.CP("+self.clock+"),.E("+local_comp_name+self.delaySuffix(self.delayNum)+")),.Q("+self.clockGated+"));\n")
+1492|
+1493|        # use adaptive_comparator
+1494|        if self.fatherIsSubtop :
+1495|            self.cmpLines.append("wire   "+self.errSignals[0]+" ; \n");
+1496|        #self.cmpLines.append("adaptive_comparator #( \n");
+1497|        self.cmpLines.append("fusa_comparator #( \n");
+1498|        self.cmpLines.append("   .DATA_WIDTH ("+self.cmpDWParam+")\n");
+1499|        #self.cmpLines.append("   .DIN_WIDTH ("+self.cmpDWParam+"),\n");
+1500|        #self.cmpLines.append("   .IN_PIPE_N (1   ),\n");
+1501|        #self.cmpLines.append("   .OUT_PIPE_N(3   ),\n");
+1502|        #self.cmpLines.append("   .GRP_WIDTH (128 ),\n");
+1503|        #self.cmpLines.append("   .GRP_EN   (1   )\n");
+1504|        self.cmpLines.append(") u_comparator_"+self.insName+" ( \n");
+1505|        #self.cmpLines.append("   .clk       ("+self.clockCmp+"),\n");
+1506|        #self.cmpLines.append("   .reset_n   ("+self.reset+"),\n");
+1507|        self.cmpLines.append("   .fault_injection("+local_comp_name+"),\n");
+1508|
+1509|        #if self.delayNum is 0:
+1510|        #  self.cmpLines.append("     .din_ref   (cmp_ref_"+self.insName+DCLSSuffixD+"_d0),\n");
+1511|        #else:
+1512|        #  self.cmpLines.append("     .din_ref   (cmp_ref_"+self.insName+DCLSSuffixD+self.delaySuffix(self.delayNum)+"),\n");
+1513|        #self.cmpLines.append("   .din_dcls  (cmp_dcls_"+self.insName+"),\n");
+1514|        #self.cmpLines.append("   .comp_err  ("+self.errSignals[0]+") \n");
+1515|        if self.delayNum is 0:
+1516|            self.cmpLines.append("     .data_golden   (cmp_ref_"+self.insName+DCLSSuffixD+"_d0),\n");
+1517|        else:
+1518|            self.cmpLines.append("     .data_golden   (cmp_ref_"+self.insName+DCLSSuffixD+self.delaySuffix(self.delayNum)+"),\n");
+1519|            self.cmpLines.append("     .data_revise  (cmp_dcls_"+self.insName+"),\n");
+1520|            self.cmpLines.append("     .error  ("+self.errSignals[0]+"_dcls) \n");
+1521|
+1522|        self.cmpLines.append("); \n");
+1523|        self.cmpLines.append("always @(posedge "+self.clock+"_dcls"+" or negedge "+self.reset+")\n");
+1524|        self.cmpLines.append("    if (!"+self.reset+")\n");
+1525|        self.cmpLines.append("        "+self.errSignals[0]+" <= 1'b0;\n");
+1526|        self.cmpLines.append("    else\n");
+1527|        self.cmpLines.append("        "+self.errSignals[0]+" <= "+self.errSignals[0]+"_dcls;\n");
+1528|        newline = "wire  "+self.errSignals[0]+"_dcls;\n"
+1529|        self.sigLines.append(newline)
+1530|
+1531|    def GenDCLSInsLines(self):
+1532|        "generate the module dcls"
+1533|        # generate reduntancy instance
+1534|        myprint ("[INFO] ---------------------------------------")
+1535|        myprint ("[INFO] generating instance with index number "+str(self.insIndex))
+1536|        #self.AnalyzeIns()
+1537|        self.ProcInsLines()
+1538|        self.ProcbufLines()
+1539|        #self.ProcSigLines()
+1540|        #self.ProcDlyLines()
+1541|        #self.ProcSigDlyLines()
+1542|        #self.ProcCmpLines()
+1543|        self.NewProcSigDlyLines()
+1544|        self.NewProcCmpLines()
+1545|
+1546|        self.DCLSLines.append("// -------------------------------------\n")
+1547|        self.DCLSLines.append("// - AutoGen FUSA DCLS code for "+self.insName+"\n")
+1548|        self.DCLSLines.append("// FuSaDCLS signals declaration\n")
+
+### SLICE 43_2 lines 1539-1602
+1539|        #self.ProcSigLines()
+1540|        #self.ProcDlyLines()
+1541|        #self.ProcSigDlyLines()
+1542|        #self.ProcCmpLines()
+1543|        self.NewProcSigDlyLines()
+1544|        self.NewProcCmpLines()
+1545|
+1546|        self.DCLSLines.append("// -------------------------------------\n")
+1547|        self.DCLSLines.append("// - AutoGen FUSA DCLS code for "+self.insName+"\n")
+1548|        self.DCLSLines.append("// FuSaDCLS signals declaration\n")
+1549|        self.DCLSLines += self.sigLines
+1550|        self.DCLSLines.append("// FuSaDCLS delay processing\n")
+1551|        self.DCLSLines += self.dlyLines
+1552|        self.DCLSLines.append("// FuSaDCLS buffer processing\n")
+1553|        self.DCLSLines += self.bufLines
+1554|        self.DCLSLines.append("// FuSaDCLS instance\n")
+1555|        self.DCLSLines += self.insLines
+1556|        self.DCLSLines.append("// FuSaDCLS comparator logic\n")
+1557|        self.DCLSLines += self.cmpLines
+1558|        self.DCLSLines.append("\n")
+1559|        self.DCLSLines.append("// - AotoGen End for "+self.insName+" \n")
+1560|        self.DCLSLines.append("// -------------------------------------\n")
+1561|
+1562|##########################################
+1563|# End of class instanceObj defination
+1564|##########################################
+1565|
+1566|
+1567|def ClearHistory(vf):
+1568|    "clear history of AutoGen"
+1569|    f = open(vf,"r")
+1570|    newlines = []
+1571|    reserved = True
+1572|    overwrite= False
+1573|    for eachline in f:
+1574|        if re.search(DCLSCommitStartStr,eachline):
+1575|            reserved = False
+1576|            overwrite= True
+1577|        if reserved :
+1578|            newlines.append(eachline)
+1579|        if re.search(DCLSCommitEndStr,eachline):
+1580|            reserved = True;
+1581|    f.close()
+1582|    if overwrite:
+1583|        f = open(vf,"w")
+1584|        f.writelines(newlines)
+1585|        f.close()
+1586|
+1587|def GetModuleDict(flist):
+1588|    f = open(flist,"r")
+1589|    for eachline in f:
+1590|        if re.search("-y",eachline):
+1591|            words = eachline.split()
+1592|            fdir  = words[2]
+1593|    f.close()
+1594|    return Mdict
+1595|
+1596|
+1597|def ProcDesignIO(module,Mdict):
+1598|    # get module file path from dict
+1599|    f = open(vf,"r")
+1600|    f.close()
+1601|    return iodict
+1602|
+
+### SLICE 43_3 lines 1594-1655
+1594|    return Mdict
+1595|
+1596|
+1597|def ProcDesignIO(module,Mdict):
+1598|    # get module file path from dict
+1599|    f = open(vf,"r")
+1600|    f.close()
+1601|    return iodict
+1602|
+1603|
+1604|def fatal():
+1605|    myprint ("----------------------------------------------------")
+1606|    myprint ("-  FFFFFF      A      TTTTTT       A      LL      -")
+1607|    myprint ("-  FF         A A       TT        A A     LL      -")
+1608|    myprint ("-  FFFFFF    AAAAA      TT       AAAAA    LL      -")
+1609|    myprint ("-  FF       A     A     TT      A     A   LL      -")
+1610|    myprint ("-  FF       A     A     TT      A     A   LLLLLL  -")
+1611|    myprint ("----------------------------------------------------")
+1612|
+1613|def myprint(message,verbose=True):
+1614|    if verbose :
+1615|        print message
+1616|
+1617|def dbgprint(message,debug=False):
+1618|    if debug :
+1619|        print "[debug] "+message
+1620|
+1621|def DoAutoGen(srcvf,dstvf,subtop = False,delay = False,fusaclk = False,debug=True ):
+1622|    currDesignName = os.path.splitext(os.path.split(srcvf)[1])[0]
+1623|    curr = moduleObj(currDesignName,srcvf)
+1624|    curr.isSubtop = subtop
+1625|    curr.delayEn  = delay
+1626|    curr.fusaclk   = fusaclk
+1627|    curr.debug    = debug
+1628|
+1629|    myprint ("----------------------------------------------------")
+1630|    myprint ("- Start Auto-Gen for design '"+str(currDesignName)+"'")
+1631|    myprint ("----------------------------------------------------")
+1632|    curr.AutoGenFuSaDCLS();
+1633|    f = open(dstvf,"w")
+1634|    f.writelines(curr.dstLines)
+1635|    f.close()
+1636|
+1637|
+1638|
+1639|def ArgsProc():
+1640|    parser = argparse.ArgumentParser()
+1641|    parser.add_argument("vf",type=str,help = 'Specify the source verilog file')
+1642|    parser.add_argument("-c","--clear",action="store_true",default=False,help = 'clear AutoGen result')
+1643|    parser.add_argument("-d","--delay",action="store_true",default=False,help = "enable the delay cycles inserted for DCLS. The delay cycle 'x' should be specified in verilog file with commit AUTOFUDADCLS+Dx")
+1644|    #parser.add_argument("--multclk",action="store_true",default=False,help = "add clkgating for general clk")
+1645|    #parser.add_argument("-ipn","--in_pipe_n",type=int,default=1,help = 'comparator input pipe stage IN_PIPE_N')
+1646|    #parser.add_argument("-opn","--out_pipe_n",type=int,default=3,help = 'comparator output pipe stage OUT_PIPE_N')
+1647|    parser.add_argument("-s","--subtop",action="store_true",default=False,help = 'this is block top, the output error fusadcls_* will be packaged as err_dcls[]')
+1648|    parser.add_argument("--fusaclk",action="store_true",default=False,help = 'delicated fusa clock for the dual-core')
+1649|    parser.add_argument("-o","--outfile",type=str,default="",help = 'Specify the output verilog file. if not descripted, overwrite the source verilog file')
+1650|
+1651|    args = parser.parse_args()
+1652|    if len(args.vf) == 0:
+1653|        sys.exit()
+1654|    return args
+1655|
+
+### SLICE 43_4 lines 1647-1697
+1647|    parser.add_argument("-s","--subtop",action="store_true",default=False,help = 'this is block top, the output error fusadcls_* will be packaged as err_dcls[]')
+1648|    parser.add_argument("--fusaclk",action="store_true",default=False,help = 'delicated fusa clock for the dual-core')
+1649|    parser.add_argument("-o","--outfile",type=str,default="",help = 'Specify the output verilog file. if not descripted, overwrite the source verilog file')
+1650|
+1651|    args = parser.parse_args()
+1652|    if len(args.vf) == 0:
+1653|        sys.exit()
+1654|    return args
+1655|
+1656|
+1657|
+1658|if __name__ == '__main__':
+1659|
+1660|    args = ArgsProc()
+1661|
+1662|    srcvf = args.vf
+1663|    if os.access(srcvf,os.R_OK)== False:
+1664|        myprint ("[ERROR] please check if the file exists or is readable: "+srcvf)
+1665|    if len(args.outfile) == 0:
+1666|        dstvf = srcvf
+1667|    else:
+1668|        dstvf = args.outfile
+1669|        #dstvf = srcvf.replace(".v",".fusa.v")
+1670|
+1671|    if args.clear:
+1672|        #step1 clear
+1673|        ClearHistory(srcvf)
+1674|        if os.access(dstvf,os.F_OK):
+1675|            ClearHistory(dstvf)
+1676|
+1677|    else:
+1678|        #step1 clear
+1679|        ClearHistory(srcvf)
+1680|        if os.access(dstvf,os.F_OK):
+1681|            ClearHistory(dstvf)
+1682|        #step2
+1683|        DoAutoGen(srcvf,dstvf,args.subtop,args.delay,args.fusaclk,False)
+1684|        #DoAutoGen(srcvf,dstvf,args.subtop,args.delay,True)
+1685|
+1686|
+1687|    myprint ("----------------------------------------------------")
+1688|    myprint ("- DCLS Auto-Gen done ")
+1689|    myprint ("- input  file is "+srcvf)
+1690|    myprint ("- output file is "+dstvf)
+1691|    myprint ("----------------------------------------------------")
+1692|
+1693|    #step3
+1694|
+1695|
+1696|
+1697|
+
+# REPORT
+
+## Line range per slice
+- SLICE 43_0: lines 1447-1493
+- SLICE 43_1: lines 1486-1548 (line 1548 partially cut at bottom edge; content confirmed via slice 43_2)
+- SLICE 43_2: lines 1539-1602
+- SLICE 43_3: lines 1594-1655
+- SLICE 43_4: lines 1647-1697 (status bar shows "Bot", last gutter number 1697, lines 1694-1697 blank, followed by vim "~" rows)
+
+## Overlaps (transcribed in both blocks)
+- 43_0 / 43_1: lines 1486-1493
+- 43_1 / 43_2: lines 1539-1548
+- 43_2 / 43_3: lines 1594-1602
+- 43_3 / 43_4: lines 1647-1655
+
+## Uncertain characters / spots
+- 1491: `+self.delaySuffix(self.delayNum)+")),.Q("` — appears to have TWO closing parens after the string quote; possibly a legacy typo, possibly only one paren (`+"),.Q("). Transcribed as seen (two parens) in both 43_0 and 43_1.
+- 1534, 1546, 1560, 1605, 1611, 1629, 1631, 1687, 1691: exact dash counts in the myprint separator / comment banner lines are approximate (blurry repeated glyphs).
+- 1562, 1564: exact count of `#` characters approximate (~42).
+- 1606-1610: FATAL ASCII-art internal spacing is best-effort; relative alignment of the letters may be off by a space.
+- 1643: `commit` (as seen; possibly `comment`); marker `AUTOFUDADCLS+Dx` uncertain — could be `AUTOFUSADCLS+Dx` (the S/D glyphs are ambiguous at this size).
+- Internal spacing inside Verilog format strings on 1495, 1498-1507, 1510-1514, 1516, 1518-1520 (e.g. `"wire   "`, `.clk       (`, `.IN_PIPE_N (1   )`) is best-effort alignment.
+- 1625-1627: number of spaces before `=` (alignment of curr.delayEn/curr.fusaclk/curr.debug) approximate.
+- 1592: `fdir  = words[2]` — two spaces before `=` as seen.
+- Note: 1559 reads `AotoGen` (not `AutoGen`) — apparent typo preserved verbatim. 1533 `reduntancy`, 1563 `defination`, 1648 `delicated`, 1649 `descripted` — typos preserved verbatim.
+- Note: function names as seen in image: `ClearHistory` (1567) and `ProcDesignIO` (1597).
+
+## Illegible lines
+- None. All lines 1447-1697 were transcribed; no <ILLEGIBLE> placeholders needed.
+
+## Total line count
+- 1697 (gutter number of the very last line; vim status bar shows "Bot" with cursor at 1674,27). Lines 1694-1697 are blank.

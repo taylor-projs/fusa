@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "hang_prot: sim TB-A (iverilog/WSL)",
+      "type": "shell",
+      "command": "wsl",
+      "args": [
+        "-e", "bash", "-c",
+        "cd '/mnt/d/Users/Taylor.Yu/Documents/1.D-robotics/1.项目开发/1.X7A/4.TR4/2.MCUSys设计/3.hang_prot/sim' && ./run_iverilog.sh a"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "hang_prot: sim TB-B (iverilog/WSL)",
+      "type": "shell",
+      "command": "wsl",
+      "args": [
+        "-e", "bash", "-c",
+        "cd '/mnt/d/Users/Taylor.Yu/Documents/1.D-robotics/1.项目开发/1.X7A/4.TR4/2.MCUSys设计/3.hang_prot/sim' && ./run_iverilog.sh b"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

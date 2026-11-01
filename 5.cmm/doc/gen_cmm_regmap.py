@@ -1,0 +1,547 @@
+#!/usr/bin/env python3
+# ===========================================================================
+# gen_cmm_regmap.py - generate doc/cmm_regmap.xlsx (CMM register spec)
+#
+# Source of truth: rtl/cmm_regfile.sv / rtl/cmm_top.sv (doc/cmm_sil2_design.md
+# section 5). Re-run after any register-map change:
+#     python3 doc/gen_cmm_regmap.py
+#
+# Stdlib only (zipfile): writes a minimal OOXML workbook with inline strings.
+# Sheets:
+#   INFO      conventions / parameters / protocol notes
+#   REGMAP    register address list (channel arrays as stride formula)
+#   REGISTERS TRM-style per-register sections (TI OMAP style): register header
+#             + bit table (Bit/Field/Type/Reset/Description, MSB first,
+#             reserved bits explicit, channel arrays collapsed as i=0..15)
+#   FIELDS    one row per bit-field, all 16 channels expanded - machine input
+#             for RDL generation
+# ===========================================================================
+import os
+import zipfile
+
+# ---------- RTL default parameters ----------
+N_DUT      = 16
+CNT_W      = 12        # window/noedge counter and field width
+WIN_LO_RST = 1621      # 0x655
+WIN_HI_RST = 1792      # 0x700
+NDEAD_RST  = 4095      # 0xFFF
+
+h4 = lambda v: '0x%04X' % v
+h2 = lambda v: '0x%02X' % v
+h3 = lambda v: '0x%03X' % v
+
+# ---------- REGMAP (register list; off may be an int or a display string) ---
+REGS = []
+def addReg(off, name, acc, key, rst, pgrp, desc):
+    REGS.append((off if isinstance(off, str) else h4(off),
+                 name, acc, 'Y' if key else '', rst, pgrp, desc))
+
+# ---------- FIELDS (machine sheet; fully expanded at N_DUT) -----------------
+FIELDS = []
+def addFld(off, reg, field, msb, lsb, acc, key, rst, enc, pgrp, desc):
+    FIELDS.append((h4(off), reg, field, msb, lsb, msb - lsb + 1, acc,
+                   'Y' if key else '', rst, enc, pgrp, desc))
+
+DYN = 'dynamic'  # RO status readback
+
+# ---- 0x00 ID ----
+addReg(0x00, 'ID', 'RO', False, '0x%08X' % (0xC44D0100 | N_DUT), '-',
+       'ID magic + register-map version + channel count')
+addFld(0x00, 'ID', 'MAGIC', 31, 16, 'RO', False, '0xC44D', '', '-', 'ID magic')
+addFld(0x00, 'ID', 'VER',   15, 8,  'RO', False, '0x01',   '', '-', 'register-map version')
+addFld(0x00, 'ID', 'NDUT',   7, 0,  'RO', False, h2(N_DUT), '', '-', 'N_DUT channel count (RTL parameter)')
+
+# ---- 0x04 GCTRL (keyed) ----
+addReg(0x04, 'GCTRL', 'RW', True, '0x00000000', 'PERR2 / REGSEL=2',
+       'global control; keyed; every write re-stores REFSEL+DBGSEL (RMW discipline)')
+addFld(0x04, 'GCTRL', 'REFSEL',  0, 0, 'RW', True, '0', '0=REFCLK0; 1=REFCLK1',
+       'PERR2 / REGSEL=2', 'reference clock select, quasi-static; switch per quiesce protocol (see INFO)')
+addFld(0x04, 'GCTRL', 'TST_CLR', 1, 1, 'W1P', True, '0', '',
+       '-', 'self-test clear pulse: FSM->ARM and clears ALL sticky status in clk_ref domain; reads 0; write together with intended REFSEL/DBGSEL')
+addFld(0x04, 'GCTRL', 'DBGSEL',  7, 4, 'RW', True, '0x0', '',
+       'PERR2 / REGSEL=2', 'debug channel select: source of DBG0/DBG1 and target of INJ_* bits')
+
+# ---- 0x08 GSTAT (RO) ----
+addReg(0x08, 'GSTAT', 'RO', False, DYN, '-', 'global status (status bits 2FF-synced from clk_ref domain)')
+for field, lsb, msb, enc, desc in [
+    ('ALARM',         0, 0, '', 'OR of all channel alarms (FAIL_FREQ | DEAD)'),
+    ('FU',            1, 1, '', 'OR of monitor integrity faults (cmm_fu)'),
+    ('ACTIVE',        2, 2, '', 'lifecycle FSM in RUN (cmm_active output)'),
+    ('FSM',           3, 5, '001=ARM; 010=RUN; 100=ERR', 'lifecycle FSM state (one-hot)'),
+    ('CFG_BUSY',      6, 6, '', 'CDC write handshake in flight; poll ==0 before the next forwarded write'),
+    ('NERR_N',        7, 7, '', 'readback of the nerr_n output to the PMIC (0 = alarm/fault present)'),
+    ('REFSEL',        8, 8, '0=REFCLK0; 1=REFCLK1', 'current reference select readback'),
+    ('ANY_EN',        9, 9, '', 'any channel enabled; gates the REF_STALE watchdog'),
+    ('REG_PAR_FAULT', 10, 10, '', 'register parity fault rail (mbus domain)'),
+    ('CFG_HANG',      11, 11, '', 'config-path liveness event = WR_DROPPED | CFG_HANG | REF_STALE (mbus domain)'),
+]:
+    addFld(0x08, 'GSTAT', field, msb, lsb, 'RO', False, DYN, enc, '-', desc)
+
+# ---- 0x0C/0x10 ENLO/ENHI ----
+EN_ENC = '0xF=EN; 0x0=DIS; other=illegal -> REG_PROT, nibble rejected'
+addReg(0x0C, 'ENLO', 'RW', False, '0xFFFFFFFF', 'PERR0 / REGSEL=0',
+       'coded enables ch0-7, one nibble per channel (reset = all enabled)')
+addReg(0x10, 'ENHI', 'RW', False, '0xFFFFFFFF', 'PERR1 / REGSEL=1',
+       'coded enables ch8-15 (reads 0 beyond N_DUT)')
+for n in range(8):
+    addFld(0x0C, 'ENLO', 'EN_CH%d' % n, 4 * n + 3, 4 * n, 'RW', False, '0xF', EN_ENC,
+           'PERR0 / REGSEL=0', 'coded enable ch %d (repetition-4: 1-bit upset corrected, 2-bit upset forces ENABLED + FUSTAT[4] HIERR)%s'
+           % (n, '' if n < N_DUT else ' - reserved, reads 0'))
+    addFld(0x10, 'ENHI', 'EN_CH%d' % (n + 8), 4 * n + 3, 4 * n, 'RW', False, '0xF', EN_ENC,
+           'PERR1 / REGSEL=1', 'coded enable ch %d (same coding)%s'
+           % (n + 8, '' if (8 + n) < N_DUT else ' - reserved, reads 0'))
+
+# ---- 0x14 ERRSTAT (W1C) ----
+addReg(0x14, 'ERRSTAT', 'W1C', False, '0x00000000', 'PERR7 / REGSEL=7 (image)',
+       'per-channel alarm (fail|dead); W1C clears BOTH sources of that channel')
+for i in range(N_DUT):
+    addFld(0x14, 'ERRSTAT', 'ALARM_CH%d' % i, i, i, 'W1C', False, '0', '',
+           'PERR7 / REGSEL=7 (image)', 'ch %d alarm = FAIL|DEAD; W1C here clears BOTH fail and dead stickies of ch %d (source split in SRCSTAT)' % (i, i))
+
+# ---- 0x18 SRCSTAT (W1C) ----
+addReg(0x18, 'SRCSTAT', 'W1C', False, '0x00000000', 'PERR8 / REGSEL=8 (image)',
+       'per-channel alarm source: FAIL_FREQ / DEAD')
+for i in range(N_DUT):
+    addFld(0x18, 'SRCSTAT', 'FAIL_CH%d' % i, 2 * i, 2 * i, 'W1C', False, '0', '',
+           'PERR8 / REGSEL=8 (image)', 'ch %d FAIL_FREQ sticky: window count outside [WIN_LO,WIN_HI] after N_DEB-window debounce; direction via DBG0.SHADOW (>WIN_HI=fast, <WIN_LO=slow)' % i)
+    addFld(0x18, 'SRCSTAT', 'DEAD_CH%d' % i, 2 * i + 1, 2 * i + 1, 'W1C', False, '0', '',
+           'PERR8 / REGSEL=8 (image)', 'ch %d DEAD sticky: no prescaled DUT edge for NDEAD ref cycles (re-issuing while dead)' % i)
+
+# ---- 0x1C FUSTAT (W1C) ----
+addReg(0x1C, 'FUSTAT', 'W1C', False, '0x00000000', 'PERR10 / REGSEL=10 (image)',
+       'monitor integrity classes (bits 0-5, clk_ref domain) + config-path liveness (bits 6-9, mbus domain)')
+for field, bit, desc in [
+    ('CNT_ANY',    0, 'inverted-duplicate broken in edge_cnt / shadow / noedge_cnt (any ch); per-ch split in FUSRC'),
+    ('CMP_ANY',    1, 'dual compare A/B disagree (any ch)'),
+    ('WIN',        2, 'shared window generator integrity (dual-rail count / dual-compare disagree)'),
+    ('PSC_ANY',    3, 'dut-domain prescaler duplicate mismatch (any ch, 2FF + 4-cycle debounced)'),
+    ('HIERR',      4, 'EN codeword 2-of-4 ambiguous; auto-corrected toward ENABLED'),
+    ('FSM',        5, 'lifecycle FSM illegal state (one-hot encoding broken)'),
+    ('REG_PROT',   6, 'key violation / write to RO or unmapped offset / illegal EN nibble (mbus domain)'),
+    ('WR_DROPPED', 7, 'forwarded write dropped while CDC busy (mbus domain)'),
+    ('CFG_HANG',   8, 'CDC req/ack busy > HANG_TO mbus cycles: clk_ref capture or ack path dead (mbus domain)'),
+    ('REF_STALE',  9, 'window_fire toggle absent > WIN_ALIVE_MAX mbus cycles while any EN: ref clock / window machinery dead (mbus domain)'),
+]:
+    addFld(0x1C, 'FUSTAT', field, bit, bit, 'W1C', False, '0', '', 'PERR10 / REGSEL=10 (image)', desc)
+
+# ---- 0x20/0x24 FUSRC0/1 (W1C) ----
+addReg(0x20, 'FUSRC0', 'W1C', False, '0x00000000', 'PERR9 / REGSEL=9 (image)',
+       'per-channel integrity source nibbles {PSC,CFGPAR,CMP,CNT}, ch0-7')
+addReg(0x24, 'FUSRC1', 'W1C', False, '0x00000000', 'PERR9 / REGSEL=9 (image)',
+       'per-channel integrity source nibbles, ch8-15')
+for i in range(N_DUT):
+    off, reg, b = (0x20, 'FUSRC0', 4 * i) if i < 8 else (0x24, 'FUSRC1', 4 * (i - 8))
+    pg = 'PERR9 / REGSEL=9 (image)'
+    addFld(off, reg, 'CNT_CH%d' % i,    b,     b,     'W1C', False, '0', '', pg,
+           'ch %d: inverted-duplicate broken in edge_cnt / shadow / noedge_cnt' % i)
+    addFld(off, reg, 'CMP_CH%d' % i,    b + 1, b + 1, 'W1C', False, '0', '', pg,
+           'ch %d: comparator A vs B disagree' % i)
+    addFld(off, reg, 'CFGPAR_CH%d' % i, b + 2, b + 2, 'W1C', False, '0', '', pg,
+           'ch %d: ref-domain 41-bit config shadow parity fault (self-test target REGSEL=%d); W1C here also clears the ref-domain wrap flt' % (i, 16 + i))
+    addFld(off, reg, 'PSC_CH%d' % i,    b + 3, b + 3, 'W1C', False, '0', '', pg,
+           'ch %d: dut-domain prescaler duplicate mismatch' % i)
+
+# ---- 0x28 FORCE (keyed) ----
+addReg(0x28, 'FORCE', 'RW', True, '0x00000000', 'PERR3 / REGSEL=3',
+       'verdict force + monitor self-test injection (keyed); a FORCE write with bit16=0 is always accepted (hang escape, not forwarded)')
+for i in range(N_DUT):
+    addFld(0x28, 'FORCE', 'FORCE_CH%d' % i, i, i, 'RW', True, '0', '',
+           'PERR3 / REGSEL=3', 'ch %d: XOR into the debounced freq verdict; exercises the full debounce->latch->alarm->nERR path with no storage corrupted' % i)
+addFld(0x28, 'FORCE', 'FORCE_HANG',  16, 16, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
+       'mask the CDC ack -> CFG_HANG must fire (self-test); clear by writing FORCE with bit16=0 (escape path)')
+addFld(0x28, 'FORCE', 'FORCE_STALE', 17, 17, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
+       'freeze the window-toggle sync chain -> REF_STALE must fire (self-test); re-fires until the next window toggle after release')
+addFld(0x28, 'FORCE', 'INJ_PSC',     18, 18, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
+       'XOR into the synced prescaler-duplicate level of channel DBGSEL')
+addFld(0x28, 'FORCE', 'INJ_CMP',     19, 19, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
+       'XOR into comparator B output of channel DBGSEL')
+addFld(0x28, 'FORCE', 'INJ_CNT',     20, 20, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
+       'XOR into the shadow duplicate check of channel DBGSEL')
+
+# ---- 0x2C REGPAR (W1C) ----
+addReg(0x2C, 'REGPAR', 'W1C', False, '0x00000002', '-',
+       'register parity status: dual-rail fault (RO bits 1:0) + per-group W1C flags')
+addFld(0x2C, 'REGPAR', 'REG_PAR_FAULT',   0, 0, 'RO', False, '0', '', '-',
+       'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail)')
+addFld(0x2C, 'REGPAR', 'REG_PAR_FAULT_N', 1, 1, 'RO', False, '1', '', '-',
+       'inverted rail (reads 1 when no fault)')
+PERR_NAMES = ['ENLO', 'ENHI', 'GCTRL', 'FORCE', 'CLO', 'CHI', 'CDEAD',
+              'ERRIMG', 'SRCIMG', 'FUSRCIMG', 'FUSTATIMG']
+for k, name in enumerate(PERR_NAMES):
+    addFld(0x2C, 'REGPAR', 'PERR_' + name, 4 + k, 4 + k, 'W1C', False, '0', '', '-',
+           'parity fault of wrap group %d (%s); inject via REGST REGSEL=%d%s'
+           % (k, name, k, '; image wrap self-restores next cycle' if k >= 7
+              else '; config wrap restored by rewriting the register'))
+addFld(0x2C, 'REGPAR', 'PERR_INFLIGHT', 15, 15, 'W1C', False, '0', '', '-',
+       'in-flight write payload {wsel,wdata} parity (sticky; transient flight window)')
+addFld(0x2C, 'REGPAR', 'PERR_CMD',      16, 16, 'W1C', False, '0', '', '-',
+       'mbus command in-flight parity: par = ^{addr,wr,wdata} failed at ce')
+addFld(0x2C, 'REGPAR', 'PAR_SELFTEST',  17, 17, 'W1C', False, '0', '', '-',
+       'no-source injection latch (ESM service self-test signature), set via REGST bit9')
+
+# ---- 0x30 REGST (keyed, WO) ----
+addReg(0x30, 'REGST', 'WO', True, '-', '-',
+       'parity self-test injection (keyed, write-only, reads 0)')
+addFld(0x30, 'REGST', 'REGSEL', 4, 0, 'WO', True, '-',
+       '0..10=mbus wrap group k; 16+i=ref-domain config shadow of ch i; 11..15=reserved', '-',
+       'injection target select')
+addFld(0x30, 'REGST', 'ST',     8, 8, 'WO', True, '-', '', '-',
+       'inject a parity fault into the REGSEL storage target')
+addFld(0x30, 'REGST', 'NO_SRC', 9, 9, 'WO', True, '-', '', '-',
+       'no-source injection -> REGPAR[17] PAR_SELFTEST (ESM service signature)')
+
+# ---- 0x34/0x38 DBG0/1 (RO) ----
+addReg(0x34, 'DBG0', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL (clk_ref domain values)')
+addFld(0x34, 'DBG0', 'SHADOW', 11, 0,  'RO', False, DYN, '', '-',
+       'edge count of the last closed window, ch DBGSEL (FAIL direction: >WIN_HI=fast, <WIN_LO=slow)')
+addFld(0x34, 'DBG0', 'NOEDGE', 27, 16, 'RO', False, DYN, '', '-',
+       'live no-edge counter, ch DBGSEL')
+addReg(0x38, 'DBG1', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL + shared window counter')
+addFld(0x38, 'DBG1', 'EDGECNT', 11, 0,  'RO', False, DYN, '', '-',
+       'live window edge counter, ch DBGSEL')
+addFld(0x38, 'DBG1', 'WIN_CNT', 31, 16, 'RO', False, DYN, '', '-',
+       'shared window counter (current window)')
+
+# ---- 0x40.. channel config space (keyed), REGMAP collapsed as arrays -------
+CHS = [('WIN_LO', 0, WIN_LO_RST, 'window count lower bound; expected count = N_WIN*f_dut/(f_ref*2^(PSC+1))', 'PERR4 / REGSEL=4'),
+       ('WIN_HI', 4, WIN_HI_RST, 'window count upper bound', 'PERR5 / REGSEL=5'),
+       ('NDEAD',  8, NDEAD_RST,  'DEAD timeout [ref cycles]; constraint: > 2^(PSC+1)*f_ref/f_dut_legal_min + 2FF sync jitter, else a slow-but-live clock reads as dead', 'PERR6 / REGSEL=6')]
+for sub, base, rv, cdesc, pg in CHS:
+    addReg('0x%04X+12*i' % (0x40 + base), 'CHi_' + sub + ' (i=0..%d)' % (N_DUT - 1), 'RW', True,
+           '0x%08X' % rv, pg + '; ref shadow REGSEL=16+i',
+           'ch i %s (keyed); last instance at 0x%04X' % (cdesc.split(';')[0], 0x40 + base + 12 * (N_DUT - 1)))
+for i in range(N_DUT):
+    for sub, base, rv, cdesc, pg in CHS:
+        off = 0x40 + base + 12 * i
+        addFld(off, 'CH%d_%s' % (i, sub), sub, 11, 0, 'RW', True, h3(rv), '',
+               pg + '; ref shadow REGSEL=%d' % (16 + i),
+               'ch %d %s; write key in wdata[31:28]' % (i, cdesc))
+
+# ===========================================================================
+# REGISTERS sheet - TRM-style per-register sections (TI OMAP style).
+# Field tuples: (bit, name, type, reset, description), MSB first, reserved
+# ranges explicit. Arrayed bits use an i-formula in the Bit column.
+# ===========================================================================
+RSVD = lambda hi, lo: ('%d:%d' % (hi, lo) if hi != lo else str(hi), 'RSVD', 'R', '0', 'Reserved')
+TRM = [
+    ('ID', '0x0000', 'RO', False, '0x%08X' % (0xC44D0100 | N_DUT),
+     'ID magic + register-map version + channel count', [
+        ('31:16', 'MAGIC', 'RO', '0xC44D', 'ID magic'),
+        ('15:8',  'VER',   'RO', '0x01',   'register-map version'),
+        ('7:0',   'NDUT',  'RO', h2(N_DUT), 'N_DUT channel count (RTL parameter)'),
+     ]),
+    ('GCTRL', '0x0004', 'RW', True, '0x00000000',
+     'Global control. Every write re-stores REFSEL+DBGSEL (RMW discipline): write TST_CLR together with their intended values.', [
+        RSVD(31, 8),
+        ('7:4', 'DBGSEL',  'RW',  '0x0', 'debug channel select: source of DBG0/DBG1 and target of FORCE.INJ_* bits'),
+        RSVD(3, 2),
+        ('1',   'TST_CLR', 'W1P', '0',   'self-test clear pulse: FSM->ARM, clears ALL sticky status in clk_ref domain; reads 0'),
+        ('0',   'REFSEL',  'RW',  '0',   'reference clock select: 0=REFCLK0, 1=REFCLK1; quasi-static - switch via quiesce protocol (INFO note 7)'),
+     ]),
+    ('GSTAT', '0x0008', 'RO', False, DYN,
+     'Global status; status bits are 2FF-synchronized from the clk_ref domain.', [
+        RSVD(31, 12),
+        ('11',   'CFG_HANG',      'RO', DYN, 'config-path liveness event = WR_DROPPED | CFG_HANG | REF_STALE (mbus domain)'),
+        ('10',   'REG_PAR_FAULT', 'RO', DYN, 'register parity fault rail (mbus domain)'),
+        ('9',    'ANY_EN',        'RO', DYN, 'any channel enabled; gates the REF_STALE watchdog'),
+        ('8',    'REFSEL',        'RO', DYN, 'current reference select readback: 0=REFCLK0, 1=REFCLK1'),
+        ('7',    'NERR_N',        'RO', DYN, 'readback of the nerr_n output to the PMIC (0 = alarm/fault present)'),
+        ('6',    'CFG_BUSY',      'RO', DYN, 'CDC write handshake in flight; poll ==0 before the next forwarded write'),
+        ('5:3',  'FSM',           'RO', DYN, 'lifecycle FSM state (one-hot): 001=ARM, 010=RUN, 100=ERR'),
+        ('2',    'ACTIVE',        'RO', DYN, 'lifecycle FSM in RUN (cmm_active output)'),
+        ('1',    'FU',            'RO', DYN, 'OR of monitor integrity faults (cmm_fu)'),
+        ('0',    'ALARM',         'RO', DYN, 'OR of all channel alarms (FAIL_FREQ | DEAD)'),
+     ]),
+    ('ENLO', '0x000C', 'RW', False, '0xFFFFFFFF',
+     'Coded channel enables ch0-7, one nibble per channel. Reset = all enabled.', [
+        ('4i+3:4i', 'EN_CHi', 'RW', '0xF',
+         'coded enable ch i (i=0..7): 0xF=enable, 0x0=disable; other values illegal -> REG_PROT and the nibble is rejected. Repetition-4 codeword: 1-bit upset is corrected, 2-bit upset forces ENABLED + FUSTAT[4] HIERR (fail-safe direction)'),
+     ]),
+    ('ENHI', '0x0010', 'RW', False, '0xFFFFFFFF',
+     'Coded enables ch8-15 (same coding as ENLO); nibbles beyond N_DUT read 0.', [
+        ('4i+3:4i', 'EN_CH(8+i)', 'RW', '0xF',
+         'coded enable ch 8+i (i=0..7), same coding as ENLO; reserved beyond N_DUT (reads 0)'),
+     ]),
+    ('ERRSTAT', '0x0014', 'W1C', False, '0x00000000',
+     'Per-channel alarm (fail|dead). W1C here clears BOTH the fail and the dead sticky of that channel.', [
+        RSVD(31, 16),
+        ('i', 'ALARM_CHi', 'W1C', '0', 'ch i alarm = FAIL|DEAD (i=0..%d); W1C clears both sources - source split in SRCSTAT' % (N_DUT - 1)),
+     ]),
+    ('SRCSTAT', '0x0018', 'W1C', False, '0x00000000',
+     'Per-channel alarm source: FAIL_FREQ / DEAD.', [
+        ('2i+1', 'DEAD_CHi', 'W1C', '0', 'ch i DEAD sticky (i=0..%d): no prescaled DUT edge for NDEAD ref cycles; re-issuing while the clock stays dead' % (N_DUT - 1)),
+        ('2i',   'FAIL_CHi', 'W1C', '0', 'ch i FAIL_FREQ sticky: window count outside [WIN_LO,WIN_HI] after N_DEB-window debounce; direction via DBG0.SHADOW (>WIN_HI=fast, <WIN_LO=slow)'),
+     ]),
+    ('FUSTAT', '0x001C', 'W1C', False, '0x00000000',
+     'Monitor integrity classes (bits 5:0, clk_ref domain) + config-path liveness (bits 9:6, mbus domain).', [
+        RSVD(31, 10),
+        ('9', 'REF_STALE',  'W1C', '0', 'window_fire toggle absent > WIN_ALIVE_MAX mbus cycles while any EN: ref clock / window machinery dead'),
+        ('8', 'CFG_HANG',   'W1C', '0', 'CDC req/ack busy > HANG_TO mbus cycles: clk_ref capture or ack path dead'),
+        ('7', 'WR_DROPPED', 'W1C', '0', 'forwarded write dropped while CDC busy'),
+        ('6', 'REG_PROT',   'W1C', '0', 'key violation / write to RO or unmapped offset / illegal EN nibble'),
+        ('5', 'FSM',        'W1C', '0', 'lifecycle FSM illegal state (one-hot encoding broken)'),
+        ('4', 'HIERR',      'W1C', '0', 'EN codeword 2-of-4 ambiguous; auto-corrected toward ENABLED'),
+        ('3', 'PSC_ANY',    'W1C', '0', 'dut-domain prescaler duplicate mismatch (any ch, 2FF + 4-cycle debounced)'),
+        ('2', 'WIN',        'W1C', '0', 'shared window generator integrity (dual-rail count / dual-compare disagree)'),
+        ('1', 'CMP_ANY',    'W1C', '0', 'dual compare A/B disagree (any ch)'),
+        ('0', 'CNT_ANY',    'W1C', '0', 'inverted-duplicate broken in edge_cnt / shadow / noedge_cnt (any ch); per-ch split in FUSRC0/1'),
+     ]),
+    ('FUSRC0', '0x0020', 'W1C', False, '0x00000000',
+     'Per-channel integrity source nibbles {PSC,CFGPAR,CMP,CNT}, ch0-7.', [
+        ('4i+3', 'PSC_CHi',    'W1C', '0', 'ch i (i=0..7): dut-domain prescaler duplicate mismatch'),
+        ('4i+2', 'CFGPAR_CHi', 'W1C', '0', 'ch i: ref-domain 41-bit config shadow parity fault (self-test target REGSEL=16+i); W1C also clears the ref-domain wrap flt'),
+        ('4i+1', 'CMP_CHi',    'W1C', '0', 'ch i: comparator A vs B disagree'),
+        ('4i',   'CNT_CHi',    'W1C', '0', 'ch i: inverted-duplicate broken in edge_cnt / shadow / noedge_cnt'),
+     ]),
+    ('FUSRC1', '0x0024', 'W1C', False, '0x00000000',
+     'Per-channel integrity source nibbles {PSC,CFGPAR,CMP,CNT}, ch8-15.', [
+        ('4i+3', 'PSC_CH(8+i)',    'W1C', '0', 'ch 8+i (i=0..7): prescaler duplicate mismatch'),
+        ('4i+2', 'CFGPAR_CH(8+i)', 'W1C', '0', 'ch 8+i: config shadow parity fault (REGSEL=16+8+i); W1C also clears the ref wrap flt'),
+        ('4i+1', 'CMP_CH(8+i)',    'W1C', '0', 'ch 8+i: comparator A vs B disagree'),
+        ('4i',   'CNT_CH(8+i)',    'W1C', '0', 'ch 8+i: counter/shadow/noedge duplicate broken'),
+     ]),
+    ('FORCE', '0x0028', 'RW', True, '0x00000000',
+     'Verdict force + monitor self-test injection. A FORCE write with bit16=0 is always accepted (hang escape, not forwarded, never dropped).', [
+        RSVD(31, 21),
+        ('20', 'INJ_CNT',     'RW', '0', 'XOR into the shadow duplicate check of channel DBGSEL (CNT fault class)'),
+        ('19', 'INJ_CMP',     'RW', '0', 'XOR into comparator B output of channel DBGSEL (CMP fault class)'),
+        ('18', 'INJ_PSC',     'RW', '0', 'XOR into the synced prescaler-duplicate level of channel DBGSEL (PSC fault class)'),
+        ('17', 'FORCE_STALE', 'RW', '0', 'freeze the window-toggle sync chain -> REF_STALE must fire (self-test); re-fires until the next window toggle after release'),
+        ('16', 'FORCE_HANG',  'RW', '0', 'mask the CDC ack -> CFG_HANG must fire (self-test); clear by writing FORCE with bit16=0 (escape path)'),
+        ('i',  'FORCE_CHi',   'RW', '0', 'ch i verdict force (i=0..%d): XOR into the debounced freq verdict - exercises the full debounce->latch->alarm->nERR path with no storage corrupted' % (N_DUT - 1)),
+     ]),
+    ('REGPAR', '0x002C', 'W1C', False, '0x00000002',
+     'Register parity status: dual-rail fault (RO bits 1:0) + per-group W1C flags. Parity group k is injected via REGST REGSEL=k.', [
+        RSVD(31, 18),
+        ('17',    'PAR_SELFTEST',  'W1C', '0', 'no-source injection latch (ESM service self-test signature), set via REGST.NO_SRC'),
+        ('16',    'PERR_CMD',      'W1C', '0', 'mbus command in-flight parity failed at ce (par = ^{addr,wr,wdata})'),
+        ('15',    'PERR_INFLIGHT', 'W1C', '0', 'in-flight write payload {wsel,wdata} parity (sticky; transient flight window)'),
+        ('14',    'PERR_FUSTATIMG','W1C', '0', 'wrap group 10: FUSTAT image (image wrap - self-restores next cycle)'),
+        ('13',    'PERR_FUSRCIMG', 'W1C', '0', 'wrap group 9: FUSRC image (image wrap)'),
+        ('12',    'PERR_SRCIMG',   'W1C', '0', 'wrap group 8: SRCSTAT image (image wrap)'),
+        ('11',    'PERR_ERRIMG',   'W1C', '0', 'wrap group 7: ERRSTAT image (image wrap)'),
+        ('10',    'PERR_CDEAD',    'W1C', '0', 'wrap group 6: all-channel NDEAD config (restored by rewriting the register)'),
+        ('9',     'PERR_CHI',      'W1C', '0', 'wrap group 5: all-channel WIN_HI config'),
+        ('8',     'PERR_CLO',      'W1C', '0', 'wrap group 4: all-channel WIN_LO config'),
+        ('7',     'PERR_FORCE',    'W1C', '0', 'wrap group 3: FORCE'),
+        ('6',     'PERR_GCTRL',    'W1C', '0', 'wrap group 2: GCTRL storage {dbgsel,refsel}'),
+        ('5',     'PERR_ENHI',     'W1C', '0', 'wrap group 1: ENHI'),
+        ('4',     'PERR_ENLO',     'W1C', '0', 'wrap group 0: ENLO'),
+        RSVD(3, 2),
+        ('1',     'REG_PAR_FAULT_N', 'RO', '1', 'inverted dual rail (reads 1 when no fault)'),
+        ('0',     'REG_PAR_FAULT',   'RO', '0', 'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail)'),
+     ]),
+    ('REGST', '0x0030', 'WO', True, '-',
+     'Parity self-test injection (write-only, reads 0).', [
+        RSVD(31, 10),
+        ('9',   'NO_SRC', 'WO', '-', 'no-source injection -> REGPAR[17] PAR_SELFTEST (ESM service signature)'),
+        ('8',   'ST',     'WO', '-', 'inject a parity fault into the REGSEL storage target'),
+        RSVD(7, 5),
+        ('4:0', 'REGSEL', 'WO', '-', 'injection target: 0..10 = mbus wrap group k; 16+i = ref-domain 41-bit config shadow of ch i; 11..15 reserved'),
+     ]),
+    ('DBG0', '0x0034', 'RO', False, DYN,
+     'Debug counters of channel GCTRL.DBGSEL (clk_ref domain values).', [
+        RSVD(31, 28),
+        ('27:16', 'NOEDGE', 'RO', DYN, 'live no-edge counter, ch DBGSEL'),
+        RSVD(15, 12),
+        ('11:0',  'SHADOW', 'RO', DYN, 'edge count of the last closed window, ch DBGSEL (FAIL direction: >WIN_HI=fast, <WIN_LO=slow)'),
+     ]),
+    ('DBG1', '0x0038', 'RO', False, DYN,
+     'Debug counters of channel GCTRL.DBGSEL + shared window counter.', [
+        ('31:16', 'WIN_CNT', 'RO', DYN, 'shared window counter (current window)'),
+        RSVD(15, 12),
+        ('11:0',  'EDGECNT', 'RO', DYN, 'live window edge counter, ch DBGSEL'),
+     ]),
+]
+for sub, base, rv, cdesc, pg in CHS:
+    TRM.append(('CHi_' + sub, '0x%04X+12*i (i=0..%d)' % (0x40 + base, N_DUT - 1), 'RW', True,
+                '0x%08X' % rv,
+                'Channel %s (keyed). Stride 12 per channel: WIN_LO @ +0, WIN_HI @ +4, NDEAD @ +8. %s'
+                % (sub, {'WIN_LO': '0x40+12*15=0x00F4', 'WIN_HI': '0x00F8', 'NDEAD': '0x00FC'}[sub] and 'Last instance: ch%d @ 0x%04X.' % (N_DUT - 1, 0x40 + base + 12 * (N_DUT - 1))),
+                [
+                    RSVD(31, 12),
+                    ('11:0', sub, 'RW', h3(rv), cdesc + '; write key in wdata[31:28]'),
+                ]))
+
+# ===========================================================================
+# INFO sheet (human conventions)
+# ===========================================================================
+S = lambda t: [t]
+KV = lambda k, v: [k, v]
+info_rows = [
+    S('MODULE'),
+    KV('Module', 'cmm_top / cmm_regfile - Clock Monitor Module (multi-channel, SIL2-oriented)'),
+    KV('Sources', 'rtl/cmm_regfile.sv (source of truth), rtl/cmm_top.sv, rtl/cmm_clk_dut_chk.sv, rtl/reg_wrap.sv; spec doc/cmm_sil2_design.md section 5'),
+    KV('Generated', 'doc/gen_cmm_regmap.py, 2026-10-28 - re-run the script after any register-map change'),
+    KV('Addressing', '16-bit mbus address = {IDX[7:0], byte_offset[7:0]}; IDX default 0; word-aligned (addr[1:0]=00); zero-wait, rdata combinational'),
+    KV('Sheets', 'REGMAP = register address list; REGISTERS = TRM-style bit tables per register (TI OMAP style); FIELDS = one row per bit-field, all %d channels expanded = machine input for RDL generation' % N_DUT),
+    S('PARAMETERS (RTL defaults)'),
+    KV('N_DUT', '%d  (channels under test, 1..16)' % N_DUT),
+    KV('CNT_W', '%d  (window/noedge counter and field width)' % CNT_W),
+    KV('N_WIN', '32768  (window length, ref cycles)'),
+    KV('WIN_LO_RST / WIN_HI_RST', '1621 (0x655) / 1792 (0x700)'),
+    KV('NDEAD_RST', '4095 (0xFFF) ref cycles'),
+    KV('N_DEB', '3  (FAIL_FREQ debounce, consecutive bad windows)'),
+    KV('WKEY', '0x5  (keyed-write key, wdata[31:28])'),
+    KV('DUT_PSC', '3 per channel (prescaler tap, square wave = clk_dut/2^(PSC+1))'),
+    KV('HANG_TO', '1024 mbus cycles (CFG_HANG watchdog)'),
+    KV('WIN_ALIVE_MAX', '131072 mbus cycles (REF_STALE watchdog)'),
+    KV('IDX', '0  (mbus instance id, addr[15:8])'),
+    S('ACCESS LEGEND (-> SystemRDL)'),
+    KV('RO', 'read-only status -> sw=r'),
+    KV('RW', 'config; forwarded to clk_ref via CDC handshake -> sw=rw'),
+    KV('W1C', 'readable sticky status, write-1 clears -> sw=rw + woclr'),
+    KV('WO', 'write-only action, reads 0 -> sw=w'),
+    KV('W1P', 'write-1 pulse, self-clearing, reads 0 -> sw=w + singlepulse'),
+    KV('R (RSVD)', 'reserved bit range: reads 0, writes ignored'),
+    KV('Keyed', 'register write requires wdata[31:28]==WKEY(0x5), else the write is rejected entirely + FUSTAT[6] REG_PROT'),
+    S('PROTOCOL NOTES (mbus)'),
+    KV('1 Command parity', 'par = ^{addr,wr,wdata} checked at every ce; bad parity: writes blocked, rdata=0, REGPAR[16] PERR_CMD latched'),
+    KV('2 CDC busy', 'forwarded writes (all RW/W1C except REGPAR local bits) cross to clk_ref one-at-a-time; poll GSTAT[6] CFG_BUSY==0 before the next write; a write while busy is dropped (FUSTAT[7] WR_DROPPED)'),
+    KV('3 Hang escape', 'a FORCE write with bit16=0 is always accepted (clears FORCE_HANG), local only, never dropped'),
+    KV('4 GCTRL RMW', 'every GCTRL write re-stores REFSEL and DBGSEL: write TST_CLR together with the intended REFSEL/DBGSEL values'),
+    KV('5 TST_CLR', 'FSM->ARM and clears ALL sticky status in the clk_ref domain'),
+    KV('6 Reset state', 'ENLO/ENHI reset to all-F: all channels ENABLED out of POR; FSM reaches RUN after the first full window'),
+    KV('7 REFSEL switch', 'quiesce protocol: EN<-0 -> GCTRL REFSEL -> GCTRL REFSEL|TST_CLR -> re-EN; the N_DEB debounce absorbs the transition window'),
+    KV('8 W1C crossing', 'ERRSTAT/SRCSTAT/FUSTAT/FUSRC clears are forwarded to clk_ref through the same handshake; FUSRC bit [4i+2] also clears the ref-domain shadow wrap flt; REGPAR clears are local (mbus domain)'),
+    S('STATUS DECODE (clk_dut states)'),
+    KV('FAST', 'SRCSTAT.FAIL_CHi=1 and DBG0.SHADOW > WIN_HI (select ch via GCTRL.DBGSEL)'),
+    KV('SLOW', 'SRCSTAT.FAIL_CHi=1 and DBG0.SHADOW < WIN_LO'),
+    KV('DEAD', 'SRCSTAT.DEAD_CHi=1 (fires within NDEAD ref cycles, much faster than one window; mutually exclusive with FAIL in practice because FSM->ERR gates fail_set)'),
+    S('MEASUREMENT MODEL'),
+    KV('Expected count', 'count = N_WIN * f_dut / (f_ref * 2^(PSC+1))  per window'),
+    KV('Nyquist constraint', 'f_dut / 2^(PSC+1) <= f_ref/4 (2FF + edge detect); a too-small PSC loses edges -> count low -> alarm direction'),
+    KV('NDEAD constraint', 'NDEAD > prescaled-edge gap at the lowest legal f_dut: > 2^(PSC+1)*f_ref/f_dut_min + 2FF jitter, else slow reads as dead'),
+    KV('Debounce', 'FAIL_FREQ needs N_DEB consecutive out-of-window windows; DEAD is not debounced (re-issuing level)'),
+    S('SELF-TEST (REGST / FORCE)'),
+    KV('Storage inject', 'REGST: ST=1, REGSEL=0..10 mbus wrap group k -> REGPAR[4+k]; REGSEL=16+i ref-domain 41-bit config shadow of ch i -> FUSRC bit [4i+2] CFGPAR'),
+    KV('No-source inject', 'REGST: NO_SRC=1 -> REGPAR[17] PAR_SELFTEST (ESM service self-test signature)'),
+    KV('Restore', 'image wraps (group 7..10) self-restore next cycle; config wraps (0..6, shadow) restored by rewriting the register (last step of the self-test flow)'),
+    KV('Path inject', 'FORCE: FORCE_CHi full alarm path; FORCE_HANG/STALE config-path watchdogs; INJ_CNT/CMP/PSC integrity classes of ch DBGSEL'),
+]
+
+# ===========================================================================
+# minimal OOXML writer (stdlib zipfile, inline strings)
+# ===========================================================================
+def xml_esc(s):
+    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+def col_letter(idx0):
+    i, s = idx0 + 1, ''
+    while i > 0:
+        i, m = divmod(i - 1, 26)
+        s = chr(65 + m) + s
+    return s
+
+# style 1 = bold on light-blue fill (column headers / INFO sections)
+# style 2 = bold white on dark fill (register section headers)
+def sheet_xml(rows, widths, styles, autofilter):
+    # styles: dict row-idx -> style id
+    out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+           '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+           '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+           '<cols>']
+    out += ['<col min="%d" max="%d" width="%s" customWidth="1"/>' % (i + 1, i + 1, w)
+            for i, w in enumerate(widths)]
+    out.append('</cols><sheetData>')
+    for ri, r in enumerate(rows):
+        sty = ' s="%d"' % styles[ri] if ri in styles else ''
+        out.append('<row r="%d">' % (ri + 1))
+        for ci, v in enumerate(r):
+            if v == '' or v is None:
+                continue
+            ref = col_letter(ci) + str(ri + 1)
+            if isinstance(v, (int, float)):
+                out.append('<c r="%s"%s><v>%s</v></c>' % (ref, sty, v))
+            else:
+                out.append('<c r="%s" t="inlineStr"%s><is><t xml:space="preserve">%s</t></is></c>'
+                           % (ref, sty, xml_esc(v)))
+        out.append('</row>')
+    out.append('</sheetData>')
+    if autofilter:
+        out.append('<autoFilter ref="A1:%s%d"/>' % (col_letter(len(rows[0]) - 1), len(rows)))
+    out.append('</worksheet>')
+    return ''.join(out)
+
+# ---- REGISTERS sheet rows -------------------------------------------------
+trm_rows = []
+trm_styles = {}
+for name, off, acc, keyed, rst, rdesc, fields in TRM:
+    trm_styles[len(trm_rows)] = 2
+    trm_rows.append(['%s Register   Offset %s   Type %s   Reset %s%s'
+                     % (name, off, acc, rst, '   Keyed write (wdata[31:28]=0x5)' if keyed else '')])
+    trm_rows.append([rdesc])
+    trm_styles[len(trm_rows)] = 1
+    trm_rows.append(['Bit', 'Field', 'Type', 'Reset', 'Description'])
+    for bit, fname, ftype, frst, fdesc in fields:
+        trm_rows.append([bit, fname, ftype, frst, fdesc])
+    trm_rows.append([])
+
+# ---- other sheet rows ------------------------------------------------------
+reg_rows = [['Offset', 'Name', 'Access', 'Keyed', 'Reset', 'ParityGroup / Selftest', 'Description']] + \
+           [list(r) for r in REGS]
+fld_rows = [['RegOffset', 'RegName', 'FieldName', 'MSB', 'LSB', 'Width', 'Access', 'Keyed', 'Reset', 'Encoding', 'ParityGroup / Selftest', 'Description']] + \
+           [list(f) for f in FIELDS]
+info_styles = {i: 1 for i, r in enumerate(info_rows) if len(r) == 1}
+
+SHEETS = [
+    ('INFO',      info_rows, [24, 130],                     info_styles, False),
+    ('REGMAP',    reg_rows,  [16, 24, 9, 7, 12, 34, 90],    {0: 1}, True),
+    ('REGISTERS', trm_rows,  [10, 22, 8, 10, 120],          trm_styles, False),
+    ('FIELDS',    fld_rows,  [10, 14, 15, 6, 6, 7, 8, 7, 10, 46, 40, 100], {0: 1}, True),
+]
+
+CT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      '<Default Extension="xml" ContentType="application/xml"/>'
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      + ''.join('<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' % i
+                for i in range(1, len(SHEETS) + 1))
+      + '</Types>')
+RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>')
+WB = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      '<sheets>'
+      + ''.join('<sheet name="%s" sheetId="%d" r:id="rId%d"/>' % (name, i, i)
+                for i, (name, *_rest) in enumerate(SHEETS, 1))
+      + '</sheets></workbook>')
+WBRELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + ''.join('<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>' % (i, i)
+                    for i in range(1, len(SHEETS) + 1))
+          + '<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' % (len(SHEETS) + 1)
+          + '</Relationships>')
+STYLES = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+          '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font>'
+          '<font><b/><sz val="11"/><name val="Calibri"/></font>'
+          '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>'
+          '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+          '<fill><patternFill patternType="solid"><fgColor rgb="FFD9E1F2"/><bgColor indexed="64"/></patternFill></fill>'
+          '<fill><patternFill patternType="solid"><fgColor rgb="FF4472C4"/><bgColor indexed="64"/></patternFill></fill></fills>'
+          '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+          '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+          '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+          '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
+          '<xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'
+          '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+          '</styleSheet>')
+
+out_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cmm_regmap.xlsx')
+with zipfile.ZipFile(out_file, 'w', zipfile.ZIP_DEFLATED) as z:
+    z.writestr('[Content_Types].xml', CT)
+    z.writestr('_rels/.rels', RELS)
+    z.writestr('xl/workbook.xml', WB)
+    z.writestr('xl/_rels/workbook.xml.rels', WBRELS)
+    z.writestr('xl/styles.xml', STYLES)
+    for i, (name, rows, widths, styles, autofilter) in enumerate(SHEETS, 1):
+        z.writestr('xl/worksheets/sheet%d.xml' % i, sheet_xml(rows, widths, styles, autofilter))
+
+print('written: ' + out_file)
+print('sheets: INFO(%d)  REGMAP(%d regs)  REGISTERS(%d sections)  FIELDS(%d fields)'
+      % (len(info_rows), len(reg_rows) - 1, len(TRM), len(fld_rows) - 1))

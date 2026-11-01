@@ -1,0 +1,45 @@
+# ===== Office 临时文件 =====
+~$*
+
+# ===== 波形文件 =====
+*.fsdb
+*.vcd
+*.vpd
+*.fst
+*.wlf
+*.shm/
+
+# ===== 仿真编译产物 (VCS / iverilog) =====
+*.vvp
+*.exe
+simv*
+csrc/
+*.daidir/
+obj_vcs/
+obj_cmp/
+obj_cov_cmp/
+
+# ===== 日志 =====
+*.log
+
+# ===== Verdi / Novas 会话文件 =====
+novas.conf
+novas.rc
+novas_dump.log
+verdiLog/
+DVEfiles/
+
+# ===== 覆盖率报告 / 数据库 =====
+urgReport/
+urg_report/
+urg_final/
+*.vdb
+covhtmlreport/
+
+# ===== VCS 杂项 =====
+ucli.key
+vc_hdrs.h
+.vcs.timestamp
+
+# ===== 本地工具配置 =====
+.claude/

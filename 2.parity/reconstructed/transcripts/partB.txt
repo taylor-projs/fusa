@@ -1,0 +1,294 @@
+### IMG 8 lines 270-304
+270|
+271|    if self.isSubtop:
+272|      self.allDCLSPortLines.append("  output  [15:0] err_dcls_"+self.moduleName+"\n")
+273|    else:
+274|      #for eachErr in allErrSignals:
+275|      for eachErr in self.dclsErrSignals:
+276|        self.allDCLSPortLines.append("  output reg "+eachErr+",\n")
+277|    self.allDCLSPortLines[-1] = self.allDCLSPortLines[-1].replace(","," ") #remove comma symbol
+278|    # set err dcls output use all error signals
+279|    if self.isSubtop:
+280|      for i in range(0,16):
+281|        #if i < len(allErrSignals):
+282|        #  self.allDCLSErrLines.append("  assign err_dcls_"+self.moduleName+"["+str(i)+"] ="+allErrSignals[i]+";\n")
+283|        if i < len(self.dclsErrSignals):
+284|          self.allDCLSErrLines.append("  assign err_dcls_"+self.moduleName+"["+str(i)+"] = "+self.dclsErrSignals[i]+";\n")
+285|        else:
+286|          self.allDCLSErrLines.append("  assign err_dcls_"+self.moduleName+"["+str(i)+"] = 1'b0;\n")
+287|
+288|  def AddCommitLines(self,lines):
+289|    "add commit lines before and after generated code"
+290|    lines.insert(0,"/********"+DCLSCommitStartStr+"*********/\n")
+291|    lines.insert(1,FuSaDefStart)
+292|    lines.append(FuSaDefEnd)
+293|    lines.append("/**********"+DCLSCommitEndStr+"**********/\n")
+294|
+295|  def isInList(self,signal,sigList):
+296|    inlist = False
+297|    for eachsignal in sigList :
+298|      if cmp(eachsignal,signal) is 0:
+299|        inlist = True
+300|    return inlist
+301|
+302|  def AutoGenFuSaDCLS(self):
+303|    myprint ("[INFO] Processing DCLS code in design '"+str(self.moduleName)+"'")
+304|    self.GetDCLSInsNum()
+
+### IMG 9 lines 305-339
+305|    myprint ("[INFO] Total DCLS instance num is "+str(self.DCLSInsNum))
+306|    self.ProcDCLSInstance()
+307|    self.ProcDCLSErr()
+308|    #add DCLS instances lines
+309|    self.allDCLSLines = self.allDCLSInsLines + self.allDCLSErrLines
+310|    self.AddCommitLines(self.allDCLSLines)
+311|    pos = self.GetModuleEndPos(self.dstlines)
+312|    self.dstlines = self.dstlines[:pos] + self.allDCLSInsLines + self.dstlines[pos:]
+313|    #add ports lines
+314|    self.AddCommitLines(self.allDCLSPortLines)
+315|    pos = self.GetPortEndPos()
+316|    self.dstlines = self.dstlines[:pos] + self.allDCLSPortLines + self.dstlines[pos:]
+317|    for idx in range(0,self.DCLSInsNum):
+318|      if self.insObjs[idx].autoWarning:
+319|        self.autoWarning = True
+320|      if self.insObjs[idx].autoError:
+321|        self.autoError   = True
+322|    if self.autoWarning:
+323|      myprint ("[WARNING] please check all the WARNINGs "  )
+324|    if self.autoError:
+325|      myprint ("[FATAL] please fix all the ERRORs and then re-try")
+326|      fatal()
+327|      sys.exit()
+328|
+329|  def CheckMultiInsCont(self):
+330|    "Warning when the input signal is connected with a output signal from another DCLS instance"
+331|    if self.DCLSInsNum <= 1:
+332|      return
+333|    for ins in self.insObjs:
+334|      for cont in ins.contObjs:
+335|        if cont.iotype is "IN" or cont.iotype is "FORCEI":
+336|          for ins2 in self.insObjs:
+337|            if ins.insName != ins2.insName:
+338|              for cont2 in ins2.contObjs:
+339|                if cont2.iotype is "OUT" or cont.iotype is "FORCEO":
+
+### IMG 10 lines 340-359
+340|                if cont.refname == cont2.refname:
+341|                  myprint ("[WARNING-OPT] connection can be optimized for FUSA , pleas check :")
+342|                  myprint ("                connected signal : "+cont.refname+cont.widthStr)
+343|                  myprint ("                src instance   : "+ins2.insName)
+344|                  myprint ("                code line      : "+cont2.line.rstrip())
+345|                  myprint ("                dst instance   : "+ins.insName)
+346|                  myprint ("                code line      : "+cont.line.rstrip())
+347|                  self.autoWarning = True
+348|
+349|  def CheckSingleInsCont(self):
+350|    "Warning when the output signal is not used anywhere"
+351|    for ins in self.insObjs:
+352|      for cont in ins.contObjs:
+353|        if (cont.iotype is "OUT" or cont.iotype is "FORCEO") and cont.refUsed is False:
+354|          myprint ("[WARNING-OPT] output signal is not used in this design, pleas check :")
+355|          myprint ("                comment '//NOCMP' can be used to optimise FUSA cost :")
+356|          myprint ("                instance       : "+ins.insName)
+357|          myprint ("                connected signal : "+cont.refname)
+358|          myprint ("                code line      : "+cont.line.rstrip())
+359|          self.autoWarning = True
+
+### IMG 11 lines 374-409
+374|
+375|class connectObj(object):
+376|  "class connection"
+377|  def __init__(self,line):
+378|    self.line          = line
+379|    self.portname      = ""
+380|    self.iotype        = ""
+381|    self.iotypeplus    = ""
+382|    self.refname       = ""
+383|    self.refnameDCLS   = ""
+384|    self.refDeclared   = False
+385|    self.refUsed       = False
+386|    self.width         = "0"
+387|    self.widthStr      = ""
+388|    self.defaultValue  = ""
+389|
+390|class instanceObj(object):
+391|  "class instance"
+392|  def __init__(self,lines):
+393|    self.autoFatal    = False
+394|    self.autoError    = False
+395|    self.autoWarning  = False
+396|    self.debug        = False
+397|    self.verbose      = True
+398|    self.srclines     = lines
+399|
+400|    self.insIndex     = 0
+401|    self.insStartPos  = 0
+402|    self.insEndPos    = 0
+403|    self.insName      = ""
+404|    self.moduleName   = ""
+405|    self.clock        = ""
+406|    self.clockMain    = []
+407|    self.clockMainNum = 0
+408|    self.clockLabled  = []
+409|    self.clockLabledNum = 0
+
+### IMG 12 lines 410-444
+410|    self.clockInfed     = []
+411|    self.clockInfedNum  = 0
+412|    self.resetInfed     = []
+413|    self.resetInfedNum  = 0
+414|    self.chksignal      = []
+415|    self.chksignalwidth = []
+416|    self.clockCmp   = ""
+417|    self.reset      = ""
+418|    self.scan       = "scan_mode"
+419|    self.delayNum   = 0
+420|    self.fatherModule = []
+421|    self.fatherIsSubtop = False
+422|    self.cmpDWParam   = ""
+423|    self.cmpD0Clare   = ""
+424|    self.cmpD1Clare   = ""
+425|    self.cmpDWLines   = []
+426|    self.cmpD0Lines   = []
+427|    self.cmpD1Lines   = []
+428|    self.errSignals   = []
+429|
+430|
+431|    self.insLines     = []
+432|    self.bufLines     = []
+433|    self.sigLines     = []
+434|    self.dlyLines     = []
+435|    self.cmpLines     = []
+436|    self.DCLSLines    = []  # used for fusa
+437|
+438|    self.delaySignals = []  # delay signals declared
+439|    self.contObjs     = []  # list of connection
+440|    self.inPorts  = []
+441|    self.outPorts = []
+442|    self.inPortsRef     = []
+443|    self.inPortsRefDCLS = []
+444|    self.outPortsRef    = []
+
+### IMG 13 lines 445-479
+445|    self.outPortsRefDCLS = []
+446|
+447|
+448|  #def myprint(self,message):
+449|  #  if verbose:
+450|  #    print message
+451|
+452|  def GetInsPos(self):
+453|    num = 0
+454|    for eachline in self.srclines:
+455|      if re.search(DCLSAutoCommitStr,eachline) is not None and re.search("^\s*//",eachline) is None:
+456|        if num == self.insIndex:
+457|          break
+458|        num += 1
+459|    self.insStartPos += 1
+460|    self.insEndPos = self.insStartPos
+461|    for eachline in self.srclines[self.insEndPos:]:
+462|      if re.search("\)\s*;",eachline) is not None:
+463|        break
+464|    self.insEndPos += 1
+465|    if self.debug :
+466|      print "[INFO-DEBUG] insStartPos = "+str(self.insStartPos)
+467|      print "                insEndPos   = "+str(self.insEndPos)
+468|
+469|
+470|
+471|
+472|  def AnalyzeIns(self):
+473|    "Analyze instance code"
+474|    myprint ("[INFO] ---------------------------------------------")
+475|    myprint ("[INFO] Analysing instance with index number "+str(self.insIndex))
+476|    self.GetInsPos()
+477|    self.AnalyzeInsName()
+478|    self.AnalyzeModuleName()
+479|    self.AnalyzeConnection()
+
+### IMG 14 lines 480-514
+480|    self.errSignals.append(ErrDCLSPrefix+self.moduleName)
+481|
+482|
+483|  def AnalyzeInsName(self):
+484|    line = self.srclines[self.insStartPos]
+485|    #myprint(str(self.insStartPos)+":"+line)
+486|    assert re.search(DCLSAutoCommitStr,line) is not None,"Error!: wrong position "
+487|    # check
+488|    print (line)
+489|    s = re.search("[_a-zA-Z0-9]+\s*\(\s*\/\*"+DCLSAutoCommitStr+"(\+D[0-9])?\*\/",line)
+490|    if s is None:
+491|      myprint ("[ERROR][Coding] Instance and FuSa Ker Word should be in the same line")
+492|      myprint (line.rstrip())
+493|      sys.exit();
+494|    elif s.group(1) is not None :
+495|      s1 = re.search("/\*"+DCLSAutoCommitStr+"\+D([0-9])\*/",line)
+496|      print (s1.group(1))
+497|      if self.delayEn is True:
+498|        self.delayNum = int(s1.group(1))
+499|      else:
+500|        self.delayNum = 0
+501|    else:
+502|      self.delayNum = 0
+503|
+504|
+505|    tmpline = re.sub("\s*\(\s*\/\*.*\*\/.*","",line) #remove commit
+506|
+507|    s = re.search('(\s|\))([_a-zA-Z0-9]+)$',tmpline) #the last word is instance name
+508|    if s is not None:
+509|      self.insName = s.group(2)
+510|      myprint ("[INFO] instance name :  " + self.insName+"  with DCLS delay = "+str(self.delayNum))
+511|    else:
+512|      myprint ("[ERROR] cannot get instance name ")
+513|      myprint (line)
+514|      myprint (tmpline)
+
+# REPORT
+
+Line ranges per image:
+- IMG 8:  lines 270-304
+- IMG 9:  lines 305-339
+- IMG 10: lines 340-359
+- IMG 11: lines 374-409
+- IMG 12: lines 410-444
+- IMG 13: lines 445-479
+- IMG 14: lines 480-514
+
+Overlaps: none. Consecutive images butt-join exactly (304/305, 339/340, 409/410, 444/445, 479/480). Note: there is a GAP between IMG 10 (ends 359) and IMG 11 (starts 374) - lines 360-373 are not covered by these screenshots.
+
+Cursor-block / selection obscured spots (inferred from context):
+- Line 280 (IMG 8): cursor block over the "0,16" argument of range(). Transcribed as range(0,16) - consistent with the [15:0] err_dcls bus (16 bits) on line 272.
+- Line 312 (IMG 9): cursor block over "nes" of the first "dstlines". Transcribed as self.dstlines.
+- Line 344 (IMG 10): cursor block at the start of the line, covering the leading indentation. Indent inferred as 18 spaces, matching sibling myprint lines 341-347.
+- Line 379 (IMG 11): cursor block over part of "portname". Transcribed as self.portname.
+- Line 414 (IMG 12): cursor block at the end of "chksignal". Transcribed as self.chksignal.
+- Line 449 (IMG 13): cursor block right after "verbose" (before the colon). Transcribed as "  #  if verbose:".
+- Line 484 (IMG 14): cursor block over the "s" at the end of "srclines" (before the bracket). Transcribed as self.srclines.
+
+Uncertain characters / counts:
+- Line 290 (IMG 8): asterisk counts in "/********" (read as 8) and "*********/" (read as 9) - counted from pixels, low confidence.
+- Line 293 (IMG 8): asterisk counts in "/**********" (read as 10) and "**********/" (read as 10) - low confidence.
+- Line 467 (IMG 13): space counts inside the string literal - transcribed as 16 leading spaces before "insEndPos" and 3 spaces before "=". Low confidence.
+- Line 474 (IMG 13): dash count in the "[INFO] ----..." separator - transcribed as 45 dashes. Low confidence.
+- Alignment spaces in the assignment blocks of IMG 11 (lines 378-388, 393-409) and IMG 12 (lines 410-444) were reconstructed from the visual "=" column alignment; the code uses several different alignment columns (e.g. lines 416-420 align left of 410-415; lines 440-441 align left of 442-444; line 409 aligns right of 393-408). Space counts are best-effort.
+
+Deliberately preserved oddities (verbatim, NOT typos of transcription):
+- Line 286: 1'b0 with backtick.
+- Lines 341, 354: "pleas check" (sic).
+- Line 341: "FUSA ," with space before comma; line 354 has "design," without space.
+- Line 339: second condition uses cont.iotype (not cont2) - "if cont2.iotype is "OUT" or cont.iotype is "FORCEO":".
+- Line 335: "FORCEI"; lines 339 and 353: "FORCEO".
+- Line 491: "FuSa Ker Word" (sic).
+- Lines 297, 465, 494: space before colon ("sigList :", "self.debug :", "is not None :").
+- Line 493: "sys.exit();" with trailing semicolon.
+- Lines 282 vs 284: commented line has "] =" (no space after =), live line has "] = " (space after =).
+- Line 303: single quotes around module name inside double-quoted string.
+- Line 507: regex uses single quotes, other regexes use double quotes.
+- Line 466-467: Python 2 print statements without parentheses; line 488/496: print with parentheses.
+- Line 486: no space after comma before "Error!...", trailing space inside string.
+- Line 409: "self.clockLabledNum = 0" - "=" offset one column right of the group above; "Labled" (sic) also on line 408.
+- Line 418: self.scan = "scan_mode".
+- Line 386: self.width = "0" (string zero).
+- Lines 448-450: commented-out myprint def, "#  if verbose:" / "#    print message".
+
+Nothing fully illegible; all gutter line numbers were present in every image (no ~NNN lines needed).

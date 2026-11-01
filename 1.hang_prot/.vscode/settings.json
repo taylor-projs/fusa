@@ -1,0 +1,6 @@
+{
+  "workbench.editorAssociations": {
+    "*.vcd": "wavetrace.vcd"
+  },
+  "verilog.linting.linter": "none"
+}

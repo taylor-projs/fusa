@@ -1,0 +1,265 @@
+### IMG 1 lines 1-29
+1|import os
+2|import sys
+3|import argparse
+4|import re
+5|import string
+6|import copy
+7|
+8|
+9|FuSaDefStart = "`ifdef FUSA\n"
+10|FuSaDefEnd   = "`endif //FUSA\n"
+11|
+12|DCLSCommitStartStr  = "__AutoGenFuSaDCLS_Start__"
+13|DCLSCommitEndStr    = "__AutoGenFuSaDCLS_End__"
+14|DCLSAutoCommitStr   = "AUTOFUSADCLS"
+15|
+16|ErrDCLSPrefix = "err_fusadcls_"
+17|DCLSSuffix = "_fusadcls"
+18|DCLSSuffixI= "_fusadcls_i"
+19|DCLSSuffixO= "_fusadcls_o"
+20|DCLSSuffixD= "_fusadcls_r"
+21|DCLSSuffixCLK = "_fusadcls_clk"
+22|
+23|Clockbuffer = ""
+24|ResetRecord = ""
+25|Inferreset  = []
+26|Testlab = ""
+27|Teststn = []
+28|################################################
+29|# class moduleObj defination
+
+### IMG 2 lines ~030-~062
+~030|class moduleObj(object):
+~031|  "class module"
+~032|
+~033|  def __init__(self,name,srcvf):
+~034|    self.autoError    = False
+~035|    self.autoWarning = False
+~036|    self.isSubtop     = False
+~037|    self.fusaclk      = False
+~038|    #self.multclk    =False
+~039|    self.delayEn     = False
+~040|    self.debug        = False
+~041|    self.verbose      = True
+~042|    self.moduleName   = name
+~043|    self.moduleFile   = srcvf
+~044|    self.srclines     = []
+~045|    self.dstlines     = []
+~046|    self.inSignals    = []
+~047|    self.outSignals   = []
+~048|    self.inoutSignals = []
+~049|    self.dclsErrSignals= []
+~050|    self.insObjs      = []        # record all instances in this module
+~051|    self.portsDict    = {}    # TODO
+~052|    self.DCLSInsNum   = 0
+~053|    self.DCLSDelayNum = 0
+~054|    self.allDCLSDelaySignals = []
+~055|    self.allDCLSInsLines = []
+~056|    self.allDCLSErrLines = []
+~057|    self.allDCLSPortLines = []
+~058|
+~059|    f = open(srcvf,"r")
+~060|    self.srclines = f.readlines();
+~061|    f.close()
+~062|    self.dstlines = self.srclines
+
+### IMG 3 lines ~063-~089
+~063|  #def myprint(self,message):
+~064|  #  if self.verbose :
+~065|  #    print message
+~066|
+~067|  def display(self,lines):
+~068|    for eachline in lines:
+~069|      print eachline
+~070|
+~071|  def ClearHistoryDCLS(self):
+~072|    "clear history of AutoGen"
+~073|    f = open(moduleFile,"r")
+~074|    reserved = True
+~075|    overwrite= False
+~076|    for eachline in f:
+~077|      if re.search(DCLSCommitStartStr,eachline):
+~078|        reserved = False
+~079|        overwrite= True
+~080|      if reserved :
+~081|        self.srclines.append(eachline)
+~082|      if re.search(DCLSCommitEndStr,eachline):
+~083|        reserved = True;
+~084|    f.close()
+~085|    if overwrite:
+~086|      f = open(moduleFile,"w")
+~087|      f.writelines(self.srclines)
+~088|      f.close()
+~089|    self.dstlines = self.srclines
+
+### IMG 4 lines 142-168
+142|
+143|  def GetDCLSInsNum(self):
+144|    for eachline in self.srclines:
+145|      if re.search(DCLSAutoCommitStr,eachline) is not None and re.search("^\s*//",eachline) is None:
+146|        self.DCLSInsNum += 1
+147|
+148|
+149|
+150|  def GetPortEndPos(self):
+151|    do = False
+152|    pos = 0;
+153|    for eachline in self.srclines:
+154|      if re.search("module",eachline) is not None:
+155|        do = True
+156|      if re.search("\)\s*;",eachline) is not None:
+157|        if do == True:
+158|          break
+159|        pos += 1
+160|    return pos
+161|
+162|  def GetModuleEndPos(self,lines):
+163|    pos = 0;
+164|    for eachline in lines:
+165|      if re.search("endmodule",eachline) is not None:
+166|        break
+167|      pos += 1
+168|    return pos
+
+### IMG 5 lines 169-199
+169|
+170|  def GetInports(self):
+171|    do = False
+172|    for eachline in self.srclines:
+173|      if re.search("module",eachline) is not None:
+174|        do = True
+175|      if re.search("\)\s*;",eachline) is not None:
+176|        if do == True:
+177|          break
+178|
+179|
+180|  def ProcDCLSInstance(self):
+181|
+182|    myprint ("[INFO] *************Phase 1*******************")
+183|    myprint ("[INFO] analyzing")
+184|    for idx in range(0,self.DCLSInsNum):
+185|      self.insObjs.append(instanceObj(self.srclines))   #new object for instance
+186|      self.insObjs[idx].delayEn = self.delayEn
+187|      self.insObjs[idx].debug   = self.debug
+188|      self.insObjs[idx].fatherModule.append(self)
+189|      self.insObjs[idx].fatherIsSubtop   = self.isSubtop
+190|      self.insObjs[idx].insIndex = idx
+191|      self.insObjs[idx].delaySignals = self.allDCLSDelaySignals
+192|      self.insObjs[idx].AnalyzeIns()
+193|
+194|    myprint ("[INFO] *************Phase 2*******************")
+195|    myprint ("[INFO] checking and optimizing")
+196|    self.CheckSingleInsCont()
+197|    self.CheckMultiInsCont()
+198|
+199|    myprint ("[INFO] *************Phase 3*******************")
+
+### IMG 6 lines 200-234
+200|    myprint ("[INFO] generating")
+201|    for idx in range(0,self.DCLSInsNum):
+202|      self.insObjs[idx].GenDCLSInsLines()
+203|      self.allDCLSInsLines     += self.insObjs[idx].DCLSLines
+204|
+205|
+206|      #print "------self.allDCLSDelaySignals"
+207|      #for eachsignal in self.allDCLSDelaySignals:
+208|      #  print eachsignal
+209|
+210|      #print(self.allDCLSInsLines)
+211|
+212|
+213|  def ProcDCLSErr(self):
+214|    "process all error signals in current module"
+215|    allErrSignals = []
+216|    # all err signals generated local
+217|    for idx in range(0,self.DCLSInsNum):
+218|      #allErrSignals += self.insObjs[idx].errSignals
+219|      self.dclsErrSignals += self.insObjs[idx].errSignals
+220|      self.DCLSDelayNum = max(self.DCLSDelayNum,self.insObjs[idx].delayNum)
+221|      print (self.DCLSDelayNum, )
+222|    #TODO
+223|    # all err signals from instances port
+224|    for eachline in self.srclines :
+225|      s = re.search('.*( |\()(err_fusadcls_[a-z0-9_]*).*',eachline)
+226|      if s is not None:
+227|        if self.IsInList(s.group(2),self.dclsErrSignals) is False:
+228|          self.dclsErrSignals.append(s.group(2))
+229|          myprint("[INFO] find err signal "+s.group(2))
+230|
+231|    # ports added to module defination
+232|    self.allDCLSPortLines.append("    ,\n")
+233|    #for i in range(1,self.DCLSDelayNum+1):
+234|    #if self.DCLSDelayNum is not 0:
+
+### IMG 7 lines 235-269
+235|    #  self.allDCLSPortLines.append("  input [`MAX_DCDLY:0]  reset_n_d,\n")
+236|    self.allDCLSPortLines.append("  input   [1:0] dcls_fault_injection,\n")
+237|    #self.insObjs[0].AnalyzeIns()
+238|    #newline = "  output  "+ Clockbuffer+"_dcls"+",\n"
+239|    #self.allDCLSPortLines.append(newline)
+240|    ##monitor change
+241|    newline = "  output  "+ Clockbuffer+"_dcls"+",\n"
+242|    self.allDCLSPortLines.append(newline)
+243|    for eachline in IClockbuffer :
+244|      newline = "  output  "+ eachline +"_dcls"+",\n"
+245|      self.allDCLSPortLines.append(newline)
+246|    ###monitor change
+247|    icg_flag=True
+248|    for eachline in self.srclines :
+249|      s = re.search('^\s*\.\([_a-zA-Z0-9]+\)\s*\((.*)\)(.*)',eachline)
+250|      if s is not None:
+251|        if re.search('.*//.*',s.group(3)) is None:
+252|          commit = ""
+253|        else:
+254|          commit = re.sub(".*//","",s.group(3))# remove commi
+255|        if re.match('\s*(ICG)\s*',commit) is not None:
+256|          icg_flag=False
+257|          break
+258|    if icg_flag==True:
+259|      newline = "  input   icg_mode,\n"
+260|      self.allDCLSPortLines.append(newline)
+261|    #newline = "  output  dcls_"+ ResetRecord+";\n"
+262|    #self.allDCLSPortLines.append(newline)
+263|#   for cont in self.contObjs:
+264|#     if cont.iotypeplus is "ICHK":
+265|#     for num in range(0,len(Signalchk)-1):
+266|#       for chksignal in Signalchk and for chksigwid in Signalchkwidth:
+267|#         print(Signalchkwidth,chksignal,"!!!!!!!!!!!!!!!!!!!!!")
+268|    newline = "  input  "+str(Signalchkwidth[num])+" "+str(Signalchk[num])+"_chk,\n"
+269|    self.allDCLSPortLines.append(newline)
+
+# REPORT
+
+Line ranges per image:
+- IMG 1: lines 1-29 (no gutter; anchored at file start, so numbers are certain, not inferred)
+- IMG 2: lines ~030-~062 (no gutter; 33 rows counted, continuing from IMG 1)
+- IMG 3: lines ~063-~089 (no gutter; 27 rows counted, continuing from IMG 2)
+- IMG 4: lines 142-168 (gutter visible, starts at 142; a cut-off sliver of the next row (line 169) is visible at the very bottom edge but not readable)
+- IMG 5: lines 169-199 (gutter visible)
+- IMG 6: lines 200-234 (gutter visible)
+- IMG 7: lines 235-269 (gutter visible; bottom of provided screenshots, 269 is last visible line)
+
+Overlaps found:
+- IMG 4 / IMG 5: line 169 (blank line) appears as a cut-off sliver at bottom of IMG 4 and as the first full row (with cursor block) of IMG 5. Transcribed in IMG 5's block.
+- IMG 5 / IMG 6: no overlap (199 -> 200, contiguous).
+- IMG 6 / IMG 7: no overlap (234 -> 235, contiguous).
+- IMG 1 / IMG 2 / IMG 3: no gutters; assumed contiguous by row counting (29 rows, 33 rows, 27 rows).
+
+GAP (critical): counting at the end of IMG 3 reached line ~089. IMG 4's gutter starts at line 142.
+=> Lines 90 through 141 (52 lines) are NOT covered by any of these 7 screenshots. There is a gap between IMG 3 and IMG 4.
+
+Uncertain characters / cursor-obscured spots:
+1. Line ~018 (IMG 1): mouse-cursor block sits on the "C" of "DCLSSuffixI" (image shows D[cursor]LSSuffixI). Read as: DCLSSuffixI= "_fusadcls_i"
+2. Line ~033 (IMG 2): cursor block obscures one character between "nam" and ",srcvf" in the def line. Read as: def __init__(self,name,srcvf):
+3. Line 145 (IMG 4): cursor block obscures the "r" of the first "re.search" (image shows re.sea[cursor]ch). Read as: re.search(DCLSAutoCommitStr,eachline)
+4. Line 169 (IMG 5): cursor block on an otherwise blank line; no text affected.
+5. Line 204 (IMG 6): cursor block on an otherwise blank line; no text affected.
+6. Line 239 (IMG 7): cursor block obscures the "D" in "#self.all[cursor]CLSPortLines". Read as: #self.allDCLSPortLines.append(newline)
+7. Line 28 (IMG 1): the '#' separator run length is approximate (transcribed as 48 '#' chars).
+8. Lines 182 / 194 / 199 (IMG 5): exact asterisk counts in "*************Phase N*******************" are approximate (transcribed as 13 '*' before and 19 '*' after "Phase N"; the three lines appear to use identical runs).
+9. Line 206 (IMG 6): dash count in "------self.allDCLSDelaySignals" approximate (transcribed as 6 '-').
+10. Line 267 (IMG 7): exclamation-mark count in "!!!!!!!!!!!!!!!!!!!!!" approximate (transcribed as 21 '!').
+11. Line 254 (IMG 7): comment ends with "# remove commi" exactly as rendered (no trailing 't'/'ent' visible); may be intentionally truncated in the source or clipped - transcribed as seen.
+12. Line ~072 (IMG 3): indentation of the docstring "clear history of AutoGen" transcribed at 4 spaces (aligned with the method body); the source may use a slightly different indent.
+13. Lines 263-267 (IMG 7): these commented-out lines are outdented to column 0 with '#' first; the internal spacing after '#' (3/5/5/7/9 spaces transcribed) is best-effort from pixel alignment.

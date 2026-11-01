@@ -1,0 +1,273 @@
+### IMG 29 lines 996-1031
+996|  def isClkRst(self,signal):
+997|    if re.search("(clk|clock|rst_n|reset_n)",signal) is not None:
+998|      return True
+999|
+1000|  def isDeclared(self,signal):
+1001|    declared = False
+1002|    for eachsignal in self.delaySignals :
+1003|      if cmp(eachsignal,signal) is 0:
+1004|        declared = True
+1005|      #print "compare "+eachsignal+"  =?   "+signal
+1006|      #if declared :
+1007|      #  print "------------yes "
+1008|    return declared
+1009|
+1010|  def isDeclaredAsFatherInPort(self,signal):
+1011|    declared = False
+1012|    do = True
+1013|    for eachline in self.srclines:
+1014|      if re.match('\s*function',eachline):
+1015|        do = False
+1016|        continue
+1017|      if re.match('\s*endfunction',eachline):
+1018|        do = True
+1019|        continue
+1020|      if do is False:
+1021|        continue
+1022|      if re.match('\s*input[^a-zA-Z0-9_]+.*'+signal,eachline) is not None:
+1023|        declared = True
+1024|        break
+1025|    return declared
+1026|
+1027|  #check fusa clock
+1028|  def checkClockFUSA(self,clock):
+1029|    #myprint("check clock "+clock)
+1030|    if self.isDeclaredAsFatherInPort(clock) is False:
+1031|      myprint ("[FATAL] no dedicated clock input for FUSA in degin : "+self.fatherModule[0].moduleName)
+
+### IMG 30 lines 1032-1066
+1032|      myprint ("                function clock : "+clock.replace('_fusa',""))
+1033|      myprint ("                fusa clock needed : "+clock)
+1034|      #fatal()
+1035|      self.autoError = True
+1036|
+1037|
+1038|  def ProcSigLines(self):
+1039|    "generate signals declaration"
+1040|    myprint ("[INFO] generating signals declaration")
+1041|    # for DCLS instance connection
+1042|    for cont in self.contObjs:
+1043|      if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1044|        newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1045|        self.sigLines.append(newline)
+1046|      elif cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1047|        if self.isDeclared(cont.refnameDCLS) is False:
+1048|          newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1049|          self.sigLines.append(newline)
+1050|    for cont in self.contObjs:
+1051|      if cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1052|        for i in range(1,self.delayNum+1):
+1053|          if self.isDeclared(cont.refnameDCLS+self.delaySuffix(i)) is False:
+1054|            newline = "reg "+cont.widthStr+" "+cont.refnameDCLS+self.delaySuffix(i)+";\n"
+1055|            self.sigLines.append(newline)
+1056|    for cont in self.contObjs:
+1057|      if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1058|        for i in range(1,self.delayNum+1):
+1059|          newline = "reg "+cont.widthStr+" "+cont.refname+self.delaySuffix(i)+";\n"
+1060|          self.sigLines.append(newline)
+1061|  #    print("*&^%$#@$%^&*&^%$#@")
+1062|  #    for cont in self.contObjs:
+1063|  #      print(cont.widthStr,"@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+1064|  #      if cont.iotypeplus is "ICHK":
+1065|  #        print(cont.widthStr,"@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+1066|  #        chksignalwidth = cont.widthStr
+
+### IMG 31 lines 1070-1104
+1070|  def delaySuffix(self,num):
+1071|    if num is 0:
+1072|      return ""
+1073|    else:
+1074|      return "_d"+str(num)
+1075|
+1076|  def bufferSuffix(self):
+1077|    #return "_buf"
+1078|    return "_dcls"
+1079|
+1080|  def ProcDlyLines(self):
+1081|    "generate delay signals declaration"
+1082|    myprint ("[INFO] generating delay signals declaration")
+1083|    for cont in self.contObjs:
+1084|      if cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1085|        if self.isDeclared(cont.refnameDCLS) is False:
+1086|          if cont.iotypeplus is "ICHK":
+1087|            newline = "assign "+cont.refnameDCLS+"= "+cont.refname+"_chk;\n"
+1088|            self.dlyLines.append(newline)
+1089|            self.delaySignals.append(cont.refnameDCLS)
+1090|          else:
+1091|            newline = "assign "+cont.refnameDCLS+"= "+cont.refname+";\n"
+1092|            self.dlyLines.append(newline)
+1093|            self.delaySignals.append(cont.refnameDCLS)
+1094|            #print "add "+cont.refnameDCLS
+1095|
+1096|    if self.delayNum is not 0:
+1097|      self.dlyLines.append("always @(posedge "+self.clock+")\n")
+1098|      self.dlyLines.append("      begin\n")
+1099|      for cont in self.contObjs:
+1100|        if cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1101|          for i in range(1,self.delayNum+1):
+1102|            if self.isDeclared(cont.refnameDCLS+self.delaySuffix(i)) is False:
+1103|              newline = "        "+cont.refnameDCLS+self.delaySuffix(i)+" <= "+cont.refnameDCLS+self.delaySuffix(i-1)+";\n"
+1104|              self.dlyLines.append(newline)
+
+### IMG 32 lines 1105-1138
+1105|              self.delaySignals.append(cont.refnameDCLS+self.delaySuffix(i))
+1106|              #print "add "+cont.refnameDCLS+self.delaySuffix(i)
+1107|      for cont in self.contObjs:
+1108|        if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1109|          for i in range(1,self.delayNum+1):
+1110|            newline = "        "+cont.refname+self.delaySuffix(i)+" <= "+cont.refname+self.delaySuffix(i-1)+";\n"
+1111|            self.dlyLines.append(newline)
+1112|      self.dlyLines.append("      end\n")
+1113|      self.dlyLines.append("\n")
+1114|
+1115|  def ProcSigDlyLines(self):
+1116|    "generate signals declaration and assignment"
+1117|    myprint ("[INFO] generating delay signals declaration")
+1118|
+1119|    tmpLines = []
+1120|    for cont in self.contObjs:
+1121|      if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1122|        newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1123|        self.sigLines.append(newline)
+1124|        #newline = newline.replace(DCLSSuffix0,DCLSSuffixD)
+1125|        #self.sigLines.append(newline)
+1126|        #newline = "assign "+cont.refname+DCLSSuffixD+"= "+cont.refname+";\n"
+1127|        #self.dlyLines.append(newline)
+1128|        #self.delaySignals.append(cont.refname+DCLSSuffixD)
+1129|      elif cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1130|        if self.isDeclared(cont.refnameDCLS) is False:
+1131|          newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1132|          self.sigLines.append(newline)
+1133|          newline = "assign "+cont.refnameDCLS+"= "+cont.refname+";\n"
+1134|          self.dlyLines.append(newline)
+1135|          self.delaySignals.append(cont.refnameDCLS)
+1136|          #  print "add "+cont.refnameDCLS+" into list"
+1137|          #else :
+1138|          #  print cont.refnameDCLS+" already in list"
+
+### IMG 33 lines 1139-1171
+1139|    if self.delayNum is not 0:
+1140|      self.dlyLines.append("always @(posedge "+self.clock+" or negedge "+self.reset+")\n")
+1141|      #self.dlyLines.append("always @(posedge clk)\n")
+1142|      self.dlyLines.append("   if (!"+self.reset+") begin\n")
+1143|      for cont in self.contObjs:
+1144|        if cont.iotype is "IN"  or cont.iotype is "FORCEI":#or cont.iotype is "IRST":
+1145|          for i in range(1,self.delayNum+1):
+1146|            if self.isDeclared(cont.refnameDCLS+self.delaySuffix(i)) is False:
+1147|              newline = "reg "+cont.widthStr+" "+cont.refnameDCLS+self.delaySuffix(i)+";\n"
+1148|              self.sigLines.append(newline)
+1149|              newline = "        "+cont.refnameDCLS+self.delaySuffix(i)+" <= 0;\n"
+1150|              self.dlyLines.append(newline)
+1151|              newline = "        "+cont.refnameDCLS+self.delaySuffix(i)+" <= "+cont.refnameDCLS+self.delaySuffix(i-1)+";\n"
+1152|              tmpLines.append(newline)
+1153|              self.delaySignals.append(cont.refnameDCLS+self.delaySuffix(i))
+1154|              #  print "add "+cont.refnameDCLS+self.delaySuffix(i)+" into list"
+1155|              #else :
+1156|              #  print cont.refnameDCLS+self.delaySuffix(i)+" already in list"
+1157|      for cont in self.contObjs:
+1158|        if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1159|          for i in range(1,self.delayNum+1):
+1160|            newline = "reg "+cont.widthStr+" "+cont.refname+DCLSSuffixD+self.delaySuffix(i)+";\n"
+1161|            self.sigLines.append(newline)
+1162|            newline = "        "+cont.refname+DCLSSuffixD+self.delaySuffix(i)+" <= 0;\n"
+1163|            self.dlyLines.append(newline)
+1164|            if i is 1:
+1165|              newline = "        "+cont.refname+DCLSSuffixD+self.delaySuffix(i)+" <= "+cont.refname+self.delaySuffix(i-1)+";\n"
+1166|            else:
+1167|              newline = "        "+cont.refname+DCLSSuffixD+self.delaySuffix(i)+" <= "+cont.refname+DCLSSuffixD+self.delaySuffix(i-1)+";\n"
+1168|            tmpLines.append(newline)
+1169|          print str(i)
+1170|          print newline
+1171|
+
+### IMG 34 lines 1172-1205
+1172|
+1173|      self.dlyLines.append("   end else if (dcls_fault_injection) begin\n")
+1174|      for eachline in tmpLines:
+1175|        self.dlyLines.append(eachline)
+1176|      self.dlyLines.append("   end\n")
+1177|      self.dlyLines.append("\n")
+1178|
+1179|  def ProcCmpLines(self):
+1180|    "generate comparator logic"
+1181|    myprint ("[INFO] generating comparator logic")
+1182|
+1183|
+1184|    if self.delayNum is not 0:
+1185|
+1186|      for i in range(1,self.delayNum+1):
+1187|        if self.isDeclared("dcls_fault_injection"+self.delaySuffix(i)) is False:
+1188|          self.delaySignals.append("dcls_fault_injection"+self.delaySuffix(i))
+1189|          self.dlyLines.append("reg dcls_fault_injection"+self.delaySuffix(i)+";\n")
+1190|          self.dlyLines.append("always @(posedge "+self.clock+" or negedge "+self.reset+")\n")
+1191|          self.dlyLines.append("      if (!"+self.reset+")\n")
+1192|          self.dlyLines.append("           dcls_fault_injection"+self.delaySuffix(i)+" <= 2'b00;\n")
+1193|          self.dlyLines.append("   else\n")
+1194|          self.dlyLines.append("           dcls_fault_injection"+self.delaySuffix(i)+" <= dcls_fault_injection"+self.delaySuffix(i-1)+";\n")
+1195|    if self.isDeclared(self.clockGated) is False:
+1196|      self.delaySignals.append(self.clockGated)
+1197|      self.dlyLines.append("wire "+self.clockGated+";\n")
+1198|      self.dlyLines.append("cell_ckgate u_cg_"+self.insName+" (.TE(1'b0),.CP("+self.clock+"),.E(dcls_fault_injection"+self.delaySuffix(self.delayNum)+"),.Q("+self.clockGated+"));\n")
+1199|
+1200|    if self.fatherIsSubtop :
+1201|        self.cmpLines.append("wire   "+self.errSignals[0]+ " ; \n");
+1202|      self.cmpLines.append("assign "+self.errSignals[0]+ " = \n");
+1203|      self.cmpLines.append("              dcls_fault_injection"+self.delaySuffix(self.delayNum)+" && ( \n");
+1204|    for cont in self.contObjs:
+1205|      if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+
+### IMG 35 lines 1206-1238
+1206|        self.cmpLines.append("              ("+cont.refname+DCLSSuffixD+self.delaySuffix(self.delayNum)+" != "+cont.refnameDCLS+") || \n" )
+1207|      self.cmpLines[-1] = self.cmpLines[-1].replace("||",");") #replace '||' symbol
+1208|
+1209|  def NewProcSigDlyLines(self):
+1210|    "generate signals declaration and assignment"
+1211|    myprint ("[INFO] generating delay signals declaration")
+1212|
+1213|    tmpLines = []
+1214|    for cont in self.contObjs:
+1215|      if cont.iotype is "OUT" or cont.iotype is "FORCE0":
+1216|        newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1217|        self.sigLines.append(newline)
+1218|      elif cont.iotype is "IN"  or cont.iotype is "FORCEI":
+1219|        if self.isDeclared(cont.refnameDCLS) is False:
+1220|          newline = "wire "+cont.widthStr+" "+cont.refnameDCLS+";\n"
+1221|          self.sigLines.append(newline)
+1222|          if cont.iotypeplus is "ICHK":
+1223|            newline = "assign "+cont.refnameDCLS+"= "+cont.refname+"_chk;\n"
+1224|            self.dlyLines.append(newline)
+1225|            self.delaySignals.append(cont.refnameDCLS)
+1226|          else:
+1227|            newline = "assign "+cont.refnameDCLS+"= "+cont.refname+";\n"
+1228|            self.dlyLines.append(newline)
+1229|            self.delaySignals.append(cont.refnameDCLS)
+1230|      elif cont.iotype is "LCLK" :
+1231|        newline = "wire "+cont.widthStr+" "+self.clock+self.bufferSuffix()+";\n"
+1232|        self.sigLines.append(newline)
+1233|        if self.delayNum is 0 :
+1234|          newline = "wire "+cont.widthStr+" "+self.clock+self.bufferSuffix()+"_inv"+";\n"
+1235|          self.sigLines.append(newline)
+1236|        #  newline = "assign "+" "+self.clock+self.bufferSuffix()+"_inv = ~"+self.clock+self.bufferSuffix()+";\n"
+1237|        #  self.dlyLines.append(newline)
+1238|  #      elif cont.iotype is "RST" :
+
+# REPORT
+- Line ranges: IMG29 = 996-1031, IMG30 = 1032-1066, IMG31 = 1070-1104, IMG32 = 1105-1138, IMG33 = 1139-1171, IMG34 = 1172-1205, IMG35 = 1206-1238.
+- Overlaps: none between consecutive images in this batch (each starts exactly one line after the previous ends).
+- GAP: lines 1067-1069 are NOT visible in any screenshot (IMG30 ends at 1066, IMG31 starts at 1070). These 3 lines are missing from the transcription source.
+- Mouse-cursor obscured spots (inferred from context):
+  1. IMG29 line 1004: cursor over middle of "declared" -> inferred `declared = True`.
+  2. IMG30 line 1036: black cursor block on blank line; line is blank.
+  3. IMG31 line 1074: cursor over "num" -> inferred `return "_d"+str(num)`.
+  4. IMG32 line 1109: cursor over "s" of "self" -> inferred `range(1,self.delayNum+1)`.
+  5. IMG33 line 1141: cursor over first char after "append(" -> inferred `#self.dlyLines.append("always @(posedge clk)\n")`.
+  6. IMG34 line 1176: cursor over "append" -> inferred `self.dlyLines.append("   end\n")`.
+  7. IMG35 line 1211: cursor between "generating" and "delay" -> inferred `myprint ("[INFO] generating delay signals declaration")`.
+- Wrapped line: IMG34 line 1198 is the very long cell_ckgate line; gvim wrapped it onto a second visual row ("f.clockGated+"));\n")"); it has been JOINED into the single 1198 line as required.
+- Uncertain characters:
+  - Line 1061: exact symbol sequence inside print("*&^%$#@$%^&*&^%$#@") is low-contrast; transcribed as seen but symbol order/count may be off.
+  - Lines 1063 and 1065: count of "@" characters in the quoted strings (~28 each) is approximate.
+  - Line 1142: leading spaces inside the string before "if" transcribed as 3 (visibly narrower than the 6 spaces in the parallel line 1191); could be off.
+  - Lines 1192/1194: number of leading spaces inside the string literal before "dcls_fault_injection" transcribed as 11; could be off by one.
+- Preserved quirks: line 1031 "degin" (typo for "begin"); Python-2 print statements without parentheses (lines 1169-1170); backtick literals 1'b0 (line 1198) and 2'b00 (line 1192); trailing semicolons on Python lines 1201-1203; odd double-space in `"IN"  or`; inconsistent indentation on lines 1201-1203 (1201 indented 8 spaces vs 1202-1203 at 6).

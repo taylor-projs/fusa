@@ -1,0 +1,979 @@
+(module)                       addr                   miss=10  ninst=1  bits=[0] [15:6] [1:0]
+(module)                       align_ok               miss=10  ninst=1  bits=
+(module)                       apar_err               miss=10  ninst=1  bits=
+(module)                       ar_room                miss=10  ninst=1  bits=
+(module)                       aw_allow               miss=10  ninst=1  bits=
+(module)                       aw_dup_err             miss=10  ninst=1  bits=
+(module)                       aw_ent_err             miss=10  ninst=1  bits=
+(module)                       aw_room                miss=10  ninst=1  bits=
+(module)                       cfg_ena                miss=10  ninst=1  bits=[3:0]
+(module)                       cfg_key                miss=10  ninst=1  bits=[3:0]
+(module)                       cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+(module)                       cfg_req2resp_max       miss=10  ninst=1  bits=[15:0] [15:8] [1:0] [2] [3] [4] [7:5]
+(module)                       cnt_dup_err            miss=10  ninst=1  bits=
+(module)                       cur_cls                miss=10  ninst=1  bits=[1]
+(module)                       d                      miss=10  ninst=1  bits=[15:8] [2] [3:1] [4] [5] [7:6]
+(module)                       data_q                 miss=10  ninst=1  bits=[15:8] [2] [3:1] [4] [5] [7:6]
+(module)                       dum_cls                miss=10  ninst=1  bits=[1]
+(module)                       dup_err                miss=10  ninst=1  bits=
+(module)                       edgeflt_q              miss=1   ninst=1  bits=
+(module)                       edgeflt_q_n            miss=0   ninst=1  bits=
+(module)                       ena_ambig              miss=10  ninst=1  bits=
+(module)                       ena_sh                 miss=10  ninst=1  bits=[3:0]
+(module)                       flt4_a                 miss=10  ninst=1  bits=
+(module)                       flt4_s2                miss=10  ninst=1  bits=
+(module)                       flt5_a                 miss=10  ninst=1  bits=
+(module)                       flt5_s2                miss=10  ninst=1  bits=
+(module)                       flt6_a                 miss=10  ninst=1  bits=
+(module)                       flt6_s2                miss=10  ninst=1  bits=
+(module)                       fu_m_cat               miss=10  ninst=1  bits=[2:0]
+(module)                       fu_m_w                 miss=10  ninst=1  bits=
+(module)                       fu_selftest            miss=10  ninst=1  bits=
+(module)                       fu_selftest_q          miss=10  ninst=1  bits=
+(module)                       fu_src                 miss=10  ninst=1  bits=[5:3]
+(module)                       fu_src_live            miss=10  ninst=1  bits=[5:3]
+(module)                       fusrc_s1               miss=10  ninst=1  bits=[5:3]
+(module)                       fusrc_s2               miss=10  ninst=1  bits=[5:3]
+(module)                       g_m[0].fu_cmp_m        miss=10  ninst=1  bits=?
+(module)                       g_m[0].fu_cnt_m        miss=10  ninst=1  bits=?
+(module)                       g_m[0].fu_stat_m       miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_a[15:5]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_a[15:6]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_a_f      miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_a_n[15:5] miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_a_n[15:6] miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_r[15:8]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_r[15:9]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_r_f      miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_r_n[15:8] miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_cnt_r_n[15:9] miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_otd[2]       miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_otd[3:1]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_otd_f        miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_otd_n[2]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_otd_n[3:1]   miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_r2a_cf       miss=10  ninst=1  bits=?
+(module)                       g_m[0].rd_r2r_cf       miss=10  ninst=1  bits=?
+(module)                       g_m[0].st_rd_a         miss=10  ninst=1  bits=?
+(module)                       g_m[0].st_rd_r         miss=10  ninst=1  bits=?
+(module)                       g_m[0].st_wr_a         miss=10  ninst=1  bits=?
+(module)                       g_m[0].st_wr_r         miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_a[15:5]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_a[15:8]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_a_f      miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_a_n[15:5] miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_a_n[15:8] miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_r[15:5]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_r[15:6]  miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_r_f      miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_r_n[15:5] miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_cnt_r_n[15:6] miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_dlv[2:1]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_dlv[3:2]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_dlv_f        miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_dlv_n[2:1]   miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_dlv_n[3:2]   miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_otd[2]       miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_otd[3:2]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_otd_f        miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_otd_n[2]     miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_otd_n[3:2]   miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_r2a_cf       miss=10  ninst=1  bits=?
+(module)                       g_m[0].wr_r2r_cf       miss=10  ninst=1  bits=?
+(module)                       iflt_q                 miss=1   ninst=1  bits=
+(module)                       iflt_q_n               miss=0   ninst=1  bits=
+(module)                       inst_ok                miss=10  ninst=1  bits=
+(module)                       m_araddr               miss=10  ninst=1  bits=[10:0] [12] [14:13] [31:0] [31:15]
+(module)                       m_arburst              miss=10  ninst=1  bits=[1:0]
+(module)                       m_arcls                miss=10  ninst=1  bits=[1]
+(module)                       m_arid                 miss=10  ninst=1  bits=[0] [1] [3:1] [3:2] [3]
+(module)                       m_arlen                miss=10  ninst=1  bits=[7:2]
+(module)                       m_arprot               miss=10  ninst=1  bits=[2:0]
+(module)                       m_arsize               miss=10  ninst=1  bits=[2:0]
+(module)                       m_awaddr               miss=10  ninst=1  bits=[11:0] [11:8] [31:15] [31:8] [3:0] [7]
+(module)                       m_awburst              miss=10  ninst=1  bits=[1:0]
+(module)                       m_awid                 miss=10  ninst=1  bits=[3:1]
+(module)                       m_awlen                miss=10  ninst=1  bits=[0] [7:2] [7:3]
+(module)                       m_awprot               miss=10  ninst=1  bits=[2:0]
+(module)                       m_awsize               miss=10  ninst=1  bits=[2:0]
+(module)                       m_bid                  miss=10  ninst=1  bits=[3:1]
+(module)                       m_bresp                miss=10  ninst=1  bits=[0]
+(module)                       m_rdata                miss=10  ninst=1  bits=[10:9] [10] [15:4] [17] [20:19] [22] [23:12] [24:12] [25] [26] [28:27] [29] [30] [31] [7:2]
+(module)                       m_rid                  miss=10  ninst=1  bits=[0] [1] [3:1] [3:2] [3]
+(module)                       m_rresp                miss=10  ninst=1  bits=[0]
+(module)                       m_wdata                miss=10  ninst=1  bits=[11] [20] [24:12] [24] [26] [30] [31:12] [4] [7:3] [8]
+(module)                       m_wstrb                miss=10  ninst=1  bits=[3:0]
+(module)                       mbus_addr              miss=10  ninst=1  bits=[0] [15:6] [1:0]
+(module)                       mbus_rdata             miss=10  ninst=1  bits=[31:13] [31:6]
+(module)                       mbus_rstn              miss=1   ninst=1  bits=
+(module)                       mbus_wdata             miss=10  ninst=1  bits=[11:9] [13] [31:13] [31:21] [31:8] [6]
+(module)                       mcore_fwd_id           miss=10  ninst=1  bits=[3:1] [3:2]
+(module)                       mode_dis               miss=10  ninst=1  bits=
+(module)                       oh1                    miss=10  ninst=1  bits=
+(module)                       otd                    miss=10  ninst=1  bits=[2:1] [2] [3:1] [5:4] [5] [7:6]
+(module)                       otd_s1                 miss=10  ninst=1  bits=[2] [3:1] [5] [7:6]
+(module)                       otd_s2                 miss=10  ninst=1  bits=[2] [3:1] [5] [7:6]
+(module)                       otd_w                  miss=10  ninst=1  bits=[2] [3:1] [5] [7:6]
+(module)                       par_bad                miss=10  ninst=1  bits=
+(module)                       par_l_dup_f            miss=10  ninst=1  bits=[2:0]
+(module)                       par_l_next             miss=10  ninst=1  bits=[2:0] [2:1]
+(module)                       par_lq                 miss=10  ninst=1  bits=[2:0] [2:1]
+(module)                       par_lq_n               miss=10  ninst=1  bits=[2:0] [2:1]
+(module)                       par_wrc                miss=10  ninst=1  bits=
+(module)                       par_wrc_a              miss=10  ninst=1  bits=
+(module)                       perr4                  miss=10  ninst=1  bits=
+(module)                       perr5                  miss=10  ninst=1  bits=
+(module)                       perr6                  miss=10  ninst=1  bits=
+(module)                       q                      miss=10  ninst=1  bits=[15:8] [2] [3:1] [4] [5] [7:6]
+(module)                       qrel_dis               miss=10  ninst=1  bits=
+(module)                       qsr_rel                miss=10  ninst=1  bits=
+(module)                       qsr_rel_q              miss=10  ninst=1  bits=
+(module)                       r0_flt                 miss=10  ninst=1  bits=
+(module)                       r1_flt                 miss=10  ninst=1  bits=
+(module)                       r2_flt                 miss=10  ninst=1  bits=
+(module)                       r3_flt                 miss=10  ninst=1  bits=
+(module)                       r4_flt                 miss=10  ninst=1  bits=
+(module)                       r5_flt                 miss=10  ninst=1  bits=
+(module)                       r6_flt                 miss=10  ninst=1  bits=
+(module)                       r7_flt                 miss=10  ninst=1  bits=
+(module)                       r8_flt                 miss=10  ninst=1  bits=
+(module)                       rd_otd_mon             miss=10  ninst=1  bits=[2:1] [2] [3:1]
+(module)                       rdata                  miss=10  ninst=1  bits=[15:8] [2] [31:13] [31:6] [3:1] [4] [5] [7:6]
+(module)                       reg_par_fault          miss=10  ninst=1  bits=
+(module)                       reg_par_fault_n        miss=10  ninst=1  bits=
+(module)                       reg_selftest           miss=10  ninst=1  bits=
+(module)                       reg_st_a               miss=10  ninst=1  bits=
+(module)                       rlen_ext               miss=10  ninst=1  bits=[8:2]
+(module)                       rst                    miss=0   ninst=1  bits=
+(module)                       rst_mbus               miss=0   ninst=1  bits=
+(module)                       rst_q2                 miss=1   ninst=1  bits=
+(module)                       rst_q3                 miss=1   ninst=1  bits=
+(module)                       rst_s                  miss=0   ninst=1  bits=
+(module)                       rstn                   miss=1   ninst=1  bits=
+(module)                       rstn_a                 miss=1   ninst=1  bits=
+(module)                       rstn_i                 miss=1   ninst=1  bits=
+(module)                       s_araddr               miss=10  ninst=1  bits=[10:0] [12] [14:13] [31:0] [31:15]
+(module)                       s_arburst              miss=10  ninst=1  bits=[1:0]
+(module)                       s_arid                 miss=10  ninst=1  bits=[3:1] [3:2]
+(module)                       s_arid_w               miss=10  ninst=1  bits=[3:1] [3:2]
+(module)                       s_arlen                miss=10  ninst=1  bits=[7:2]
+(module)                       s_arprot               miss=10  ninst=1  bits=[2:0]
+(module)                       s_arready              miss=10  ninst=1  bits=
+(module)                       s_arsize               miss=10  ninst=1  bits=[2:0]
+(module)                       s_awaddr               miss=10  ninst=1  bits=[11:0] [11:8] [31:15] [31:8] [3:0]
+(module)                       s_awburst              miss=10  ninst=1  bits=[1:0]
+(module)                       s_awid                 miss=10  ninst=1  bits=[3:0]
+(module)                       s_awlen                miss=10  ninst=1  bits=[0] [7:2] [7:3]
+(module)                       s_awsize               miss=10  ninst=1  bits=[2:0]
+(module)                       s_bid                  miss=10  ninst=1  bits=[3:0]
+(module)                       s_bready               miss=10  ninst=1  bits=
+(module)                       s_bresp                miss=10  ninst=1  bits=[1:0]
+(module)                       s_rcls                 miss=10  ninst=1  bits=[1]
+(module)                       s_rdata                miss=10  ninst=1  bits=[31:10] [31:4] [31:9] [3] [7:2]
+(module)                       s_rid                  miss=10  ninst=1  bits=[3:1] [3:2]
+(module)                       s_rlast                miss=10  ninst=1  bits=
+(module)                       s_rready               miss=10  ninst=1  bits=
+(module)                       s_rresp                miss=10  ninst=1  bits=[1:0]
+(module)                       s_wdata                miss=10  ninst=1  bits=[20] [24] [31:12] [4] [7:3] [8]
+(module)                       s_wstrb                miss=10  ninst=1  bits=[3:0]
+(module)                       selftest_key           miss=10  ninst=1  bits=
+(module)                       selftest_pls           miss=10  ninst=1  bits=
+(module)                       selftest_q             miss=10  ninst=1  bits=
+(module)                       sir_dis                miss=10  ninst=1  bits=
+(module)                       sk_fault               miss=1   ninst=1  bits=
+(module)                       sk_fault_i             miss=1   ninst=1  bits=
+(module)                       sk_fault_n             miss=0   ninst=1  bits=
+(module)                       sk_fault_n_i           miss=0   ninst=1  bits=
+(module)                       sk_fault_q             miss=1   ninst=1  bits=
+(module)                       skid_fault             miss=1   ninst=1  bits=
+(module)                       skid_fault_n           miss=0   ninst=1  bits=
+(module)                       thr_a_eff              miss=10  ninst=1  bits=[15:0]
+(module)                       thr_a_q                miss=10  ninst=1  bits=[15:0]
+(module)                       thr_a_s1               miss=10  ninst=1  bits=[15:4] [15:6] [3:0] [4:0] [5]
+(module)                       thr_a_s2               miss=10  ninst=1  bits=[15:4] [15:6] [3:0] [4:0] [5]
+(module)                       thr_a_sh               miss=10  ninst=1  bits=[15:0]
+(module)                       thr_r_eff              miss=10  ninst=1  bits=[15:0] [15:8] [2] [4]
+(module)                       thr_r_q                miss=10  ninst=1  bits=[15:0] [15:8] [1:0] [2] [3] [4] [7:5]
+(module)                       thr_r_s1               miss=10  ninst=1  bits=[15:5] [15:8] [2:0] [2] [4:3] [4]
+(module)                       thr_r_s2               miss=10  ninst=1  bits=[15:5] [15:8] [2:0] [2] [4:3] [4]
+(module)                       thr_r_sh               miss=10  ninst=1  bits=[15:0] [15:8] [1:0] [2] [3] [4] [7:5]
+(module)                       thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+(module)                       thr_rd_r2r             miss=10  ninst=1  bits=[15:0] [15:8] [2] [4]
+(module)                       to_clear               miss=10  ninst=1  bits=
+(module)                       to_clear_q             miss=10  ninst=1  bits=
+(module)                       wdata                  miss=10  ninst=1  bits=[11:9] [13] [15:13] [31:13] [31:21] [3:1] [5] [6] [7:6]
+(module)                       wdata_q                miss=10  ninst=1  bits=[11:9] [15:13] [31:13] [31:21] [6]
+(module)                       wpar_err               miss=10  ninst=1  bits=
+(module)                       wr                     miss=10  ninst=1  bits=
+(module)                       wr_otd_mon             miss=10  ninst=1  bits=[2:1] [2] [3:2]
+(module)                       wsel_q                 miss=10  ninst=1  bits=[3]
+(module)                       wsk_fault              miss=1   ninst=1  bits=
+(module)                       wsk_fault_n            miss=0   ninst=1  bits=
+A                              cfg_ena                miss=10  ninst=1  bits=[3:0]
+A                              cfg_key                miss=10  ninst=1  bits=[3:0]
+A                              cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+A                              cfg_req2resp_max       miss=10  ninst=1  bits=[15:0]
+A                              edgeflt_q              miss=1   ninst=1  bits=
+A                              edgeflt_q_n            miss=0   ninst=1  bits=
+A                              fu_selftest            miss=10  ninst=1  bits=
+A                              fu_src                 miss=10  ninst=1  bits=[5:3]
+A                              m_araddr               miss=10  ninst=1  bits=[31:0]
+A                              m_arburst              miss=10  ninst=1  bits=[1:0]
+A                              m_arid                 miss=10  ninst=1  bits=[3]
+A                              m_arlen                miss=10  ninst=1  bits=[7:2]
+A                              m_arprot               miss=10  ninst=1  bits=[2:0]
+A                              m_arsize               miss=10  ninst=1  bits=[2:0]
+A                              m_awaddr               miss=10  ninst=1  bits=[31:8] [3:0] [7]
+A                              m_awburst              miss=10  ninst=1  bits=[1:0]
+A                              m_awid                 miss=10  ninst=1  bits=[3:1]
+A                              m_awlen                miss=10  ninst=1  bits=[7:3]
+A                              m_awprot               miss=10  ninst=1  bits=[2:0]
+A                              m_awsize               miss=10  ninst=1  bits=[2:0]
+A                              m_bid                  miss=10  ninst=1  bits=[3:1]
+A                              m_bresp                miss=10  ninst=1  bits=[0]
+A                              m_rdata                miss=10  ninst=1  bits=[10] [23:12] [25] [28:27] [30] [7:2]
+A                              m_rid                  miss=10  ninst=1  bits=[3]
+A                              m_rresp                miss=10  ninst=1  bits=[0]
+A                              m_wdata                miss=10  ninst=1  bits=[11] [31:12] [7:3]
+A                              m_wstrb                miss=10  ninst=1  bits=[3:0]
+A                              mbus_addr              miss=10  ninst=1  bits=[15:6] [1:0]
+A                              mbus_rdata             miss=10  ninst=1  bits=[31:6]
+A                              mbus_rstn              miss=1   ninst=1  bits=
+A                              mbus_wdata             miss=10  ninst=1  bits=[31:8] [6]
+A                              otd                    miss=10  ninst=1  bits=[2] [5]
+A                              rd_otd_mon             miss=10  ninst=1  bits=[2]
+A                              reg_par_fault          miss=10  ninst=1  bits=
+A                              reg_par_fault_n        miss=10  ninst=1  bits=
+A                              rst                    miss=0   ninst=1  bits=
+A                              s_araddr               miss=10  ninst=1  bits=[31:0]
+A                              s_arburst              miss=10  ninst=1  bits=[1:0]
+A                              s_arid                 miss=10  ninst=1  bits=[3:2]
+A                              s_arlen                miss=10  ninst=1  bits=[7:2]
+A                              s_arprot               miss=10  ninst=1  bits=[2:0]
+A                              s_arsize               miss=10  ninst=1  bits=[2:0]
+A                              s_awaddr               miss=10  ninst=1  bits=[31:8] [3:0]
+A                              s_awburst              miss=10  ninst=1  bits=[1:0]
+A                              s_awid                 miss=10  ninst=1  bits=[3:0]
+A                              s_awlen                miss=10  ninst=1  bits=[7:3]
+A                              s_awsize               miss=10  ninst=1  bits=[2:0]
+A                              s_bid                  miss=10  ninst=1  bits=[3:0]
+A                              s_bready               miss=10  ninst=1  bits=
+A                              s_bresp                miss=10  ninst=1  bits=[1:0]
+A                              s_rdata                miss=10  ninst=1  bits=[31:10] [7:2]
+A                              s_rid                  miss=10  ninst=1  bits=[3:2]
+A                              s_rready               miss=10  ninst=1  bits=
+A                              s_rresp                miss=10  ninst=1  bits=[1:0]
+A                              s_wdata                miss=10  ninst=1  bits=[31:12] [7:3]
+A                              s_wstrb                miss=10  ninst=1  bits=[3:0]
+A                              selftest_key           miss=10  ninst=1  bits=
+A                              sk_fault_i             miss=1   ninst=1  bits=
+A                              sk_fault_n_i           miss=0   ninst=1  bits=
+A                              skid_fault             miss=1   ninst=1  bits=
+A                              skid_fault_n           miss=0   ninst=1  bits=
+A                              thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+A                              thr_rd_r2r             miss=10  ninst=1  bits=[15:0]
+A                              to_clear               miss=10  ninst=1  bits=
+A                              wr_otd_mon             miss=10  ninst=1  bits=[2]
+A.u_mon                        cfg_ena                miss=10  ninst=1  bits=[3:0]
+A.u_mon                        cfg_key                miss=10  ninst=1  bits=[3:0]
+A.u_mon                        cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+A.u_mon                        cfg_req2resp_max       miss=10  ninst=1  bits=[15:0]
+A.u_mon                        ena_ambig              miss=10  ninst=1  bits=
+A.u_mon                        fu_m_cat               miss=10  ninst=1  bits=[2:0]
+A.u_mon                        fu_m_w                 miss=10  ninst=1  bits=
+A.u_mon                        fu_selftest            miss=10  ninst=1  bits=
+A.u_mon                        fu_src                 miss=10  ninst=1  bits=[5:3]
+A.u_mon                        fu_src_live            miss=10  ninst=1  bits=[5:3]
+A.u_mon                        g_m[0].fu_cmp_m        miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].fu_cnt_m        miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].fu_stat_m       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_a[15:6]  miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_a_f      miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_a_n[15:6] miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_r[15:5]  miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_r_f      miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_cnt_r_n[15:5] miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_otd[2]       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_otd_f        miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_otd_n[2]     miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_r2a_cf       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].rd_r2r_cf       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].st_rd_a         miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].st_rd_r         miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].st_wr_a         miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].st_wr_r         miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_a[15:7]  miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_a_f      miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_a_n[15:7] miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_r[15:5]  miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_r_f      miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_cnt_r_n[15:5] miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_dlv[2:1]     miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_dlv_f        miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_dlv_n[2:1]   miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_otd[2]       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_otd_f        miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_otd_n[2]     miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_r2a_cf       miss=10  ninst=1  bits=?
+A.u_mon                        g_m[0].wr_r2r_cf       miss=10  ninst=1  bits=?
+A.u_mon                        otd                    miss=10  ninst=1  bits=[2] [5]
+A.u_mon                        otd_w                  miss=10  ninst=1  bits=[2] [5]
+A.u_mon                        rst                    miss=0   ninst=1  bits=
+A.u_mon                        rst_q2                 miss=1   ninst=1  bits=
+A.u_mon                        rst_q3                 miss=1   ninst=1  bits=
+A.u_mon                        rst_s                  miss=0   ninst=1  bits=
+A.u_mon                        rstn_i                 miss=1   ninst=1  bits=
+A.u_mon                        selftest_key           miss=10  ninst=1  bits=
+A.u_mon                        thr_a_eff              miss=10  ninst=1  bits=[15:0]
+A.u_mon                        thr_a_q                miss=10  ninst=1  bits=[15:0]
+A.u_mon                        thr_r_eff              miss=10  ninst=1  bits=[15:0]
+A.u_mon                        thr_r_q                miss=10  ninst=1  bits=[15:0]
+A.u_mon                        thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+A.u_mon                        thr_rd_r2r             miss=10  ninst=1  bits=[15:0]
+A.u_mon                        to_clear               miss=10  ninst=1  bits=
+A.u_mon.u_rst_dly              d                      miss=1   ninst=1  bits=
+A.u_mon.u_rst_dly              q                      miss=1   ninst=1  bits=
+A.u_mon.u_rst_dly              rstn                   miss=1   ninst=1  bits=
+A.u_mon.u_rst_sync             d                      miss=10  ninst=1  bits=
+A.u_mon.u_rst_sync             q                      miss=1   ninst=1  bits=
+A.u_mon.u_rst_sync             rstn                   miss=1   ninst=1  bits=
+A.u_mon.u_rst_sync             s1                     miss=1   ninst=1  bits=
+A.u_mon.u_rst_sync             s2                     miss=1   ninst=1  bits=
+A.u_recover                    ar_room                miss=10  ninst=1  bits=
+A.u_recover                    aw_ent_err             miss=10  ninst=1  bits=
+A.u_recover                    aw_room                miss=10  ninst=1  bits=
+A.u_recover                    iflt_q                 miss=1   ninst=1  bits=
+A.u_recover                    iflt_q_n               miss=0   ninst=1  bits=
+A.u_recover                    m_arid                 miss=10  ninst=1  bits=[3]
+A.u_recover                    m_arlen                miss=10  ninst=1  bits=[7:2]
+A.u_recover                    m_awaddr               miss=10  ninst=1  bits=[31:8] [3:0] [7]
+A.u_recover                    m_awburst              miss=10  ninst=1  bits=[1:0]
+A.u_recover                    m_awid                 miss=10  ninst=1  bits=[3:1]
+A.u_recover                    m_awlen                miss=10  ninst=1  bits=[7:3]
+A.u_recover                    m_awsize               miss=10  ninst=1  bits=[2:0]
+A.u_recover                    m_bid                  miss=10  ninst=1  bits=[3:1]
+A.u_recover                    m_bresp                miss=10  ninst=1  bits=[0]
+A.u_recover                    m_rid                  miss=10  ninst=1  bits=[3]
+A.u_recover                    m_rresp                miss=10  ninst=1  bits=[0]
+A.u_recover                    m_wdata                miss=10  ninst=1  bits=[11] [31:12] [7:3]
+A.u_recover                    m_wstrb                miss=10  ninst=1  bits=[3:0]
+A.u_recover                    mcore_fwd_id           miss=10  ninst=1  bits=[3:2]
+A.u_recover                    rd_otd_mon             miss=10  ninst=1  bits=[2]
+A.u_recover                    rlen_ext               miss=10  ninst=1  bits=[8:2]
+A.u_recover                    rst                    miss=0   ninst=1  bits=
+A.u_recover                    s_arid                 miss=10  ninst=1  bits=[3:2]
+A.u_recover                    s_arid_w               miss=10  ninst=1  bits=[3:2]
+A.u_recover                    s_awaddr               miss=10  ninst=1  bits=[31:8] [3:0]
+A.u_recover                    s_awburst              miss=10  ninst=1  bits=[1:0]
+A.u_recover                    s_awid                 miss=10  ninst=1  bits=[3:0]
+A.u_recover                    s_awlen                miss=10  ninst=1  bits=[7:3]
+A.u_recover                    s_awsize               miss=10  ninst=1  bits=[2:0]
+A.u_recover                    s_bready               miss=10  ninst=1  bits=
+A.u_recover                    s_bresp                miss=10  ninst=1  bits=[1:0]
+A.u_recover                    s_rid                  miss=10  ninst=1  bits=[3:2]
+A.u_recover                    s_rready               miss=10  ninst=1  bits=
+A.u_recover                    s_rresp                miss=10  ninst=1  bits=[1:0]
+A.u_recover                    s_wdata                miss=10  ninst=1  bits=[31:12] [7:3]
+A.u_recover                    s_wstrb                miss=10  ninst=1  bits=[3:0]
+A.u_recover                    sk_fault               miss=1   ninst=1  bits=
+A.u_recover                    sk_fault_n             miss=0   ninst=1  bits=
+A.u_recover                    wr_otd_mon             miss=10  ninst=1  bits=[2]
+A.u_recover                    wsk_fault              miss=1   ninst=1  bits=
+A.u_recover                    wsk_fault_n            miss=0   ninst=1  bits=
+A.u_recover.u_wskid            apar_err               miss=10  ninst=1  bits=
+A.u_recover.u_wskid            aw_allow               miss=10  ninst=1  bits=
+A.u_recover.u_wskid            cnt_dup_err            miss=10  ninst=1  bits=
+A.u_recover.u_wskid            m_awaddr               miss=10  ninst=1  bits=[31:8] [3:0] [7]
+A.u_recover.u_wskid            m_awburst              miss=10  ninst=1  bits=[1:0]
+A.u_recover.u_wskid            m_awlen                miss=10  ninst=1  bits=[7:3]
+A.u_recover.u_wskid            m_awsize               miss=10  ninst=1  bits=[2:0]
+A.u_recover.u_wskid            m_wdata                miss=10  ninst=1  bits=[11] [31:12] [7:3]
+A.u_recover.u_wskid            m_wstrb                miss=10  ninst=1  bits=[3:0]
+A.u_recover.u_wskid            oh1                    miss=10  ninst=1  bits=
+A.u_recover.u_wskid            rst                    miss=0   ninst=1  bits=
+A.u_recover.u_wskid            s_awaddr               miss=10  ninst=1  bits=[31:8] [3:0]
+A.u_recover.u_wskid            s_awburst              miss=10  ninst=1  bits=[1:0]
+A.u_recover.u_wskid            s_awlen                miss=10  ninst=1  bits=[7:3]
+A.u_recover.u_wskid            s_awsize               miss=10  ninst=1  bits=[2:0]
+A.u_recover.u_wskid            s_wdata                miss=10  ninst=1  bits=[31:12] [7:3]
+A.u_recover.u_wskid            s_wstrb                miss=10  ninst=1  bits=[3:0]
+A.u_recover.u_wskid            sk_fault               miss=1   ninst=1  bits=
+A.u_recover.u_wskid            sk_fault_n             miss=0   ninst=1  bits=
+A.u_recover.u_wskid            sk_fault_q             miss=1   ninst=1  bits=
+A.u_recover.u_wskid            wpar_err               miss=10  ninst=1  bits=
+A.u_regfile                    addr                   miss=10  ninst=1  bits=[15:6] [1:0]
+A.u_regfile                    align_ok               miss=10  ninst=1  bits=
+A.u_regfile                    cfg_ena                miss=10  ninst=1  bits=[3:0]
+A.u_regfile                    cfg_key                miss=10  ninst=1  bits=[3:0]
+A.u_regfile                    cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    cfg_req2resp_max       miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    ena_sh                 miss=10  ninst=1  bits=[3:0]
+A.u_regfile                    flt4_a                 miss=10  ninst=1  bits=
+A.u_regfile                    flt4_s2                miss=10  ninst=1  bits=
+A.u_regfile                    flt5_a                 miss=10  ninst=1  bits=
+A.u_regfile                    flt5_s2                miss=10  ninst=1  bits=
+A.u_regfile                    flt6_a                 miss=10  ninst=1  bits=
+A.u_regfile                    flt6_s2                miss=10  ninst=1  bits=
+A.u_regfile                    fu_selftest            miss=10  ninst=1  bits=
+A.u_regfile                    fu_selftest_q          miss=10  ninst=1  bits=
+A.u_regfile                    fu_src                 miss=10  ninst=1  bits=[5:3]
+A.u_regfile                    fusrc_s1               miss=10  ninst=1  bits=[5:3]
+A.u_regfile                    fusrc_s2               miss=10  ninst=1  bits=[5:3]
+A.u_regfile                    inst_ok                miss=10  ninst=1  bits=
+A.u_regfile                    mbus_rstn              miss=1   ninst=1  bits=
+A.u_regfile                    otd                    miss=10  ninst=1  bits=[2] [5]
+A.u_regfile                    otd_s1                 miss=10  ninst=1  bits=[2] [5]
+A.u_regfile                    otd_s2                 miss=10  ninst=1  bits=[2] [5]
+A.u_regfile                    par_bad                miss=10  ninst=1  bits=
+A.u_regfile                    par_l_dup_f            miss=10  ninst=1  bits=[2:0]
+A.u_regfile                    par_l_next             miss=10  ninst=1  bits=[2:0]
+A.u_regfile                    par_lq                 miss=10  ninst=1  bits=[2:0]
+A.u_regfile                    par_lq_n               miss=10  ninst=1  bits=[2:0]
+A.u_regfile                    par_wrc                miss=10  ninst=1  bits=
+A.u_regfile                    par_wrc_a              miss=10  ninst=1  bits=
+A.u_regfile                    perr4                  miss=10  ninst=1  bits=
+A.u_regfile                    perr5                  miss=10  ninst=1  bits=
+A.u_regfile                    perr6                  miss=10  ninst=1  bits=
+A.u_regfile                    qsr_rel                miss=10  ninst=1  bits=
+A.u_regfile                    qsr_rel_q              miss=10  ninst=1  bits=
+A.u_regfile                    r0_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r1_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r2_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r3_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r4_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r5_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r6_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r7_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    r8_flt                 miss=10  ninst=1  bits=
+A.u_regfile                    rdata                  miss=10  ninst=1  bits=[31:6]
+A.u_regfile                    reg_par_fault          miss=10  ninst=1  bits=
+A.u_regfile                    reg_par_fault_n        miss=10  ninst=1  bits=
+A.u_regfile                    reg_selftest           miss=10  ninst=1  bits=
+A.u_regfile                    reg_st_a               miss=10  ninst=1  bits=
+A.u_regfile                    rst                    miss=0   ninst=1  bits=
+A.u_regfile                    rst_mbus               miss=0   ninst=1  bits=
+A.u_regfile                    rstn_a                 miss=1   ninst=1  bits=
+A.u_regfile                    selftest_key           miss=10  ninst=1  bits=
+A.u_regfile                    selftest_pls           miss=10  ninst=1  bits=
+A.u_regfile                    selftest_q             miss=10  ninst=1  bits=
+A.u_regfile                    thr_a_s1               miss=10  ninst=1  bits=[15:6] [4:0] [5]
+A.u_regfile                    thr_a_s2               miss=10  ninst=1  bits=[15:6] [4:0] [5]
+A.u_regfile                    thr_a_sh               miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    thr_r_s1               miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+A.u_regfile                    thr_r_s2               miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+A.u_regfile                    thr_r_sh               miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    thr_rd_r2r             miss=10  ninst=1  bits=[15:0]
+A.u_regfile                    to_clear               miss=10  ninst=1  bits=
+A.u_regfile                    to_clear_q             miss=10  ninst=1  bits=
+A.u_regfile                    wdata                  miss=10  ninst=1  bits=[31:8] [6]
+A.u_regfile                    wdata_q                miss=10  ninst=1  bits=[31:8] [6]
+A.u_regfile                    wpar_err               miss=10  ninst=1  bits=
+A.u_regfile                    wsel_q                 miss=10  ninst=1  bits=[3]
+A.u_regfile.u_ack_sync         rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_cN               data_q                 miss=10  ninst=3  bits=[15:0] [3:0]
+A.u_regfile.u_cN               dup_err                miss=10  ninst=3  bits=
+A.u_regfile.u_cN               flt                    miss=10  ninst=3  bits=
+A.u_regfile.u_cN               flt_q                  miss=10  ninst=3  bits=
+A.u_regfile.u_cN               flt_q_n                miss=10  ninst=3  bits=
+A.u_regfile.u_cN               flt_w1c                miss=10  ninst=3  bits=
+A.u_regfile.u_cN               par_err                miss=10  ninst=3  bits=
+A.u_regfile.u_cN               par_q                  miss=10  ninst=3  bits=
+A.u_regfile.u_cN               rdata                  miss=10  ninst=3  bits=[15:0] [3:0]
+A.u_regfile.u_cN               rst                    miss=0   ninst=3  bits=
+A.u_regfile.u_cN               selftest_key           miss=10  ninst=3  bits=
+A.u_regfile.u_cN               wdata                  miss=10  ninst=2  bits=[15:8] [6]
+A.u_regfile.u_ena_sync         rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_flt_sync         d                      miss=10  ninst=1  bits=[2:0]
+A.u_regfile.u_flt_sync         q                      miss=10  ninst=1  bits=[2:0]
+A.u_regfile.u_flt_sync         rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_flt_sync         s1                     miss=10  ninst=1  bits=[2:0]
+A.u_regfile.u_flt_sync         s2                     miss=10  ninst=1  bits=[2:0]
+A.u_regfile.u_fusrc_sync       d                      miss=10  ninst=1  bits=[5:3]
+A.u_regfile.u_fusrc_sync       q                      miss=10  ninst=1  bits=[5:3]
+A.u_regfile.u_fusrc_sync       rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_ia_act_sync      rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_otd_sync         d                      miss=10  ninst=1  bits=[2] [5]
+A.u_regfile.u_otd_sync         q                      miss=10  ninst=1  bits=[2] [5]
+A.u_regfile.u_otd_sync         rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_rN               data_q                 miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2] [4:0] [4:3] [5:3] [5]
+A.u_regfile.u_rN               dup_err                miss=10  ninst=9  bits=
+A.u_regfile.u_rN               flt                    miss=10  ninst=9  bits=
+A.u_regfile.u_rN               flt_q                  miss=10  ninst=9  bits=
+A.u_regfile.u_rN               flt_q_n                miss=10  ninst=9  bits=
+A.u_regfile.u_rN               flt_w1c                miss=10  ninst=9  bits=
+A.u_regfile.u_rN               par_err                miss=10  ninst=9  bits=
+A.u_regfile.u_rN               par_q                  miss=10  ninst=3  bits=
+A.u_regfile.u_rN               rdata                  miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2] [4:0] [4:3] [5:3] [5]
+A.u_regfile.u_rN               rst                    miss=0   ninst=9  bits=
+A.u_regfile.u_rN               selftest_key           miss=10  ninst=9  bits=
+A.u_regfile.u_rN               wdata                  miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2] [4:0] [4:3] [5:3] [5]
+A.u_regfile.u_rN               wr                     miss=10  ninst=9  bits=
+A.u_regfile.u_rNa_st_sync      rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_rNr_st_sync      rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_rail_sync        rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_req_dly          rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_req_sync         rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_thr_a_sync       d                      miss=10  ninst=1  bits=[15:0]
+A.u_regfile.u_thr_a_sync       q                      miss=10  ninst=1  bits=[15:6] [4:0] [5]
+A.u_regfile.u_thr_a_sync       rstn                   miss=1   ninst=1  bits=
+A.u_regfile.u_thr_r_sync       d                      miss=10  ninst=1  bits=[15:0]
+A.u_regfile.u_thr_r_sync       q                      miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+A.u_regfile.u_thr_r_sync       rstn                   miss=1   ninst=1  bits=
+B.u_bdry.u_wskid               apar_err               miss=10  ninst=1  bits=
+B.u_bdry.u_wskid               aw_allow               miss=10  ninst=1  bits=
+B.u_bdry.u_wskid               cnt_dup_err            miss=10  ninst=1  bits=
+B.u_bdry.u_wskid               m_awaddr               miss=10  ninst=1  bits=[31:8] [3:0] [7]
+B.u_bdry.u_wskid               m_awburst              miss=10  ninst=1  bits=[1:0]
+B.u_bdry.u_wskid               m_awlen                miss=10  ninst=1  bits=[0] [7:3]
+B.u_bdry.u_wskid               m_awsize               miss=10  ninst=1  bits=[2:0]
+B.u_bdry.u_wskid               m_wdata                miss=10  ninst=1  bits=[11] [24:12] [26] [30] [7:3]
+B.u_bdry.u_wskid               m_wstrb                miss=10  ninst=1  bits=[3:0]
+B.u_bdry.u_wskid               oh1                    miss=10  ninst=1  bits=
+B.u_bdry.u_wskid               rst                    miss=0   ninst=1  bits=
+B.u_bdry.u_wskid               s_awaddr               miss=10  ninst=1  bits=[31:8] [3:0]
+B.u_bdry.u_wskid               s_awburst              miss=10  ninst=1  bits=[1:0]
+B.u_bdry.u_wskid               s_awlen                miss=10  ninst=1  bits=[0] [7:3]
+B.u_bdry.u_wskid               s_awsize               miss=10  ninst=1  bits=[2:0]
+B.u_bdry.u_wskid               s_wdata                miss=10  ninst=1  bits=[31:12] [7:3]
+B.u_bdry.u_wskid               s_wstrb                miss=10  ninst=1  bits=[3:0]
+B.u_bdry.u_wskid               sk_fault               miss=1   ninst=1  bits=
+B.u_bdry.u_wskid               sk_fault_n             miss=0   ninst=1  bits=
+B.u_bdry.u_wskid               sk_fault_q             miss=1   ninst=1  bits=
+B.u_bdry.u_wskid               wpar_err               miss=10  ninst=1  bits=
+B.u_mon                        cfg_ena                miss=10  ninst=1  bits=[3:0]
+B.u_mon                        cfg_key                miss=10  ninst=1  bits=[3:0]
+B.u_mon                        cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+B.u_mon                        cfg_req2resp_max       miss=10  ninst=1  bits=[15:0]
+B.u_mon                        ena_ambig              miss=10  ninst=1  bits=
+B.u_mon                        fu_m_cat               miss=10  ninst=1  bits=[2:0]
+B.u_mon                        fu_m_w                 miss=10  ninst=1  bits=
+B.u_mon                        fu_selftest            miss=10  ninst=1  bits=
+B.u_mon                        fu_src                 miss=10  ninst=1  bits=[5:3]
+B.u_mon                        fu_src_live            miss=10  ninst=1  bits=[5:3]
+B.u_mon                        g_m[0].fu_cmp_m        miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].fu_cnt_m        miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].fu_stat_m       miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_a[15:6]  miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_a_f      miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_a_n[15:6] miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_r[15:8]  miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_r_f      miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_cnt_r_n[15:8] miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_otd[2:1]     miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_otd_f        miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_otd_n[2:1]   miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_r2a_cf       miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].rd_r2r_cf       miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].st_rd_a         miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].st_rd_r         miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].st_wr_a         miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].st_wr_r         miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_a[15:8]  miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_a_f      miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_a_n[15:8] miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_r[15:6]  miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_r_f      miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_cnt_r_n[15:6] miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_dlv[2:1]     miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_dlv_f        miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_dlv_n[2:1]   miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_otd[2:1]     miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_otd_f        miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_otd_n[2:1]   miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_r2a_cf       miss=10  ninst=1  bits=?
+B.u_mon                        g_m[0].wr_r2r_cf       miss=10  ninst=1  bits=?
+B.u_mon                        otd                    miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_mon                        otd_w                  miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_mon                        rst                    miss=0   ninst=1  bits=
+B.u_mon                        rst_q2                 miss=1   ninst=1  bits=
+B.u_mon                        rst_q3                 miss=1   ninst=1  bits=
+B.u_mon                        rst_s                  miss=0   ninst=1  bits=
+B.u_mon                        rstn_i                 miss=1   ninst=1  bits=
+B.u_mon                        selftest_key           miss=10  ninst=1  bits=
+B.u_mon                        thr_a_eff              miss=10  ninst=1  bits=[15:0]
+B.u_mon                        thr_a_q                miss=10  ninst=1  bits=[15:0]
+B.u_mon                        thr_r_eff              miss=10  ninst=1  bits=[15:0]
+B.u_mon                        thr_r_q                miss=10  ninst=1  bits=[15:0]
+B.u_mon                        thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+B.u_mon                        thr_rd_r2r             miss=10  ninst=1  bits=[15:0]
+B.u_mon.u_rst_dly              d                      miss=1   ninst=1  bits=
+B.u_mon.u_rst_dly              q                      miss=1   ninst=1  bits=
+B.u_mon.u_rst_dly              rstn                   miss=1   ninst=1  bits=
+B.u_mon.u_rst_sync             d                      miss=10  ninst=1  bits=
+B.u_mon.u_rst_sync             q                      miss=1   ninst=1  bits=
+B.u_mon.u_rst_sync             rstn                   miss=1   ninst=1  bits=
+B.u_mon.u_rst_sync             s1                     miss=1   ninst=1  bits=
+B.u_mon.u_rst_sync             s2                     miss=1   ninst=1  bits=
+B.u_regfile                    addr                   miss=10  ninst=1  bits=[15:6] [1:0]
+B.u_regfile                    align_ok               miss=10  ninst=1  bits=
+B.u_regfile                    cfg_ena                miss=10  ninst=1  bits=[3:0]
+B.u_regfile                    cfg_key                miss=10  ninst=1  bits=[3:0]
+B.u_regfile                    cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    cfg_req2resp_max       miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    ena_sh                 miss=10  ninst=1  bits=[3:0]
+B.u_regfile                    flt4_a                 miss=10  ninst=1  bits=
+B.u_regfile                    flt4_s2                miss=10  ninst=1  bits=
+B.u_regfile                    flt5_a                 miss=10  ninst=1  bits=
+B.u_regfile                    flt5_s2                miss=10  ninst=1  bits=
+B.u_regfile                    flt6_a                 miss=10  ninst=1  bits=
+B.u_regfile                    flt6_s2                miss=10  ninst=1  bits=
+B.u_regfile                    fu_selftest            miss=10  ninst=1  bits=
+B.u_regfile                    fu_selftest_q          miss=10  ninst=1  bits=
+B.u_regfile                    fu_src                 miss=10  ninst=1  bits=[5:3]
+B.u_regfile                    fusrc_s1               miss=10  ninst=1  bits=[5:3]
+B.u_regfile                    fusrc_s2               miss=10  ninst=1  bits=[5:3]
+B.u_regfile                    inst_ok                miss=10  ninst=1  bits=
+B.u_regfile                    mbus_rstn              miss=1   ninst=1  bits=
+B.u_regfile                    otd                    miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_regfile                    otd_s1                 miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_regfile                    otd_s2                 miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_regfile                    par_bad                miss=10  ninst=1  bits=
+B.u_regfile                    par_l_dup_f            miss=10  ninst=1  bits=[2:0]
+B.u_regfile                    par_l_next             miss=10  ninst=1  bits=[2:0]
+B.u_regfile                    par_lq                 miss=10  ninst=1  bits=[2:0]
+B.u_regfile                    par_lq_n               miss=10  ninst=1  bits=[2:0]
+B.u_regfile                    par_wrc                miss=10  ninst=1  bits=
+B.u_regfile                    par_wrc_a              miss=10  ninst=1  bits=
+B.u_regfile                    perr4                  miss=10  ninst=1  bits=
+B.u_regfile                    perr5                  miss=10  ninst=1  bits=
+B.u_regfile                    perr6                  miss=10  ninst=1  bits=
+B.u_regfile                    r0_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r1_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r2_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r3_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r4_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r5_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r6_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r7_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    r8_flt                 miss=10  ninst=1  bits=
+B.u_regfile                    rdata                  miss=10  ninst=1  bits=[31:6]
+B.u_regfile                    reg_par_fault          miss=10  ninst=1  bits=
+B.u_regfile                    reg_par_fault_n        miss=10  ninst=1  bits=
+B.u_regfile                    reg_selftest           miss=10  ninst=1  bits=
+B.u_regfile                    reg_st_a               miss=10  ninst=1  bits=
+B.u_regfile                    rst                    miss=0   ninst=1  bits=
+B.u_regfile                    rst_mbus               miss=0   ninst=1  bits=
+B.u_regfile                    rstn_a                 miss=1   ninst=1  bits=
+B.u_regfile                    selftest_key           miss=10  ninst=1  bits=
+B.u_regfile                    selftest_pls           miss=10  ninst=1  bits=
+B.u_regfile                    selftest_q             miss=10  ninst=1  bits=
+B.u_regfile                    thr_a_s1               miss=10  ninst=1  bits=[15:6] [4:0] [5]
+B.u_regfile                    thr_a_s2               miss=10  ninst=1  bits=[15:6] [4:0] [5]
+B.u_regfile                    thr_a_sh               miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    thr_r_s1               miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+B.u_regfile                    thr_r_s2               miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+B.u_regfile                    thr_r_sh               miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    thr_rd_r2r             miss=10  ninst=1  bits=[15:0]
+B.u_regfile                    wdata                  miss=10  ninst=1  bits=[11:9] [31:13] [6]
+B.u_regfile                    wdata_q                miss=10  ninst=1  bits=[11:9] [31:13] [6]
+B.u_regfile                    wpar_err               miss=10  ninst=1  bits=
+B.u_regfile                    wsel_q                 miss=10  ninst=1  bits=[3]
+B.u_regfile.u_ack_sync         rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_cN               data_q                 miss=10  ninst=3  bits=[15:0] [3:0]
+B.u_regfile.u_cN               dup_err                miss=10  ninst=3  bits=
+B.u_regfile.u_cN               flt                    miss=10  ninst=3  bits=
+B.u_regfile.u_cN               flt_q                  miss=10  ninst=3  bits=
+B.u_regfile.u_cN               flt_q_n                miss=10  ninst=3  bits=
+B.u_regfile.u_cN               flt_w1c                miss=10  ninst=3  bits=
+B.u_regfile.u_cN               par_err                miss=10  ninst=3  bits=
+B.u_regfile.u_cN               par_q                  miss=10  ninst=3  bits=
+B.u_regfile.u_cN               rdata                  miss=10  ninst=3  bits=[15:0] [3:0]
+B.u_regfile.u_cN               rst                    miss=0   ninst=3  bits=
+B.u_regfile.u_cN               selftest_key           miss=10  ninst=3  bits=
+B.u_regfile.u_cN               wdata                  miss=10  ninst=2  bits=[11:9] [15:13] [6]
+B.u_regfile.u_ena_sync         rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_flt_sync         d                      miss=10  ninst=1  bits=[2:0]
+B.u_regfile.u_flt_sync         q                      miss=10  ninst=1  bits=[2:0]
+B.u_regfile.u_flt_sync         rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_flt_sync         s1                     miss=10  ninst=1  bits=[2:0]
+B.u_regfile.u_flt_sync         s2                     miss=10  ninst=1  bits=[2:0]
+B.u_regfile.u_fusrc_sync       d                      miss=10  ninst=1  bits=[5:3]
+B.u_regfile.u_fusrc_sync       q                      miss=10  ninst=1  bits=[5:3]
+B.u_regfile.u_fusrc_sync       rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_ia_act_sync      rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_otd_sync         d                      miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_regfile.u_otd_sync         q                      miss=10  ninst=1  bits=[2:1] [5:4]
+B.u_regfile.u_otd_sync         rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_rN               data_q                 miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2:1] [4:0] [4:3] [5:3] [5:4] [5]
+B.u_regfile.u_rN               dup_err                miss=10  ninst=9  bits=
+B.u_regfile.u_rN               flt                    miss=10  ninst=9  bits=
+B.u_regfile.u_rN               flt_q                  miss=10  ninst=9  bits=
+B.u_regfile.u_rN               flt_q_n                miss=10  ninst=9  bits=
+B.u_regfile.u_rN               flt_w1c                miss=10  ninst=9  bits=
+B.u_regfile.u_rN               par_err                miss=10  ninst=9  bits=
+B.u_regfile.u_rN               par_q                  miss=10  ninst=3  bits=
+B.u_regfile.u_rN               rdata                  miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2:1] [4:0] [4:3] [5:3] [5:4] [5]
+B.u_regfile.u_rN               rst                    miss=0   ninst=9  bits=
+B.u_regfile.u_rN               selftest_key           miss=10  ninst=9  bits=
+B.u_regfile.u_rN               wdata                  miss=10  ninst=4  bits=[15:5] [15:6] [2:0] [2:1] [4:0] [4:3] [5:3] [5:4] [5]
+B.u_regfile.u_rN               wr                     miss=10  ninst=9  bits=
+B.u_regfile.u_rNa_st_sync      rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_rNr_st_sync      rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_rail_sync        rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_req_dly          rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_req_sync         rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_thr_a_sync       d                      miss=10  ninst=1  bits=[15:0]
+B.u_regfile.u_thr_a_sync       q                      miss=10  ninst=1  bits=[15:6] [4:0] [5]
+B.u_regfile.u_thr_a_sync       rstn                   miss=1   ninst=1  bits=
+B.u_regfile.u_thr_r_sync       d                      miss=10  ninst=1  bits=[15:0]
+B.u_regfile.u_thr_r_sync       q                      miss=10  ninst=1  bits=[15:5] [2:0] [4:3]
+B.u_regfile.u_thr_r_sync       rstn                   miss=1   ninst=1  bits=
+G                              cfg_key                miss=10  ninst=1  bits=[3:0]
+G                              cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+G                              cfg_req2resp_max       miss=10  ninst=1  bits=[15:8] [1:0] [2] [3] [4] [7:5]
+G                              edgeflt_q              miss=1   ninst=1  bits=
+G                              edgeflt_q_n            miss=0   ninst=1  bits=
+G                              fu_src                 miss=10  ninst=1  bits=[5:3]
+G                              m_araddr               miss=10  ninst=1  bits=[10:0] [12] [14:13] [31:15]
+G                              m_arburst              miss=10  ninst=1  bits=[1:0]
+G                              m_arid                 miss=10  ninst=1  bits=[0] [1] [3:2]
+G                              m_arlen                miss=10  ninst=1  bits=[7:2]
+G                              m_arprot               miss=10  ninst=1  bits=[2:0]
+G                              m_arsize               miss=10  ninst=1  bits=[2:0]
+G                              m_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G                              m_awburst              miss=10  ninst=1  bits=[1:0]
+G                              m_awid                 miss=10  ninst=1  bits=[3:1]
+G                              m_awlen                miss=10  ninst=1  bits=[7:2]
+G                              m_awprot               miss=10  ninst=1  bits=[2:0]
+G                              m_awsize               miss=10  ninst=1  bits=[2:0]
+G                              m_bid                  miss=10  ninst=1  bits=[3:1]
+G                              m_bresp                miss=10  ninst=1  bits=[0]
+G                              m_rdata                miss=10  ninst=1  bits=[15:4] [17] [20:19] [22] [25] [28:27] [30]
+G                              m_rid                  miss=10  ninst=1  bits=[0] [1] [3:2]
+G                              m_rresp                miss=10  ninst=1  bits=[0]
+G                              m_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G                              m_wstrb                miss=10  ninst=1  bits=[3:0]
+G                              mbus_addr              miss=10  ninst=1  bits=[0] [15:6]
+G                              mbus_rdata             miss=10  ninst=1  bits=[31:13]
+G                              mbus_rstn              miss=1   ninst=1  bits=
+G                              mbus_wdata             miss=10  ninst=1  bits=[13] [31:21]
+G                              otd                    miss=10  ninst=1  bits=[3:1] [7:6]
+G                              rd_otd_mon             miss=10  ninst=1  bits=[3:1]
+G                              rst                    miss=0   ninst=1  bits=
+G                              s_araddr               miss=10  ninst=1  bits=[10:0] [12] [14:13] [31:15]
+G                              s_arburst              miss=10  ninst=1  bits=[1:0]
+G                              s_arid                 miss=10  ninst=1  bits=[3:1]
+G                              s_arlen                miss=10  ninst=1  bits=[7:2]
+G                              s_arprot               miss=10  ninst=1  bits=[2:0]
+G                              s_arsize               miss=10  ninst=1  bits=[2:0]
+G                              s_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G                              s_awburst              miss=10  ninst=1  bits=[1:0]
+G                              s_awid                 miss=10  ninst=1  bits=[3:0]
+G                              s_awlen                miss=10  ninst=1  bits=[7:2]
+G                              s_awsize               miss=10  ninst=1  bits=[2:0]
+G                              s_bid                  miss=10  ninst=1  bits=[3:0]
+G                              s_bresp                miss=10  ninst=1  bits=[1:0]
+G                              s_rdata                miss=10  ninst=1  bits=[31:4] [3]
+G                              s_rid                  miss=10  ninst=1  bits=[3:1]
+G                              s_rlast                miss=10  ninst=1  bits=
+G                              s_rresp                miss=10  ninst=1  bits=[1:0]
+G                              s_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G                              s_wstrb                miss=10  ninst=1  bits=[3:0]
+G                              sk_fault_i             miss=1   ninst=1  bits=
+G                              sk_fault_n_i           miss=0   ninst=1  bits=
+G                              skid_fault             miss=1   ninst=1  bits=
+G                              skid_fault_n           miss=0   ninst=1  bits=
+G                              thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+G                              thr_rd_r2r             miss=10  ninst=1  bits=[15:8] [2] [4]
+G                              to_clear               miss=10  ninst=1  bits=
+G                              wr_otd_mon             miss=10  ninst=1  bits=[3:2]
+G.u_mon                        cfg_key                miss=10  ninst=1  bits=[3:0]
+G.u_mon                        cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+G.u_mon                        cfg_req2resp_max       miss=10  ninst=1  bits=[15:8] [1:0] [2] [3] [4] [7:5]
+G.u_mon                        ena_ambig              miss=10  ninst=1  bits=
+G.u_mon                        fu_m_cat               miss=10  ninst=1  bits=[2:0]
+G.u_mon                        fu_m_w                 miss=10  ninst=1  bits=
+G.u_mon                        fu_src                 miss=10  ninst=1  bits=[5:3]
+G.u_mon                        fu_src_live            miss=10  ninst=1  bits=[5:3]
+G.u_mon                        g_m[0].fu_cmp_m        miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].fu_cnt_m        miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].fu_stat_m       miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_a[15:5]  miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_a_f      miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_a_n[15:5] miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_r[15:9]  miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_r_f      miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_cnt_r_n[15:9] miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_otd[3:1]     miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_otd_f        miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_otd_n[3:1]   miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_r2a_cf       miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].rd_r2r_cf       miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].st_rd_a         miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].st_rd_r         miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].st_wr_a         miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].st_wr_r         miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_a[15:5]  miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_a_f      miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_a_n[15:5] miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_r[15:5]  miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_r_f      miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_cnt_r_n[15:5] miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_dlv[3:2]     miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_dlv_f        miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_dlv_n[3:2]   miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_otd[3:2]     miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_otd_f        miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_otd_n[3:2]   miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_r2a_cf       miss=10  ninst=1  bits=?
+G.u_mon                        g_m[0].wr_r2r_cf       miss=10  ninst=1  bits=?
+G.u_mon                        otd                    miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_mon                        otd_w                  miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_mon                        rst                    miss=0   ninst=1  bits=
+G.u_mon                        rst_q2                 miss=1   ninst=1  bits=
+G.u_mon                        rst_q3                 miss=1   ninst=1  bits=
+G.u_mon                        rst_s                  miss=0   ninst=1  bits=
+G.u_mon                        rstn_i                 miss=1   ninst=1  bits=
+G.u_mon                        thr_a_eff              miss=10  ninst=1  bits=[15:0]
+G.u_mon                        thr_a_q                miss=10  ninst=1  bits=[15:0]
+G.u_mon                        thr_r_eff              miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_mon                        thr_r_q                miss=10  ninst=1  bits=[15:8] [1:0] [2] [3] [4] [7:5]
+G.u_mon                        thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+G.u_mon                        thr_rd_r2r             miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_mon                        to_clear               miss=10  ninst=1  bits=
+G.u_mon.u_rst_dly              d                      miss=1   ninst=1  bits=
+G.u_mon.u_rst_dly              q                      miss=1   ninst=1  bits=
+G.u_mon.u_rst_dly              rstn                   miss=1   ninst=1  bits=
+G.u_mon.u_rst_sync             d                      miss=10  ninst=1  bits=
+G.u_mon.u_rst_sync             q                      miss=1   ninst=1  bits=
+G.u_mon.u_rst_sync             rstn                   miss=1   ninst=1  bits=
+G.u_mon.u_rst_sync             s1                     miss=1   ninst=1  bits=
+G.u_mon.u_rst_sync             s2                     miss=1   ninst=1  bits=
+G.u_recover                    ar_room                miss=10  ninst=1  bits=
+G.u_recover                    aw_dup_err             miss=10  ninst=1  bits=
+G.u_recover                    aw_ent_err             miss=10  ninst=1  bits=
+G.u_recover                    aw_room                miss=10  ninst=1  bits=
+G.u_recover                    cur_cls                miss=10  ninst=1  bits=[1]
+G.u_recover                    dum_cls                miss=10  ninst=1  bits=[1]
+G.u_recover                    iflt_q                 miss=1   ninst=1  bits=
+G.u_recover                    iflt_q_n               miss=0   ninst=1  bits=
+G.u_recover                    m_arcls                miss=10  ninst=1  bits=[1]
+G.u_recover                    m_arid                 miss=10  ninst=1  bits=[0] [1] [3:2]
+G.u_recover                    m_arlen                miss=10  ninst=1  bits=[7:2]
+G.u_recover                    m_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G.u_recover                    m_awburst              miss=10  ninst=1  bits=[1:0]
+G.u_recover                    m_awid                 miss=10  ninst=1  bits=[3:1]
+G.u_recover                    m_awlen                miss=10  ninst=1  bits=[7:2]
+G.u_recover                    m_awsize               miss=10  ninst=1  bits=[2:0]
+G.u_recover                    m_bid                  miss=10  ninst=1  bits=[3:1]
+G.u_recover                    m_bresp                miss=10  ninst=1  bits=[0]
+G.u_recover                    m_rid                  miss=10  ninst=1  bits=[0] [1] [3:2]
+G.u_recover                    m_rresp                miss=10  ninst=1  bits=[0]
+G.u_recover                    m_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G.u_recover                    m_wstrb                miss=10  ninst=1  bits=[3:0]
+G.u_recover                    mcore_fwd_id           miss=10  ninst=1  bits=[3:1]
+G.u_recover                    mode_dis               miss=10  ninst=1  bits=
+G.u_recover                    rd_otd_mon             miss=10  ninst=1  bits=[3:1]
+G.u_recover                    rlen_ext               miss=10  ninst=1  bits=[8:2]
+G.u_recover                    rst                    miss=0   ninst=1  bits=
+G.u_recover                    s_arid                 miss=10  ninst=1  bits=[3:1]
+G.u_recover                    s_arid_w               miss=10  ninst=1  bits=[3:1]
+G.u_recover                    s_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G.u_recover                    s_awburst              miss=10  ninst=1  bits=[1:0]
+G.u_recover                    s_awid                 miss=10  ninst=1  bits=[3:0]
+G.u_recover                    s_awlen                miss=10  ninst=1  bits=[7:2]
+G.u_recover                    s_awsize               miss=10  ninst=1  bits=[2:0]
+G.u_recover                    s_bresp                miss=10  ninst=1  bits=[1:0]
+G.u_recover                    s_rcls                 miss=10  ninst=1  bits=[1]
+G.u_recover                    s_rid                  miss=10  ninst=1  bits=[3:1]
+G.u_recover                    s_rlast                miss=10  ninst=1  bits=
+G.u_recover                    s_rresp                miss=10  ninst=1  bits=[1:0]
+G.u_recover                    s_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G.u_recover                    s_wstrb                miss=10  ninst=1  bits=[3:0]
+G.u_recover                    sir_dis                miss=10  ninst=1  bits=
+G.u_recover                    sk_fault               miss=1   ninst=1  bits=
+G.u_recover                    sk_fault_n             miss=0   ninst=1  bits=
+G.u_recover                    wr_otd_mon             miss=10  ninst=1  bits=[3:2]
+G.u_recover                    wsk_fault              miss=1   ninst=1  bits=
+G.u_recover                    wsk_fault_n            miss=0   ninst=1  bits=
+G.u_recover.u_wskid            apar_err               miss=10  ninst=1  bits=
+G.u_recover.u_wskid            aw_allow               miss=10  ninst=1  bits=
+G.u_recover.u_wskid            cnt_dup_err            miss=10  ninst=1  bits=
+G.u_recover.u_wskid            m_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G.u_recover.u_wskid            m_awburst              miss=10  ninst=1  bits=[1:0]
+G.u_recover.u_wskid            m_awlen                miss=10  ninst=1  bits=[7:2]
+G.u_recover.u_wskid            m_awsize               miss=10  ninst=1  bits=[2:0]
+G.u_recover.u_wskid            m_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G.u_recover.u_wskid            m_wstrb                miss=10  ninst=1  bits=[3:0]
+G.u_recover.u_wskid            oh1                    miss=10  ninst=1  bits=
+G.u_recover.u_wskid            rst                    miss=0   ninst=1  bits=
+G.u_recover.u_wskid            s_awaddr               miss=10  ninst=1  bits=[11:0] [31:15]
+G.u_recover.u_wskid            s_awburst              miss=10  ninst=1  bits=[1:0]
+G.u_recover.u_wskid            s_awlen                miss=10  ninst=1  bits=[7:2]
+G.u_recover.u_wskid            s_awsize               miss=10  ninst=1  bits=[2:0]
+G.u_recover.u_wskid            s_wdata                miss=10  ninst=1  bits=[20] [24] [4] [8]
+G.u_recover.u_wskid            s_wstrb                miss=10  ninst=1  bits=[3:0]
+G.u_recover.u_wskid            sk_fault               miss=1   ninst=1  bits=
+G.u_recover.u_wskid            sk_fault_n             miss=0   ninst=1  bits=
+G.u_recover.u_wskid            sk_fault_q             miss=1   ninst=1  bits=
+G.u_recover.u_wskid            wpar_err               miss=10  ninst=1  bits=
+G.u_regfile                    addr                   miss=10  ninst=1  bits=[0] [15:6]
+G.u_regfile                    cfg_key                miss=10  ninst=1  bits=[3:0]
+G.u_regfile                    cfg_req2accept_max     miss=10  ninst=1  bits=[15:0]
+G.u_regfile                    cfg_req2resp_max       miss=10  ninst=1  bits=[15:8] [1:0] [2] [3] [4] [7:5]
+G.u_regfile                    fu_src                 miss=10  ninst=1  bits=[5:3]
+G.u_regfile                    fusrc_s1               miss=10  ninst=1  bits=[5:3]
+G.u_regfile                    fusrc_s2               miss=10  ninst=1  bits=[5:3]
+G.u_regfile                    inst_ok                miss=10  ninst=1  bits=
+G.u_regfile                    mbus_rstn              miss=1   ninst=1  bits=
+G.u_regfile                    otd                    miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_regfile                    otd_s1                 miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_regfile                    otd_s2                 miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_regfile                    par_bad                miss=10  ninst=1  bits=
+G.u_regfile                    par_l_dup_f            miss=10  ninst=1  bits=[2:0]
+G.u_regfile                    par_l_next             miss=10  ninst=1  bits=[2:1]
+G.u_regfile                    par_lq                 miss=10  ninst=1  bits=[2:1]
+G.u_regfile                    par_lq_n               miss=10  ninst=1  bits=[2:1]
+G.u_regfile                    qsr_rel                miss=10  ninst=1  bits=
+G.u_regfile                    qsr_rel_q              miss=10  ninst=1  bits=
+G.u_regfile                    rdata                  miss=10  ninst=1  bits=[31:13]
+G.u_regfile                    rst                    miss=0   ninst=1  bits=
+G.u_regfile                    rst_mbus               miss=0   ninst=1  bits=
+G.u_regfile                    rstn_a                 miss=1   ninst=1  bits=
+G.u_regfile                    thr_a_s1               miss=10  ninst=1  bits=[15:4] [3:0]
+G.u_regfile                    thr_a_s2               miss=10  ninst=1  bits=[15:4] [3:0]
+G.u_regfile                    thr_a_sh               miss=10  ninst=1  bits=[15:0]
+G.u_regfile                    thr_r_s1               miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_regfile                    thr_r_s2               miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_regfile                    thr_r_sh               miss=10  ninst=1  bits=[15:8] [1:0] [2] [3] [4] [7:5]
+G.u_regfile                    thr_rd_r2a             miss=10  ninst=1  bits=[15:0]
+G.u_regfile                    thr_rd_r2r             miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_regfile                    to_clear               miss=10  ninst=1  bits=
+G.u_regfile                    to_clear_q             miss=10  ninst=1  bits=
+G.u_regfile                    wdata                  miss=10  ninst=1  bits=[13] [31:21]
+G.u_regfile                    wdata_q                miss=10  ninst=1  bits=[15:13] [31:21]
+G.u_regfile                    wpar_err               miss=10  ninst=1  bits=
+G.u_regfile.u_ack_sync         rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_cN               data_q                 miss=10  ninst=2  bits=[15:0] [15:8] [1:0] [2] [3] [4] [7:5]
+G.u_regfile.u_cN               dup_err                miss=10  ninst=3  bits=
+G.u_regfile.u_cN               rdata                  miss=10  ninst=2  bits=[15:0] [15:8] [1:0] [2] [3] [4] [7:5]
+G.u_regfile.u_cN               rst                    miss=0   ninst=3  bits=
+G.u_regfile.u_cN               wdata                  miss=10  ninst=2  bits=[15:13]
+G.u_regfile.u_ena_sync         rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_flt_sync         rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_fusrc_sync       d                      miss=10  ninst=1  bits=[5:3]
+G.u_regfile.u_fusrc_sync       q                      miss=10  ninst=1  bits=[5:3]
+G.u_regfile.u_fusrc_sync       rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_ia_act_sync      rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_otd_sync         d                      miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_regfile.u_otd_sync         q                      miss=10  ninst=1  bits=[3:1] [7:6]
+G.u_regfile.u_otd_sync         rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_rN               data_q                 miss=10  ninst=4  bits=[15:4] [15:8] [2] [3:0] [3:1] [4] [5:3] [7:6]
+G.u_regfile.u_rN               dup_err                miss=10  ninst=9  bits=
+G.u_regfile.u_rN               rdata                  miss=10  ninst=4  bits=[15:4] [15:8] [2] [3:0] [3:1] [4] [5:3] [7:6]
+G.u_regfile.u_rN               rst                    miss=0   ninst=9  bits=
+G.u_regfile.u_rN               wdata                  miss=10  ninst=4  bits=[15:4] [15:8] [2] [3:0] [3:1] [4] [5:3] [7:6]
+G.u_regfile.u_rN               wr                     miss=10  ninst=9  bits=
+G.u_regfile.u_rNa_st_sync      rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_rNr_st_sync      rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_rail_sync        rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_req_dly          rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_req_sync         rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_thr_a_sync       d                      miss=10  ninst=1  bits=[15:0]
+G.u_regfile.u_thr_a_sync       q                      miss=10  ninst=1  bits=[15:4] [3:0]
+G.u_regfile.u_thr_a_sync       rstn                   miss=1   ninst=1  bits=
+G.u_regfile.u_thr_r_sync       d                      miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_regfile.u_thr_r_sync       q                      miss=10  ninst=1  bits=[15:8] [2] [4]
+G.u_regfile.u_thr_r_sync       rstn                   miss=1   ninst=1  bits=
