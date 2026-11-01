@@ -60,10 +60,15 @@
 //                                            [5] WR_DROPPED (W1C, sticky):
 //                                                a write arrived while busy
 //                                                and was dropped
-//   0x20  SCMIAFUSRC    W1C/R 0x00000000  [3+3*NUM_M-1:0] fault sources
+//   0x20  SCMIAFUSRC    W1C/R 0x00000000  [4+3*NUM_M-1:0] fault sources
 //                                            (nonzero write clears
 //                                            FU_FAULT + FUSRC; a live
 //                                            source re-sets next cycle)
+//                                            [3+3*NUM_M] OTDSAT: outstanding
+//                                            ledger saturated (depth hit
+//                                            OTD_MAX mid-handshake) ->
+//                                            depth under-counts; do a
+//                                            quiesce + TO_CLR restart
 //   0x24  SCMREGPARSTAT W1C/R 0x00000000  register parity status:
 //                                            [0]    PAR_FAULT (level) ->
 //                                                   ESM dual rail
@@ -214,7 +219,7 @@ module ia_bus_timeo_regfile #(
     input  logic                     err_event_n,
     input  logic                     fu_fault,
     input  logic                     fu_fault_n,
-    input  logic [3+3*NUM_M-1:0]     fu_src,
+    input  logic [4+3*NUM_M-1:0]     fu_src,
 
     // ---- register parity fault to ESM (mbus_clk domain, dual rail) ----
     // own event, separate from err_event / fu_fault: a corrupted
@@ -224,7 +229,7 @@ module ia_bus_timeo_regfile #(
 );
 
     localparam int OTD_BW   = NUM_IA*OTD_W;
-    localparam int FU_SRC_W = 3 + 3*NUM_M;
+    localparam int FU_SRC_W = 4 + 3*NUM_M;
 
     // elaboration checks: everything must fit into 32-bit RDATA
     generate
@@ -238,7 +243,7 @@ module ia_bus_timeo_regfile #(
             $error("NUM_IA*OTD_W must be <= 32 (SCMOTD width)");
         end
         if (FU_SRC_W > 32) begin : chk_fusrc
-            $error("3+3*NUM_M must be <= 32 (SCMIAFUSRC width)");
+            $error("4+3*NUM_M must be <= 32 (SCMIAFUSRC width)");
         end
     endgenerate
 

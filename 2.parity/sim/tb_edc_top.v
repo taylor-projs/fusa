@@ -1048,7 +1048,7 @@ module tb_edc_top;
          repeat (10) @(negedge m_clk);
          repeat (10) @(negedge s_clk);
 
-         // 五通道各过一拍: 每个 CHK 站点 vld_q 占用一拍 -> o_err 脉冲
+         // 五通道各过一拍: 每个 CHK 通道 vld 驻留一拍 -> o_err 脉冲
          @(negedge m_clk); sm_awvalid = 1;
          @(negedge m_clk); sm_awvalid = 0;
          while (!(ms_awvalid && ms_awready)) @(negedge s_clk);

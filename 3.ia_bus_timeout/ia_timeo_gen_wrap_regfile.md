@@ -50,7 +50,7 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | 回读 | in | `thr_rd_r2a/r2r`、`ena_rd` | 阈值/使能有效值回读 |
 | 事件 | in | `err_event(_n)`、`fu_fault(_n)` | 双轨 ESM 事件 |
 | 奇偶故障 | out | `reg_par_fault`、`reg_par_fault_n` | mbus_clk 域 ESM 双轨事件（见 §5） |
-| 故障源 | in | `fu_src` | `3+3*NUM_M` 位完整性故障源 |
+| 故障源 | in | `fu_src` | `4+3*NUM_M` 位完整性故障源 |
 
 复位 `rst`：异步断言、高有效（与监控核 `rst` 同源）。
 
@@ -71,7 +71,7 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | 0x14 | `SCMTHRESH0` | W/R | 0x0000000F | `[15:0]` REQ2ACCEPT_MAX（req2accept 阈值） |
 | 0x18 | `SCMTHRESH1` | W/R | 0x00000000FF | `[15:0]` REQ2RESP_MAX（req2resp 阈值） |
 | 0x1C | `SCMIAFUSTAT` | **W1C/R** | 0x00000000 | `[0]` FU_FAULT（W1C）；`[1]` FU_FAULT_N、`[2]` ERR_EVENT、`[3]` ERR_EVENT_N（只读双轨）；`[4]` CFG_BUSY（RO，CDC 写在途）；`[5]` WR_DROPPED（W1C，见 §3.2） |
-| 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | `[3+3*NUM_M-1:0]` 完整性故障源，见 §3.3 |
+| 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | `[4+3*NUM_M-1:0]` 完整性故障源，见 §3.3 |
 | 0x24 | `SCMREGPARSTAT` | **W1C/R** | 0x00000000 | `[0]` PAR_FAULT（W1C，→ESM 双轨）；`[1]` PAR_FAULT_N（RO）；`[13:4]` PERR9..PERR0 每寄存器奇偶错误（W1C）；`[14]` PERR_CMD mbus 命令奇偶错误（W1C），见 §3.4 |
 
 ### 3.1 SCMCNTRL 字段（0x10）
@@ -114,6 +114,7 @@ mbus 零等待语义下写不再阻塞总线：CFG_BUSY=1 期间到达的有效�
 | [3+3m+0] | CNT(m) | 主控 m 计数器/深度副本失配 |
 | [3+3m+1] | CMP(m) | 主控 m 双比较器分歧 |
 | [3+3m+2] | STAT(m) | 主控 m 状态副本失配 |
+| [3+3*NUM_M] | OTDSAT | outstanding 账本饱和丢递增：账本已在 OTD_MAX 时同拍又来 AR/AW/WLAST 握手，深度计数不可信（可能掩盖真挂死）。置位同时拉 FU_FAULT；SW 应 quiesce 主控 + TO_CLR 重启账本。饱和流靠 SCMOTD（=OTD_MAX 的流）定位 |
 
 写入非零值同时清除 FU_FAULT 与全部故障源位；仍然存活的故障源下一拍重新置位。
 

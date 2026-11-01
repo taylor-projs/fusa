@@ -217,7 +217,7 @@ module hang_prot_gen_wrap #(
     logic [3:0]               ena_rd;
     logic                     err_event_i, err_event_n_i;
     logic                     fu_fault_i, fu_fault_n_i;
-    logic [3+3*NUM_M-1:0]     fu_src;
+    logic [4+3*NUM_M-1:0]     fu_src;
 
     // recovery control (aclk domain; recover_req generated below)
     logic [OTD_W-1:0]         rd_otd_mon, wr_otd_mon;

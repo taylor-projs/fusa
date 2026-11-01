@@ -108,8 +108,14 @@
 //     synchronized (async assert / 3-flop sync release -> rst_s)
 //   - threshold == 0 disables that check (explicit SW action, keyed);
 //     reset values are non-zero
-//   - outstanding saturates at OTD_MAX (no rollback); above saturation
-//     only the progress property is guaranteed, not exact depth
+//   - outstanding saturates at OTD_MAX (no rollback). A handshake AT the
+//     cap drops the increment: true depth then exceeds the ledger, and
+//     post-drain the counter under-counts (a hang of the excess would be
+//     invisible to r2r). The drop raises otd_sat (fu_src top bit +
+//     fu_fault, sticky, T6 re-set) -> SW quiesce + TO_CLR restart,
+//     instead of trusting a saturated depth. In the wrapped integration
+//     the room gates back-pressure the (OTD_MAX+1)-th request, so the
+//     event can only fire on standalone use / integration violation.
 //============================================================================
 module hang_prot_core #(
     parameter int          NUM_M          = 4,       // AXI master ports monitored
@@ -167,10 +173,10 @@ module hang_prot_core #(
     output logic [3:0]        ena_rd,          // enable code readback
     output logic              fu_fault,        // monitor integrity fault (sticky) -> ESM
     output logic              fu_fault_n,      // dual rail complement (transport check)
-    output logic [3+3*NUM_M-1:0] fu_src        // fault source: ENA/THRA/THRR + 3 per master
+    output logic [4+3*NUM_M-1:0] fu_src        // fault source: ENA/THRA/THRR + 3 per master + OTDSAT
 );
 
-    localparam int FU_SRC_W = 3 + 3*NUM_M;   // fu_src width
+    localparam int FU_SRC_W = 4 + 3*NUM_M;   // fu_src width (+1 = OTDSAT top bit)
 
     //--------------------------------------------------------------------------
     // Reset synchronizer (async assert / sync release): raw rst is
@@ -294,6 +300,7 @@ module hang_prot_core #(
     logic [NUM_IA-1:0]       ia_active_w;
     logic [NUM_IA*OTD_W-1:0] otd_w;
     logic [NUM_M-1:0]        fu_m_w;       // per-master integrity faults
+    logic [NUM_M-1:0]        otd_sat_w;    // per-master outstanding saturation
     // per-master fault categories, 3 bits each: {STAT, CMP, CNT}
     //   CNT  = counter/depth inverted-duplicate mismatch
     //   CMP  = dual-comparator disagreement
@@ -410,6 +417,28 @@ module hang_prot_core #(
             assign wl_hs = wbeat && axi_wlast[m];
             logic b_hs;
             assign b_hs = axi_bvalid[m]  && axi_bready[m];
+
+            // ---- outstanding saturation event (fail-visible) ---------
+            // A handshake AT the cap drops the increment: true depth then
+            // exceeds the ledger, and after the excess drains the counter
+            // under-counts - a hang of the remainder would be invisible
+            // to r2r. Report (sticky, fu_src top bit + fu_fault) so SW
+            // does quiesce + TO_CLR restart. ena_mon-gated like the fire
+            // paths (a disabled monitor reports nothing). The wrapped
+            // integration back-pressures the (OTD_MAX+1)-th request via
+            // the room gates, so this can only fire standalone / on an
+            // integration violation - either way it must be seen.
+            logic rd_otd_sat;
+            assign rd_otd_sat = ar_hs && !rl_hs
+                                && (r.rd_otd == OTD_MAX[OTD_W-1:0]);
+            logic wr_otd_sat;
+            assign wr_otd_sat = aw_hs && !b_hs
+                                && (r.wr_otd == OTD_MAX[OTD_W-1:0]);
+            logic dlv_otd_sat;
+            assign dlv_otd_sat = wl_hs && !b_hs
+                                && (r.wr_dlv == OTD_MAX[OTD_W-1:0]);
+            assign otd_sat_w[m] = ena_mon
+                                  && (rd_otd_sat | wr_otd_sat | dlv_otd_sat);
 
             // ---- integrity: inverted duplicates, checked every cycle ----
             logic wr_cnt_a_f;
@@ -669,8 +698,11 @@ module hang_prot_core #(
     // is never indistinguishable from a caught fault. Routed to the ESM on
     // its own line (dual rail), separate group/channel from err_event.
     //--------------------------------------------------------------------------
+    logic otd_sat_live;
+    assign otd_sat_live = |otd_sat_w;
     logic fu_live;
-    assign fu_live = ena_code_fault | thr_a_fault | thr_r_fault | (|fu_m_w);
+    assign fu_live = ena_code_fault | thr_a_fault | thr_r_fault | (|fu_m_w)
+                     | otd_sat_live;
 
     //--------------------------------------------------------------------------
     // Fault-source status (sticky, same fu_w1c, CPU clear priority):
@@ -682,9 +714,13 @@ module hang_prot_core #(
     //   [3+3m+0]   CNT : master m counter/depth duplicate mismatch
     //   [3+3m+1]   CMP : master m dual-comparator disagreement
     //   [3+3m+2]   STAT: master m status duplicate mismatch
+    //   [3+3*NUM_M] OTDSAT: outstanding ledger saturated (rd/wr/dlv depth
+    //              hit OTD_MAX with a handshake) - depth now under-counts;
+    //              quiesce + TO_CLR restart required. Which master is
+    //              diagnosable via SCMOTD (depth reads OTD_MAX)
     //--------------------------------------------------------------------------
     logic [FU_SRC_W-1:0] fu_src_live;
-    assign fu_src_live = {fu_m_cat, thr_r_fault, thr_a_fault,
+    assign fu_src_live = {otd_sat_live, fu_m_cat, thr_r_fault, thr_a_fault,
                           ena_code_fault};
 
     //--------------------------------------------------------------------------

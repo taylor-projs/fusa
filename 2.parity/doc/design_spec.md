@@ -191,27 +191,38 @@ GEN 侧忽略。
 
 ## 6. 数据通路（edc_site）
 
-每个站点固定 **+1 cycle** 延迟，valid/ready 语义完整保持。单站点单元
-`edc_site` 用参数 `MODE` 在 GEN/CHK 间切换：
+每条通道固定 **+1 cycle** 延迟，valid/ready 语义完整保持。单站点引擎
+`edc_site` **纯组合、不持有任何寄存器**，用参数 `MODE` 在 GEN/CHK 间切换；
+valid/ready 由父级（`edc_gen` / `edc_chk`）按**通道**统一实现：
 
 ```
-              +---- MODE=0 (GEN): edc = c_edc (组合算)
-i_valid/payload|---- MODE=1 (CHK): edc = i_edc (随路 EDC 取入)
-              +--> 寄存器 {payload, edc} --> o_payload / o_edc
-                          |  (CHK 模式还接 chk_fault_ej 比对 + 注错)
-                          +--> o_err (仅 CHK 模式, vld_q 门控)
+GEN (MODE=0): 父级装载拍 {payload, 新算 EDC} 同沿打入通道级寄存器记录
+              o_edc = c_edc (组合算)              o_err 恒 0
+CHK (MODE=1): 父级已寄存 {payload, 随路 EDC} -> 重算比对 + 注错
+              o_edc = i_edc (透传)                o_err = 原始电平
+              父级再门控: o_site_err[i] = o_err & 通道 vld
 ```
 
-- `o_ready = i_ready || !vld_q`：空时组合接收，满时等下游；
-- GEN 模式：`o_edc` 输出新算的 EDC，`o_err` 恒 0；
-- CHK 模式：`o_edc` 透传随路 EDC，重算并与随路 EDC 比对；
-- 注错只作用在**检查分支的输入镜像**上，不修改 `dat_q`，转发数据无损；
-- `o_err` 仅在 `vld_q=1`（有有效拍驻留）时有效。
+- 每条 AXI 通道只有**一个** valid FF（`aw_vld`/`w_vld`/`ar_vld` 或
+  `b_vld`/`r_vld`）；通道内全部切片的 payload+EDC 在同一个寄存器记录里
+  **同沿打拍**，不可能出现跨切片错拍；
+- 通道级握手保持 1-deep skid 语义：`m_ready = s_ready || !vld`（空时组合
+  接收、满时等下游），装载优先于 pop；
+- CHK 模式：重算并与随路 EDC 比对，注错只作用在**检查分支的输入镜像**上，
+  不修改已寄存 payload，转发数据无损；
+- `o_err` 为未门控原始电平，父级仅在通道 `vld=1`（有有效拍驻留）时上报。
 
 站点错误在 AXI 域按**电平**输出；`edc_gen_chk_top` 内部再转成粘滞状态
 （站点有错时该拍持续为高，粘滞位置 1）。**只有 CHK 一侧报告错误**——
 GEN 侧站点 `o_err` 恒 0，因此同一端口上响应站（13..17）在 SI 报错、
 请求站（0..12）在 MI 报错。
+
+> **历史结构与改造原因**：v1 每站点自持 1-deep skid（各自 `vld_q`），同一
+> 通道的多个切片共享握手、仅首站点外接 `o_ready`/`o_valid`。正常情形各
+> `vld_q` 恒等对齐；但任一 `vld_q` 单点翻转（SEU / 综合后不等价）会让该
+> 切片与其他切片错一拍，拼出"各切片 EDC 自洽但跨切片混代"的事务——CHK
+> 侧每切片自检自洽、**静默漏检**。v2 改为通道级单一 valid + 纯组合站点
+> 引擎，整条通道的控制 FF 只剩一个 vld，从结构上消除该窗口。
 
 ## 7. mbus 协议与 apb2mbus
 

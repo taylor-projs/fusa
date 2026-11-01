@@ -316,6 +316,12 @@ mcore id 各自类）：响应方回显转发 id，逐 burst 校验还原 rid �
      wr_dlv = (WLAST 握手数) - (B 握手数)        饱和于 OTD_MAX
 ```
 
+**饱和即故障**：账本已在 OTD_MAX 而同一拍又来递增请求（AR/AW/WLAST 握手）时，
+该笔递增被丢弃、账本就不可信了——这可能是真正的 outstanding 溢出，监控会看不见
+挂死。此时置 `fu_src` 顶位 **OTDSAT** 并拉 `fu_fault`（完整性事件，不走 err_event），
+T6 sticky；SW 需 quiesce 主控 + TO_CLR 重启账本。wrapper 集成中 room 门控
+（`rd_otd < OTD_MAX` 才放行）使饱和带握手只可能出现在裸监控核直连场景。
+
 监控核**本身仍然是无 ID、无顺序的深度计数**（TI 原话"no need to save outstanding transactions"）——v2 的变化是**恢复单元**持有 ID FIFO：监控核管"有没有进展"，恢复桥管"每笔事务的身份"。两者账本同源（同一握手事件），各司其职。
 
 **wr_dlv 与 dummy B 的时序约束（v2 新增决策 D-B序；v3.4 改为计数器实现）**：dummy B 对某笔写只在该笔的 WLAST 已过 m 侧后发出。v2~v3.3 用第三枚指针 `aw_bp != aw_wm` 门控，但 mod-OTD_MAX 指针在**满环**时无法区分"0 笔 WLAST 完成"与"OTD_MAX 笔 WLAST 完成"（两态指针相等）——TB_A P22b（OTD_MAX=4 笔写全部 WLAST 完成、B 停在 m 侧、main 挂死超时进恢复）触发该歧义：进入 mode 的瞬间被屏蔽的 real B 掉电（违 AXI hold），且 dummy B 永远不发，`wr_otd` 卡 4 无法退出恢复 = **真 hang**。v3.4 起改为精确的上下计数账本 `bdum_owed`（m WLAST +1 / m B −1，0..OTD_MAX 无歧义，双轨+dup 检查），两个模块（recover / bdry_in）同步修复。若 B 先于 WLAST 出现，`wr_dlv = WLAST − B` 会出现"先减后加"的负漂移窗口，期间 `wr_otd != wr_dlv` 使写流被判"请求 pending"，r2a 计数上涨——恢复期间制造虚假 r2a 上报。门控后每笔写保持 AW → WLAST → B 的规范顺序，账目全程干净。
@@ -339,7 +345,7 @@ err_event = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触�
 | 双比较器 | fire 条件算两遍，OR 进 fire，分歧 = fu_fault | 比较器单点翻转可见 |
 | 状态副本 | sticky 位带反相副本；失配自愈为**置位** | 被 SEU 清掉的错误重新上报 |
 | 双轨输出 | err_event/err_event_n、fu_fault/fu_fault_n 对 | 传输故障在 ESM 侧可检 |
-| fu_src | 故障源 sticky 状态 | SW 定位哪路完整性检查坏了 |
+| fu_src | 故障源 sticky 状态（ENA/THRA/THRR + 每 master CNT/CMP/STAT + 顶位 OTDSAT） | SW 定位哪路完整性检查坏了；OTDSAT 靠 SCMOTD 逐流定位 |
 | 残余 | 共模 → 周期 selftest + 启动端到端事务测试兜底 | 文档化的残余风险 |
 
 **err_event 与 fu_fault 刻意分开**：坏掉的监控器不能和真总线超时不可区分——各走各的 ESM 组。
@@ -807,7 +813,7 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 | 0x14 | `SCMTHRESH0` | W/R | 0x0000000F | `[15:0]` REQ2ACCEPT_MAX |
 | 0x18 | `SCMTHRESH1` | W/R | 0x000000FF | `[15:0]` REQ2RESP_MAX |
 | 0x1C | `SCMIAFUSTAT` | **W1C/R** | 0x00000000 | `[0]` FU_FAULT（W1C）；`[1]`/`[2]`/`[3]` FU_FAULT_N / ERR_EVENT / ERR_EVENT_N（RO 双轨）；`[4]` CFG_BUSY（RO，CDC 写在途）；`[5]` WR_DROPPED（W1C，忙时写被丢弃） |
-| 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | 完整性故障源（ENA/THRA/THRR + 每 master CNT/CMP/STAT） |
+| 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | 完整性故障源（ENA/THRA/THRR + 每 master CNT/CMP/STAT + 顶位 OTDSAT） |
 | 0x24 | `SCMREGPARSTAT` | **W1C/R** | 0x00000000 | `[0]` PAR_FAULT；`[1]` RO 补码；`[13:4]` PERR9..PERR0（bit k = 0x4*k 寄存器奇偶错）；`[14]` PERR_CMD（mbus 命令奇偶错，W1C） |
 
 #### 7.2 SCMCNTRL 字段（0x10）

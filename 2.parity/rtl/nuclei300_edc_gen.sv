@@ -11,6 +11,14 @@ module nuclei300_edc_gen # (
   );
  logic [63:0] t_dat;
  logic [6:0]  t_edc;
+ // FuSa guard: DW>64 时 t_dat 只保留低 64 位, 高位 [DW-1:64] 在生成端与
+ // 检查端都不进 EDC/syndrome (静默无保护). 拒绝编译, 不留静默窗口;
+ // 需要更宽载荷时按 64bit 切片实例化多组 EDC.
+generate if (DW > 64) begin: dw_unsupported
+  initial begin
+    $fatal(1, "nuclei300_edc_gen: DW=%0d > 64, high bits [DW-1:64] unprotected", DW);
+  end
+end endgenerate
 generate if (DW >= 64) begin: dw_ge_64
   assign t_dat = i_dat[63:0];
 end else begin: dw_lt_64
@@ -71,9 +79,16 @@ module nuclei300_edc_chk #(
     input [EDCW-1:0] edc,  
     output o_err 
   );
- logic [6:0]  syndrome; 
+ logic [6:0]  syndrome;
  logic [6:0]  t_edc;
  logic [63:0] t_dat;
+ // FuSa guard: 同 nuclei300_edc_gen - DW>64 高位无保护, 拒绝编译.
+ // (此分支 i_dat 赋 64bit t_dat 本就截高位, 与生成端 [63:0] 同向)
+generate if (DW > 64) begin: dw_unsupported
+  initial begin
+    $fatal(1, "nuclei300_edc_chk: DW=%0d > 64, high bits [DW-1:64] unprotected", DW);
+  end
+end endgenerate
 generate if (DW >= 64) begin: dw_ge_64
   assign t_dat = i_dat;
 end else begin: dw_lt_64

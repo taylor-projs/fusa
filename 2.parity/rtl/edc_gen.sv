@@ -29,8 +29,16 @@
 //   awuser/aruser = {addr_hi_edc, addr_lo_edc, attri0_edc, attri1_edc, id_edc}
 //   wuser         = {wdata_edc, wmask_edc, wlast_edc}
 //
-// awqos/awregion/arqos/arregion 不在 EDC 保护范围内, 用与站点同拍的
-// 一级寄存器对齐转发, 保证整条通道仍为固定 +1 拍.
+// awqos/awregion/arqos/arregion 不在 EDC 保护范围内, 与站点同拍打进同一
+// 寄存器记录, 保证整条通道仍为固定 +1 拍.
+//
+// 结构 (v2: 通道级共享 valid):
+//   站点引擎 (edc_site) 为纯组合; 每条通道的全部切片 payload+EDC 在父级
+//   同一个寄存器记录里同沿打拍, 一条通道只有一个 vld 控制 FF
+//   (aw_vld/w_vld/ar_vld). 历史结构每站点自持 1-deep skid 的 vld_q,
+//   单点翻转可致跨切片混代而各片 EDC 自洽 (静默漏检) -- 详见 edc_site
+//   头注. GEN 模式引擎 tap 输入总线切片 (算 EDC), CHK 模式 tap 已寄存
+//   切片 (重算比对); 装载值 GEN 取引擎 o_edc, CHK 取总线 user 位.
 // ============================================================================
 module edc_gen #(
    parameter integer IDW  = 4,
@@ -147,6 +155,51 @@ module edc_gen #(
    localparam integer W_O_MASK = W_O_LAST + EW_WL;
    localparam integer W_O_DATA = W_O_MASK + EW_WM;
 
+   //==========================================================================
+   // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
+   //   一条通道一个 vld; payload/EDC 刻意不复位 (vld=0 时无效), 只复位
+   //   vld, 节省复位扇出
+   //==========================================================================
+   typedef struct packed {
+      // ---- AW 通道 (站点 0-4 + 未保护 rest 字段) ----
+      logic             aw_vld;
+      logic [19:0]      aw_addr_hi_q;
+      logic [19:0]      aw_addr_lo_q;
+      logic [10:0]      aw_attri0_q;
+      logic [9:0]       aw_attri1_q;
+      logic [IDW-1:0]   aw_id_q;
+      logic [EW_AH-1:0] aw_hi_edc_q;
+      logic [EW_AL-1:0] aw_lo_edc_q;
+      logic [EW_A0-1:0] aw_a0_edc_q;
+      logic [EW_A1-1:0] aw_a1_edc_q;
+      logic [EWID-1:0]  aw_id_edc_q;
+      logic [7:0]       aw_rest_q;    // {awqos, awregion} 未保护, 同拍对齐
+      // ---- W 通道 (站点 5-7) ----
+      logic             w_vld;
+      logic [63:0]      w_data_q;
+      logic [7:0]       w_mask_q;
+      logic             w_last_q;
+      logic [EW_WD-1:0] w_data_edc_q;
+      logic [EW_WM-1:0] w_mask_edc_q;
+      logic [EW_WL-1:0] w_last_edc_q;
+      // ---- AR 通道 (站点 8-12 + 未保护 rest 字段) ----
+      logic             ar_vld;
+      logic [19:0]      ar_addr_hi_q;
+      logic [19:0]      ar_addr_lo_q;
+      logic [10:0]      ar_attri0_q;
+      logic [9:0]       ar_attri1_q;
+      logic [IDW-1:0]   ar_id_q;
+      logic [EW_AH-1:0] ar_hi_edc_q;
+      logic [EW_AL-1:0] ar_lo_edc_q;
+      logic [EW_A0-1:0] ar_a0_edc_q;
+      logic [EW_A1-1:0] ar_a1_edc_q;
+      logic [EWID-1:0]  ar_id_edc_q;
+      logic [7:0]       ar_rest_q;    // {arqos, arregion} 未保护, 同拍对齐
+   } reg_t;
+
+   reg_t r;
+   reg_t rin;
+
    // =========================================================================
    // AW: 5 个站点
    // =========================================================================
@@ -162,12 +215,6 @@ module edc_gen #(
    logic [IDW-1:0] aw_id_dat;
    assign aw_id_dat = s_axi_awid;
 
-   logic [19:0]    aw_addr_hi_q;
-   logic [19:0]    aw_addr_lo_q;
-   logic [10:0]    aw_attri0_q;
-   logic [9:0]     aw_attri1_q;
-   logic [IDW-1:0] aw_id_q;
-
    logic [EW_AH-1:0] aw_hi_edc_i;
    assign aw_hi_edc_i = s_axi_awuser[AW_O_HI +: EW_AH];
    logic [EW_AL-1:0] aw_lo_edc_i;
@@ -179,122 +226,101 @@ module edc_gen #(
    logic [EWID-1:0]  aw_id_edc_i;
    assign aw_id_edc_i = s_axi_awuser[AW_O_ID +: EWID];
 
-   logic [EW_AH-1:0] aw_hi_edc_o;
-   logic [EW_AL-1:0] aw_lo_edc_o;
-   logic [EW_A0-1:0] aw_a0_edc_o;
-   logic [EW_A1-1:0] aw_a1_edc_o;
-   logic [EWID-1:0]  aw_id_edc_o;
+   logic [EW_AH-1:0] aw_hi_edc_w;
+   logic [EW_AL-1:0] aw_lo_edc_w;
+   logic [EW_A0-1:0] aw_a0_edc_w;
+   logic [EW_A1-1:0] aw_a1_edc_w;
+   logic [EWID-1:0]  aw_id_edc_w;
 
-   assign m_axi_awuser = {aw_hi_edc_o, aw_lo_edc_o, aw_a0_edc_o,
-                          aw_a1_edc_o, aw_id_edc_o};
+   logic             aw_hi_err;
+   logic             aw_lo_err;
+   logic             aw_a0_err;
+   logic             aw_a1_err;
+   logic             aw_id_err;
 
+   assign m_axi_awuser = {r.aw_hi_edc_q, r.aw_lo_edc_q, r.aw_a0_edc_q,
+                          r.aw_a1_edc_q, r.aw_id_edc_q};
+
+   // GEN: tap 输入切片, o_edc = 新算; CHK: tap 已寄存切片, o_err = 比对
    edc_site #(
       .DW   (20  ),
       .MODE (MODE)
    ) u_aw_addr_hi (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_awvalid        ),
-      .i_payload   (aw_addr_hi_dat       ),
-      .o_ready     (s_axi_awready        ),
-      .o_valid     (m_axi_awvalid        ),
-      .o_payload   (aw_addr_hi_q         ),
-      .i_ready     (m_axi_awready        ),
-      .i_edc       (aw_hi_edc_i          ),
-      .o_edc       (aw_hi_edc_o          ),
+      .i_payload   (MODE == 0 ? aw_addr_hi_dat : r.aw_addr_hi_q),
+      .i_edc       (MODE == 0 ? aw_hi_edc_i   : r.aw_hi_edc_q ),
+      .o_edc       (aw_hi_edc_w         ),
       .i_inj_pos   (i_inj_pos[0*64 +: 64]),
-      .i_inj_en    (i_inj_en[0]          ),
-      .i_inj_force (i_inj_force[0]       ),
-      .o_err       (o_site_err[0]        )
+      .i_inj_en    (i_inj_en[0]         ),
+      .i_inj_force (i_inj_force[0]      ),
+      .o_err       (aw_hi_err           )
    );
    edc_site #(
       .DW   (20  ),
       .MODE (MODE)
    ) u_aw_addr_lo (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_awvalid        ),
-      .i_payload   (aw_addr_lo_dat       ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (aw_addr_lo_q         ),
-      .i_ready     (m_axi_awready        ),
-      .i_edc       (aw_lo_edc_i          ),
-      .o_edc       (aw_lo_edc_o          ),
+      .i_payload   (MODE == 0 ? aw_addr_lo_dat : r.aw_addr_lo_q),
+      .i_edc       (MODE == 0 ? aw_lo_edc_i   : r.aw_lo_edc_q ),
+      .o_edc       (aw_lo_edc_w         ),
       .i_inj_pos   (i_inj_pos[1*64 +: 64]),
-      .i_inj_en    (i_inj_en[1]          ),
-      .i_inj_force (i_inj_force[1]       ),
-      .o_err       (o_site_err[1]        )
+      .i_inj_en    (i_inj_en[1]         ),
+      .i_inj_force (i_inj_force[1]      ),
+      .o_err       (aw_lo_err           )
    );
    edc_site #(
       .DW   (11  ),
       .MODE (MODE)
    ) u_aw_attri0 (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_awvalid        ),
-      .i_payload   (aw_attri0_dat        ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (aw_attri0_q          ),
-      .i_ready     (m_axi_awready        ),
-      .i_edc       (aw_a0_edc_i          ),
-      .o_edc       (aw_a0_edc_o          ),
+      .i_payload   (MODE == 0 ? aw_attri0_dat : r.aw_attri0_q),
+      .i_edc       (MODE == 0 ? aw_a0_edc_i   : r.aw_a0_edc_q ),
+      .o_edc       (aw_a0_edc_w         ),
       .i_inj_pos   (i_inj_pos[2*64 +: 64]),
-      .i_inj_en    (i_inj_en[2]          ),
-      .i_inj_force (i_inj_force[2]       ),
-      .o_err       (o_site_err[2]        )
+      .i_inj_en    (i_inj_en[2]         ),
+      .i_inj_force (i_inj_force[2]      ),
+      .o_err       (aw_a0_err           )
    );
    edc_site #(
       .DW   (10  ),
       .MODE (MODE)
    ) u_aw_attri1 (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_awvalid        ),
-      .i_payload   (aw_attri1_dat        ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (aw_attri1_q          ),
-      .i_ready     (m_axi_awready        ),
-      .i_edc       (aw_a1_edc_i          ),
-      .o_edc       (aw_a1_edc_o          ),
+      .i_payload   (MODE == 0 ? aw_attri1_dat : r.aw_attri1_q),
+      .i_edc       (MODE == 0 ? aw_a1_edc_i   : r.aw_a1_edc_q ),
+      .o_edc       (aw_a1_edc_w         ),
       .i_inj_pos   (i_inj_pos[3*64 +: 64]),
-      .i_inj_en    (i_inj_en[3]          ),
-      .i_inj_force (i_inj_force[3]       ),
-      .o_err       (o_site_err[3]        )
+      .i_inj_en    (i_inj_en[3]         ),
+      .i_inj_force (i_inj_force[3]      ),
+      .o_err       (aw_a1_err           )
    );
    edc_site #(
       .DW   (IDW ),
       .MODE (MODE)
    ) u_aw_id (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_awvalid        ),
-      .i_payload   (aw_id_dat            ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (aw_id_q              ),
-      .i_ready     (m_axi_awready        ),
-      .i_edc       (aw_id_edc_i          ),
-      .o_edc       (aw_id_edc_o          ),
+      .i_payload   (MODE == 0 ? aw_id_dat    : r.aw_id_q   ),
+      .i_edc       (MODE == 0 ? aw_id_edc_i  : r.aw_id_edc_q),
+      .o_edc       (aw_id_edc_w         ),
       .i_inj_pos   (i_inj_pos[4*64 +: 64]),
-      .i_inj_en    (i_inj_en[4]          ),
-      .i_inj_force (i_inj_force[4]       ),
-      .o_err       (o_site_err[4]        )
+      .i_inj_en    (i_inj_en[4]         ),
+      .i_inj_force (i_inj_force[4]      ),
+      .o_err       (aw_id_err           )
    );
 
-   assign m_axi_awaddr = {aw_addr_hi_q, aw_addr_lo_q};
-   assign {m_axi_awlen, m_axi_awsize} = aw_attri0_q;
+   // vld 门控在父级 (GEN 模式引擎 o_err 恒 0)
+   assign o_site_err[0] = aw_hi_err & r.aw_vld;
+   assign o_site_err[1] = aw_lo_err & r.aw_vld;
+   assign o_site_err[2] = aw_a0_err & r.aw_vld;
+   assign o_site_err[3] = aw_a1_err & r.aw_vld;
+   assign o_site_err[4] = aw_id_err & r.aw_vld;
+
+   // 通道级握手: 唯一 valid FF
+   assign s_axi_awready = m_axi_awready || !r.aw_vld;
+   assign m_axi_awvalid = r.aw_vld;
+
+   assign m_axi_awaddr = {r.aw_addr_hi_q, r.aw_addr_lo_q};
+   assign {m_axi_awlen, m_axi_awsize} = r.aw_attri0_q;
    assign {m_axi_awlock, m_axi_awcache,
-           m_axi_awprot, m_axi_awburst} = aw_attri1_q;
-   assign m_axi_awid = aw_id_q;
+           m_axi_awprot, m_axi_awburst} = r.aw_attri1_q;
+   assign m_axi_awid = r.aw_id_q;
 
-   // 未保护字段: 与站点同条件寄存, 保持 +1 拍对齐
-   // (记录字段 aw_rest_q/aw_rest_vld, two-process 块见文件尾部)
-   logic aw_rest_rdy;
-   assign aw_rest_rdy = m_axi_awready || !r.aw_rest_vld;
-
+   // 未保护字段: 与站点同拍对齐 (aw_rest_q 与切片同记录同沿)
    assign {m_axi_awqos, m_axi_awregion} = r.aw_rest_q;
 
    // =========================================================================
@@ -307,10 +333,6 @@ module edc_gen #(
    logic w_last_dat;
    assign w_last_dat = s_axi_wlast;
 
-   logic [63:0] w_data_q;
-   logic [7:0]  w_mask_q;
-   logic        w_last_q;
-
    logic [EW_WD-1:0] w_data_edc_i;
    assign w_data_edc_i = s_axi_wuser[W_O_DATA +: EW_WD];
    logic [EW_WM-1:0] w_mask_edc_i;
@@ -318,73 +340,63 @@ module edc_gen #(
    logic [EW_WL-1:0] w_last_edc_i;
    assign w_last_edc_i = s_axi_wuser[W_O_LAST +: EW_WL];
 
-   logic [EW_WD-1:0] w_data_edc_o;
-   logic [EW_WM-1:0] w_mask_edc_o;
-   logic [EW_WL-1:0] w_last_edc_o;
+   logic [EW_WD-1:0] w_data_edc_w;
+   logic [EW_WM-1:0] w_mask_edc_w;
+   logic [EW_WL-1:0] w_last_edc_w;
 
-   assign m_axi_wuser = {w_data_edc_o, w_mask_edc_o, w_last_edc_o};
+   logic             w_data_err;
+   logic             w_mask_err;
+   logic             w_last_err;
+
+   assign m_axi_wuser = {r.w_data_edc_q, r.w_mask_edc_q, r.w_last_edc_q};
 
    edc_site #(
       .DW   (64  ),
       .MODE (MODE)
    ) u_w_data (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_wvalid         ),
-      .i_payload   (w_data_dat           ),
-      .o_ready     (s_axi_wready         ),
-      .o_valid     (m_axi_wvalid         ),
-      .o_payload   (w_data_q             ),
-      .i_ready     (m_axi_wready         ),
-      .i_edc       (w_data_edc_i         ),
-      .o_edc       (w_data_edc_o         ),
+      .i_payload   (MODE == 0 ? w_data_dat   : r.w_data_q   ),
+      .i_edc       (MODE == 0 ? w_data_edc_i : r.w_data_edc_q),
+      .o_edc       (w_data_edc_w         ),
       .i_inj_pos   (i_inj_pos[5*64 +: 64]),
-      .i_inj_en    (i_inj_en[5]          ),
-      .i_inj_force (i_inj_force[5]       ),
-      .o_err       (o_site_err[5]        )
+      .i_inj_en    (i_inj_en[5]         ),
+      .i_inj_force (i_inj_force[5]      ),
+      .o_err       (w_data_err          )
    );
    edc_site #(
       .DW   (8   ),
       .MODE (MODE)
    ) u_w_mask (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_wvalid         ),
-      .i_payload   (w_mask_dat           ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (w_mask_q             ),
-      .i_ready     (m_axi_wready         ),
-      .i_edc       (w_mask_edc_i         ),
-      .o_edc       (w_mask_edc_o         ),
+      .i_payload   (MODE == 0 ? w_mask_dat   : r.w_mask_q   ),
+      .i_edc       (MODE == 0 ? w_mask_edc_i : r.w_mask_edc_q),
+      .o_edc       (w_mask_edc_w         ),
       .i_inj_pos   (i_inj_pos[6*64 +: 64]),
-      .i_inj_en    (i_inj_en[6]          ),
-      .i_inj_force (i_inj_force[6]       ),
-      .o_err       (o_site_err[6]        )
+      .i_inj_en    (i_inj_en[6]         ),
+      .i_inj_force (i_inj_force[6]      ),
+      .o_err       (w_mask_err          )
    );
    edc_site #(
       .DW   (1   ),
       .MODE (MODE)
    ) u_w_last (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_wvalid         ),
-      .i_payload   (w_last_dat           ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (w_last_q             ),
-      .i_ready     (m_axi_wready         ),
-      .i_edc       (w_last_edc_i         ),
-      .o_edc       (w_last_edc_o         ),
+      .i_payload   (MODE == 0 ? w_last_dat   : r.w_last_q   ),
+      .i_edc       (MODE == 0 ? w_last_edc_i : r.w_last_edc_q),
+      .o_edc       (w_last_edc_w         ),
       .i_inj_pos   (i_inj_pos[7*64 +: 64]),
-      .i_inj_en    (i_inj_en[7]          ),
-      .i_inj_force (i_inj_force[7]       ),
-      .o_err       (o_site_err[7]        )
+      .i_inj_en    (i_inj_en[7]         ),
+      .i_inj_force (i_inj_force[7]      ),
+      .o_err       (w_last_err          )
    );
 
-   assign m_axi_wdata = w_data_q;
-   assign m_axi_wstrb = w_mask_q;
-   assign m_axi_wlast = w_last_q;
+   assign o_site_err[5] = w_data_err & r.w_vld;
+   assign o_site_err[6] = w_mask_err & r.w_vld;
+   assign o_site_err[7] = w_last_err & r.w_vld;
+
+   assign s_axi_wready = m_axi_wready || !r.w_vld;
+   assign m_axi_wvalid = r.w_vld;
+
+   assign m_axi_wdata = r.w_data_q;
+   assign m_axi_wstrb = r.w_mask_q;
+   assign m_axi_wlast = r.w_last_q;
 
    // =========================================================================
    // AR: 5 个站点
@@ -401,12 +413,6 @@ module edc_gen #(
    logic [IDW-1:0] ar_id_dat;
    assign ar_id_dat = s_axi_arid;
 
-   logic [19:0]    ar_addr_hi_q;
-   logic [19:0]    ar_addr_lo_q;
-   logic [10:0]    ar_attri0_q;
-   logic [9:0]     ar_attri1_q;
-   logic [IDW-1:0] ar_id_q;
-
    logic [EW_AH-1:0] ar_hi_edc_i;
    assign ar_hi_edc_i = s_axi_aruser[AW_O_HI +: EW_AH];
    logic [EW_AL-1:0] ar_lo_edc_i;
@@ -418,173 +424,169 @@ module edc_gen #(
    logic [EWID-1:0]  ar_id_edc_i;
    assign ar_id_edc_i = s_axi_aruser[AW_O_ID +: EWID];
 
-   logic [EW_AH-1:0] ar_hi_edc_o;
-   logic [EW_AL-1:0] ar_lo_edc_o;
-   logic [EW_A0-1:0] ar_a0_edc_o;
-   logic [EW_A1-1:0] ar_a1_edc_o;
-   logic [EWID-1:0]  ar_id_edc_o;
+   logic [EW_AH-1:0] ar_hi_edc_w;
+   logic [EW_AL-1:0] ar_lo_edc_w;
+   logic [EW_A0-1:0] ar_a0_edc_w;
+   logic [EW_A1-1:0] ar_a1_edc_w;
+   logic [EWID-1:0]  ar_id_edc_w;
 
-   assign m_axi_aruser = {ar_hi_edc_o, ar_lo_edc_o, ar_a0_edc_o,
-                          ar_a1_edc_o, ar_id_edc_o};
+   logic             ar_hi_err;
+   logic             ar_lo_err;
+   logic             ar_a0_err;
+   logic             ar_a1_err;
+   logic             ar_id_err;
+
+   assign m_axi_aruser = {r.ar_hi_edc_q, r.ar_lo_edc_q, r.ar_a0_edc_q,
+                          r.ar_a1_edc_q, r.ar_id_edc_q};
 
    edc_site #(
       .DW   (20  ),
       .MODE (MODE)
    ) u_ar_addr_hi (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_arvalid        ),
-      .i_payload   (ar_addr_hi_dat       ),
-      .o_ready     (s_axi_arready        ),
-      .o_valid     (m_axi_arvalid        ),
-      .o_payload   (ar_addr_hi_q         ),
-      .i_ready     (m_axi_arready        ),
-      .i_edc       (ar_hi_edc_i          ),
-      .o_edc       (ar_hi_edc_o          ),
+      .i_payload   (MODE == 0 ? ar_addr_hi_dat : r.ar_addr_hi_q),
+      .i_edc       (MODE == 0 ? ar_hi_edc_i   : r.ar_hi_edc_q ),
+      .o_edc       (ar_hi_edc_w         ),
       .i_inj_pos   (i_inj_pos[8*64 +: 64]),
-      .i_inj_en    (i_inj_en[8]          ),
-      .i_inj_force (i_inj_force[8]       ),
-      .o_err       (o_site_err[8]        )
+      .i_inj_en    (i_inj_en[8]         ),
+      .i_inj_force (i_inj_force[8]      ),
+      .o_err       (ar_hi_err           )
    );
    edc_site #(
       .DW   (20  ),
       .MODE (MODE)
    ) u_ar_addr_lo (
-      .clk         (clk                  ),
-      .rstn        (rstn                 ),
-      .i_valid     (s_axi_arvalid        ),
-      .i_payload   (ar_addr_lo_dat       ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (ar_addr_lo_q         ),
-      .i_ready     (m_axi_arready        ),
-      .i_edc       (ar_lo_edc_i          ),
-      .o_edc       (ar_lo_edc_o          ),
+      .i_payload   (MODE == 0 ? ar_addr_lo_dat : r.ar_addr_lo_q),
+      .i_edc       (MODE == 0 ? ar_lo_edc_i   : r.ar_lo_edc_q ),
+      .o_edc       (ar_lo_edc_w         ),
       .i_inj_pos   (i_inj_pos[9*64 +: 64]),
-      .i_inj_en    (i_inj_en[9]          ),
-      .i_inj_force (i_inj_force[9]       ),
-      .o_err       (o_site_err[9]        )
+      .i_inj_en    (i_inj_en[9]         ),
+      .i_inj_force (i_inj_force[9]      ),
+      .o_err       (ar_lo_err           )
    );
    edc_site #(
       .DW   (11  ),
       .MODE (MODE)
    ) u_ar_attri0 (
-      .clk         (clk                   ),
-      .rstn        (rstn                  ),
-      .i_valid     (s_axi_arvalid         ),
-      .i_payload   (ar_attri0_dat         ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (ar_attri0_q           ),
-      .i_ready     (m_axi_arready         ),
-      .i_edc       (ar_a0_edc_i           ),
-      .o_edc       (ar_a0_edc_o           ),
+      .i_payload   (MODE == 0 ? ar_attri0_dat : r.ar_attri0_q),
+      .i_edc       (MODE == 0 ? ar_a0_edc_i   : r.ar_a0_edc_q ),
+      .o_edc       (ar_a0_edc_w         ),
       .i_inj_pos   (i_inj_pos[10*64 +: 64]),
-      .i_inj_en    (i_inj_en[10]          ),
-      .i_inj_force (i_inj_force[10]       ),
-      .o_err       (o_site_err[10]        )
+      .i_inj_en    (i_inj_en[10]        ),
+      .i_inj_force (i_inj_force[10]     ),
+      .o_err       (ar_a0_err           )
    );
    edc_site #(
       .DW   (10  ),
       .MODE (MODE)
    ) u_ar_attri1 (
-      .clk         (clk                   ),
-      .rstn        (rstn                  ),
-      .i_valid     (s_axi_arvalid         ),
-      .i_payload   (ar_attri1_dat         ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (ar_attri1_q           ),
-      .i_ready     (m_axi_arready         ),
-      .i_edc       (ar_a1_edc_i           ),
-      .o_edc       (ar_a1_edc_o           ),
+      .i_payload   (MODE == 0 ? ar_attri1_dat : r.ar_attri1_q),
+      .i_edc       (MODE == 0 ? ar_a1_edc_i   : r.ar_a1_edc_q ),
+      .o_edc       (ar_a1_edc_w         ),
       .i_inj_pos   (i_inj_pos[11*64 +: 64]),
-      .i_inj_en    (i_inj_en[11]          ),
-      .i_inj_force (i_inj_force[11]       ),
-      .o_err       (o_site_err[11]        )
+      .i_inj_en    (i_inj_en[11]        ),
+      .i_inj_force (i_inj_force[11]     ),
+      .o_err       (ar_a1_err           )
    );
    edc_site #(
       .DW   (IDW ),
       .MODE (MODE)
    ) u_ar_id (
-      .clk         (clk                   ),
-      .rstn        (rstn                  ),
-      .i_valid     (s_axi_arvalid         ),
-      .i_payload   (ar_id_dat             ),
-      .o_ready     (),
-      .o_valid     (),
-      .o_payload   (ar_id_q               ),
-      .i_ready     (m_axi_arready         ),
-      .i_edc       (ar_id_edc_i           ),
-      .o_edc       (ar_id_edc_o           ),
+      .i_payload   (MODE == 0 ? ar_id_dat    : r.ar_id_q   ),
+      .i_edc       (MODE == 0 ? ar_id_edc_i  : r.ar_id_edc_q),
+      .o_edc       (ar_id_edc_w         ),
       .i_inj_pos   (i_inj_pos[12*64 +: 64]),
-      .i_inj_en    (i_inj_en[12]          ),
-      .i_inj_force (i_inj_force[12]       ),
-      .o_err       (o_site_err[12]        )
+      .i_inj_en    (i_inj_en[12]        ),
+      .i_inj_force (i_inj_force[12]     ),
+      .o_err       (ar_id_err           )
    );
 
-   assign m_axi_araddr = {ar_addr_hi_q, ar_addr_lo_q};
-   assign {m_axi_arlen, m_axi_arsize} = ar_attri0_q;
-   assign {m_axi_arlock, m_axi_arcache,
-           m_axi_arprot, m_axi_arburst} = ar_attri1_q;
-   assign m_axi_arid = ar_id_q;
+   assign o_site_err[8]  = ar_hi_err & r.ar_vld;
+   assign o_site_err[9]  = ar_lo_err & r.ar_vld;
+   assign o_site_err[10] = ar_a0_err & r.ar_vld;
+   assign o_site_err[11] = ar_a1_err & r.ar_vld;
+   assign o_site_err[12] = ar_id_err & r.ar_vld;
 
-   // 未保护字段: 与站点同条件寄存, 保持 +1 拍对齐
-   // (记录字段 ar_rest_q/ar_rest_vld, two-process 块见文件尾部)
-   logic ar_rest_rdy;
-   assign ar_rest_rdy = m_axi_arready || !r.ar_rest_vld;
+   assign s_axi_arready = m_axi_arready || !r.ar_vld;
+   assign m_axi_arvalid = r.ar_vld;
+
+   assign m_axi_araddr = {r.ar_addr_hi_q, r.ar_addr_lo_q};
+   assign {m_axi_arlen, m_axi_arsize} = r.ar_attri0_q;
+   assign {m_axi_arlock, m_axi_arcache,
+           m_axi_arprot, m_axi_arburst} = r.ar_attri1_q;
+   assign m_axi_arid = r.ar_id_q;
 
    assign {m_axi_arqos, m_axi_arregion} = r.ar_rest_q;
 
    //==========================================================================
-   // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
-   //   AW/AR 未保护字段 (qos/region) 的对齐寄存; payload 刻意不复位
-   //   (vld=0 时无效), 只复位 vld, 节省复位扇出
-   //==========================================================================
-   typedef struct packed {
-      logic [7:0] aw_rest_q;    // AW {awqos, awregion}
-      logic       aw_rest_vld;
-      logic [7:0] ar_rest_q;    // AR {arqos, arregion}
-      logic       ar_rest_vld;
-   } reg_t;
-
-   reg_t r;
-   reg_t rin;
-
-   //--------------------------------------------------------------------------
    // 组合进程: 下一拍值 (默认保持)
-   //--------------------------------------------------------------------------
+   //   装载 = 通道 ready && 通道 valid (load 优先于 pop, 与原 skid 同语义);
+   //   EDC 装载值 GEN 取引擎新算, CHK 取总线 user 位
+   //==========================================================================
    always_comb begin : comb
       reg_t v;
 
       v = r;
 
-      // AW 未保护字段: 与站点同条件寄存
-      if (aw_rest_rdy && s_axi_awvalid) begin
-         v.aw_rest_vld = 1'b1;
-         v.aw_rest_q   = {s_axi_awqos, s_axi_awregion};
+      // ---- AW 通道 ----
+      if (s_axi_awready && s_axi_awvalid) begin
+         v.aw_vld       = 1'b1;
+         v.aw_addr_hi_q = aw_addr_hi_dat;
+         v.aw_addr_lo_q = aw_addr_lo_dat;
+         v.aw_attri0_q  = aw_attri0_dat;
+         v.aw_attri1_q  = aw_attri1_dat;
+         v.aw_id_q      = aw_id_dat;
+         v.aw_hi_edc_q  = (MODE == 0) ? aw_hi_edc_w : aw_hi_edc_i;
+         v.aw_lo_edc_q  = (MODE == 0) ? aw_lo_edc_w : aw_lo_edc_i;
+         v.aw_a0_edc_q  = (MODE == 0) ? aw_a0_edc_w : aw_a0_edc_i;
+         v.aw_a1_edc_q  = (MODE == 0) ? aw_a1_edc_w : aw_a1_edc_i;
+         v.aw_id_edc_q  = (MODE == 0) ? aw_id_edc_w : aw_id_edc_i;
+         v.aw_rest_q    = {s_axi_awqos, s_axi_awregion};
       end else if (m_axi_awready) begin
-         v.aw_rest_vld = 1'b0;
+         v.aw_vld       = 1'b0;
       end
 
-      // AR 未保护字段: 与站点同条件寄存
-      if (ar_rest_rdy && s_axi_arvalid) begin
-         v.ar_rest_vld = 1'b1;
-         v.ar_rest_q   = {s_axi_arqos, s_axi_arregion};
+      // ---- W 通道 ----
+      if (s_axi_wready && s_axi_wvalid) begin
+         v.w_vld        = 1'b1;
+         v.w_data_q     = w_data_dat;
+         v.w_mask_q     = w_mask_dat;
+         v.w_last_q     = w_last_dat;
+         v.w_data_edc_q = (MODE == 0) ? w_data_edc_w : w_data_edc_i;
+         v.w_mask_edc_q = (MODE == 0) ? w_mask_edc_w : w_mask_edc_i;
+         v.w_last_edc_q = (MODE == 0) ? w_last_edc_w : w_last_edc_i;
+      end else if (m_axi_wready) begin
+         v.w_vld        = 1'b0;
+      end
+
+      // ---- AR 通道 ----
+      if (s_axi_arready && s_axi_arvalid) begin
+         v.ar_vld       = 1'b1;
+         v.ar_addr_hi_q = ar_addr_hi_dat;
+         v.ar_addr_lo_q = ar_addr_lo_dat;
+         v.ar_attri0_q  = ar_attri0_dat;
+         v.ar_attri1_q  = ar_attri1_dat;
+         v.ar_id_q      = ar_id_dat;
+         v.ar_hi_edc_q  = (MODE == 0) ? ar_hi_edc_w : ar_hi_edc_i;
+         v.ar_lo_edc_q  = (MODE == 0) ? ar_lo_edc_w : ar_lo_edc_i;
+         v.ar_a0_edc_q  = (MODE == 0) ? ar_a0_edc_w : ar_a0_edc_i;
+         v.ar_a1_edc_q  = (MODE == 0) ? ar_a1_edc_w : ar_a1_edc_i;
+         v.ar_id_edc_q  = (MODE == 0) ? ar_id_edc_w : ar_id_edc_i;
+         v.ar_rest_q    = {s_axi_arqos, s_axi_arregion};
       end else if (m_axi_arready) begin
-         v.ar_rest_vld = 1'b0;
+         v.ar_vld       = 1'b0;
       end
 
       rin = v;
    end
 
    //--------------------------------------------------------------------------
-   // 时序进程: 只复位 vld (payload 随 vld 门控生效), 否则 r <= rin
+   // 时序进程: 只复位各通道 vld (payload/EDC 随 vld 门控生效), 否则 r <= rin
    //--------------------------------------------------------------------------
    always_ff @(posedge clk or negedge rstn) begin : seq
       if (!rstn) begin
-         r.aw_rest_vld <= 1'b0;
-         r.ar_rest_vld <= 1'b0;
+         r.aw_vld <= 1'b0;
+         r.w_vld  <= 1'b0;
+         r.ar_vld <= 1'b0;
       end else begin
          r <= rin;
       end

@@ -3,15 +3,21 @@
   *  All rights reserved.
   */
 // ============================================================================
-// edc_site: 单个 EDC 站点 (跨 NIC 链路的一端)
+// edc_site: 单个 EDC 站点引擎 (纯组合, 不持有任何寄存器)
 //
-//   MODE=0 GEN: 输入 payload 组合算 EDC -> {payload, EDC} 打入一级寄存
-//               -> 输出 payload + 随路 EDC (置入 AXI user 位).
-//   MODE=1 CHK: {payload, 随路 EDC} 打入一级寄存 -> 重算并与随路 EDC 比对
-//               (带注错) -> 输出 payload + 原随路 EDC.
+//   MODE=0 GEN: 对 i_payload 组合算 EDC -> o_edc. 父级在装载拍把 payload
+//               与新算 EDC 同沿打入通道级共享寄存器.
+//   MODE=1 CHK: 对父级已寄存的 {payload, 随路 EDC} 重算并比对 (带注错)
+//               -> o_err 原始电平; vld 门控在父级
+//               (o_site_err[i] = o_err & ch_vld).
 //
-//   一侧 GEN、另一侧 CHK, 中间的 EDC 由 AXI user 位随事务传输,
-//   保护范围 = 源端寄存级 + NIC 内部通路 + 目的端寄存级.
+//   历史结构: 每站点自带 1-deep skid (各自 vld_q), 同一条 AW/AR/W/B/R
+//   通道的多个切片共享同一组握手, 仅首站点的 o_ready/o_valid 外接.
+//   正常情形各 vld_q 恒等对齐; 但任一 vld_q 单点翻转 (SEU / 综合后不等价)
+//   会让该切片与其他切片错一拍, 拼出"各切片 EDC 自洽但跨切片混代"的拼接
+//   事务 -> CHK 侧每切片自检自洽, 静默漏检. 现改为通道级单一 valid:
+//   payload 与 EDC 在父级同一个寄存器记录里同沿打拍, 站点不再持有状态,
+//   整条通道的控制 FF 只剩一个 vld.
 //
 // 注错 (仅 CHK 模式有效):
 //   i_inj_pos[i]    (i < DW)   : 翻转数据位 i
@@ -27,18 +33,9 @@ module edc_site #(
                             (DW >= 5)  ? 4 :
                             (DW >= 2)  ? 3 : 1
 ) (
-   input  logic            clk,
-   input  logic            rstn,
-
-   input  logic            i_valid,
+   // GEN: i_payload = 输入总线切片 (寄存前), o_edc = 新算 EDC
+   // CHK: i_payload/i_edc = 父级已寄存切片, o_err = 比对+注错原始电平
    input  logic [DW-1:0]   i_payload,
-   output logic            o_ready,
-
-   output logic            o_valid,
-   output logic [DW-1:0]   o_payload,
-   input  logic            i_ready,
-
-   // 随路 EDC: CHK 模式从 user 位取入; GEN 模式输出生成的 EDC
    input  logic [EDCW-1:0] i_edc,
    output logic [EDCW-1:0] o_edc,
 
@@ -46,7 +43,7 @@ module edc_site #(
    input  logic [63:0]     i_inj_pos,
    input  logic            i_inj_en,
    input  logic            i_inj_force,
-   output logic            o_err
+   output logic            o_err        // CHK: 比对结果(未门控); GEN: 恒 0
 );
 
    // ---------------- 生成 EDC (组合) ----------------
@@ -59,58 +56,9 @@ module edc_site #(
       .edc   (c_edc    )
    );
 
-   // GEN 时寄存生成的 EDC, CHK 时寄存随路 EDC
-   logic [EDCW-1:0] edc_d;
-   assign edc_d = (MODE == 0) ? c_edc : i_edc;
-
-   // ---------------- 转发寄存 (1-deep) ----------------
-   //--------------------------------------------------------------------------
-   // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
-   //   dat_q/edc_q 刻意不复位 (转发数据通路, vld_q=0 时无效), 节省复位扇出
-   //--------------------------------------------------------------------------
-   typedef struct packed {
-      logic            vld_q;   // 占位有效
-      logic [DW-1:0]   dat_q;   // payload
-      logic [EDCW-1:0] edc_q;   // 随路 EDC
-   } reg_t;
-
-   reg_t r;
-   reg_t rin;
-
-   assign o_ready   = i_ready || !r.vld_q;
-   assign o_valid   = r.vld_q;
-   assign o_payload = r.dat_q;
-   assign o_edc     = r.edc_q;
-
-   //--------------------------------------------------------------------------
-   // 组合进程: 下一拍值 (默认保持)
-   //--------------------------------------------------------------------------
-   always_comb begin : comb
-      reg_t v;
-
-      v = r;
-
-      if (o_ready && i_valid) begin
-         v.vld_q = 1'b1;
-         v.dat_q = i_payload;
-         v.edc_q = edc_d;
-      end else if (i_ready) begin
-         v.vld_q = 1'b0;
-      end
-
-      rin = v;
-   end
-
-   //--------------------------------------------------------------------------
-   // 时序进程: 只复位 vld_q (dat_q/edc_q 随 vld_q 门控生效), 否则 r <= rin
-   //--------------------------------------------------------------------------
-   always_ff @(posedge clk or negedge rstn) begin : seq
-      if (!rstn) begin
-         r.vld_q <= 1'b0;
-      end else begin
-         r <= rin;
-      end
-   end
+   // GEN 时寄存新算的 EDC, CHK 时 o_edc 直传随路 EDC (父级 CHK 装载走
+   // 总线 user 位, 不用此口; 保持对称接线, 两模式同一份实例代码)
+   assign o_edc = (MODE == 0) ? c_edc : i_edc;
 
    // ---------------- 检查 (仅 CHK 模式) ----------------
    logic [127:0] inj_pos_g;
@@ -123,13 +71,14 @@ module edc_site #(
       .DW   (DW  ),
       .EDCW (EDCW)
    ) u_edc_chk (
-      .i_dat          (r.dat_q    ),
-      .edc            (r.edc_q    ),
+      .i_dat          (i_payload  ),
+      .edc            (i_edc      ),
       .einj_pos       (inj_pos_g  ),
       .einj_force_err (inj_force_v),
       .o_err          (err_raw    )
    );
 
-   assign o_err = (MODE == 1) ? (err_raw & r.vld_q) : 1'b0;
+   // vld 门控在父级: o_site_err[i] = o_err & 通道 vld (父级唯一 valid FF)
+   assign o_err = (MODE == 1) ? err_raw : 1'b0;
 
 endmodule
