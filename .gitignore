@@ -43,3 +43,7 @@ vc_hdrs.h
 
 # ===== 本地工具配置 =====
 .claude/
+
+# ===== macOS =====
+.DS_Store
+._*
