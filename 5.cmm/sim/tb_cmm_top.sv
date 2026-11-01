@@ -15,6 +15,9 @@
 // config, command, no-source) -> CFG_HANG (+WR_DROPPED + escape) ->
 // REF_STALE -> inj_cnt/cmp/psc -> ref-domain shadow injection -> EN nibble
 // protection -> disable gating -> REFSEL switch.
+// PHASE 1a (boot): late-start clock - ch2 dead from POR, appears after ~2
+// windows; DEAD latches in ARM, alarm rails rise before window 1 ends, FSM
+// is ERR by window 2; then restart + W1C + TST_CLR restores monitoring.
 //
 // Run: ./run_iverilog.sh  (WSL iverilog -g2012)
 //============================================================================
@@ -385,17 +388,60 @@ module tb_cmm_top;
         join_none
 
         // ------------------------------------------------------------------
-        // POR
+        // POR (ch2 clock held dead from t=0 for PHASE 1a)
         // ------------------------------------------------------------------
         rst_n = 0; mbus_rstn = 0;
+        d2_stop = 1;
         #250;
         rst_n = 1; mbus_rstn = 1;
         #1000;
+
+        // ------------------------------------------------------------------
+        // PHASE 1a: late-start clock - refclk live from POR, ch2 clock appears
+        // only after ~2 windows. dead_set is intentionally live in ARM, so the
+        // DEAD verdict must latch while the FSM is still in ARM, the alarm
+        // rails (which bypass the FSM) must rise before window 1 completes,
+        // and the FSM must sit in ERR by window 2. Starting the clock and a
+        // W1C + TST_CLR cycle must restore normal ch2 monitoring.
+        // ------------------------------------------------------------------
+        repeat (NDEAD_RST + 10) @(posedge refclk0); // > NDEAD, < window 1 end
+        mb_rd(A_GSTAT, rd);
+        chk(rd[0] == 1'b1 && rd[5:3] == 3'b001,
+            "LATE: alarm=1 while FSM still ARM (DEAD latched in ARM)");
+        chk(nerr_n == 1'b0, "LATE: nerr_n low in ARM (alarm bypasses FSM)");
+        mb_rd(A_ERRSTAT, rd);
+        chk(rd == 32'h4, "LATE: ERRSTAT ch2 only, latched in ARM");
 
         // ch4 window must be set before the 3rd window completes (default
         // [14,26] does not cover its count of 6..7)
         mb_wr_sync(A_CH0_LO + 8'd48, KEY | 32'd4);   // CH4_LO = 4
         mb_wr_sync(A_CH0_LO + 8'd52, KEY | 32'd9);   // CH4_HI = 9
+
+        repeat (N_WIN + 44) @(posedge refclk0);      // ~2 windows since POR
+        mb_rd(A_GSTAT, rd);
+        chk(rd[0] == 1'b1 && rd[5:3] == 3'b100, "LATE: by window 2 alarm=1, FSM=ERR");
+        mb_rd(A_SRCSTAT, rd);
+        chk(rd[5] == 1'b1 && rd[4] == 1'b0, "LATE: SRCSTAT ch2 dead bit (2i+1=5)");
+        chk(cmm_err == 1'b1 && cmm_err_n == 1'b0, "LATE: cmm_err rail active");
+        chk(cmm_fu == 1'b0, "LATE: cmm_fu not affected");
+
+        // ch2 clock starts after 2 windows -> W1C + TST_CLR -> normal monitor
+        d2_stop = 0;
+        repeat (2*N_WIN) @(posedge refclk0);         // edges resume, dead_lvl clears
+        mb_wr_sync(A_ERRSTAT, 32'h4);                // W1C ch2
+        recover(rd);
+        mb_rd(A_ERRSTAT, rd);
+        chk(rd == 32'h0, "LATE: ERRSTAT clean after restart + W1C + TST_CLR");
+        mb_rd(A_GSTAT, rd);
+        chk(rd[5:3] == 3'b010 && rd[0] == 1'b0, "LATE: FSM back to RUN, alarm=0");
+        chk(nerr_n == 1'b1 && cmm_err == 1'b0, "LATE: rails recovered");
+        mb_wr_sync(A_GCTRL, KEY | 32'h20);           // dbgsel=2
+        gctrl_sh = 8'h20;
+        mb_rd(A_DBG0, rd);
+        chk(rd[11:0] >= 12'd14 && rd[11:0] <= 12'd26,
+            "LATE: ch2 last-window count in [14,26] (monitoring live again)");
+        mb_wr_sync(A_GCTRL, KEY | 32'h00);           // dbgsel back to 0
+        gctrl_sh = 8'h00;
 
         // ------------------------------------------------------------------
         // PHASE 1: reset values + normal run
