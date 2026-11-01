@@ -3,7 +3,7 @@
   *  All rights reserved.
   */
 // ============================================================================
-// edc_gen_chk_top: 单个 AXI4 端口的 EDC 保护 IP (架构图中的 EDC_GEN_CHK_<i>)
+// edc_core: 单个 AXI4 端口的 EDC 保护 IP (架构图中的 EDC_GEN_CHK_<i>)
 //
 //   本文件只是封装, 内部三个子模块:
 //     u_regfile : edc_regfile  -- 24MHz mbus 寄存器文件 (cfg + sta)
@@ -56,7 +56,7 @@
 //   STA_REGPAR 0xA4 (W1C) 逐源清除, CFG_REGST 0xA8 (带 key) 注错自测.
 //   详见 edc_regfile / design_spec §8.6.
 // ============================================================================
-module edc_gen_chk_top #(
+module edc_core #(
    parameter integer IDW  = 4,
    parameter integer IDX  = 0,
    parameter integer SIDE = 0,          // 0 = SI (主端口), 1 = MI (从端口)

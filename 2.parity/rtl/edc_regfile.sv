@@ -84,7 +84,7 @@
 //
 // 注错位映射 (每站点 64bit): bit i (i<DW) 翻数据位 i,
 //   bit DW+j (DW+j<64) 翻校验位 j; 64bit 数据站 (wdata/rdata) 只支持数据位.
-// 站点号见 edc_gen_chk_top 文件头.
+// 站点号见 edc_core 文件头.
 //
 // 跨域接口:
 //   cmd_t  : 每一次写寄存器翻转一次 (mbus -> AXI 命令)
@@ -349,7 +349,7 @@ module edc_regfile #(
    assign rdata = (sel && par_ok) ? rdata_mux : 32'b0;
 
    // ---------------- 在途负载奇偶 (mbus 侧) ----------------
-   // 拼接顺序与 edc_gen_chk_top AXI 域的 cmd_pay_axi 完全一致
+   // 拼接顺序与 edc_core AXI 域的 cmd_pay_axi 完全一致
    assign par_pay = ^{cfg_en, cfg_force, cfg_irqen, cfg_pos, clr_mask,
                       par_w1c_mask, par_st_req, par_st_sel};
 

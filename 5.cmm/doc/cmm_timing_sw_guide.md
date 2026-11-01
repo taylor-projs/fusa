@@ -11,7 +11,7 @@ class (single channel first, then multi-channel).
 
 ## 1. Parameters (elaboration-time)
 
-All sizing knobs sit on `cmm_top`; the channel slice (`cmm_clk_dut_chk`) and
+All sizing knobs sit on `cmm_top`; the channel slice (`cmm_clk_dut_mon`) and
 the register file (`cmm_regfile`) receive them by pass-through.
 Runtime-programmable values (window bounds, NDEAD, EN, REFSEL, …) live in
 registers — see §6.0; the parameters below fix ranges, defaults and
@@ -31,7 +31,7 @@ architecture at elaboration.
 | `WIN_ALIVE_MAX` | top, regfile | 131072 | mbus cycles | window-alive watchdog expire → REF_STALE. Must exceed one window in mbus cycles; 131072 @ 48 MHz ≈ 2.7 ms ≈ 2 windows @ 24 MHz ref. |
 | `IDX` | top, regfile | 0 | — | mbus instance id; the leaf responds when `addr[15:8] == IDX`. |
 
-Per-instance parameters of `cmm_clk_dut_chk` are driven from the top, not
+Per-instance parameters of `cmm_clk_dut_mon` are driven from the top, not
 free: `PSC ← DUT_PSC[4i+:4]`, `CNT_W ← 12`, `N_DEB ← N_DEB`.
 
 Elaboration-time review checklist (all must hold):

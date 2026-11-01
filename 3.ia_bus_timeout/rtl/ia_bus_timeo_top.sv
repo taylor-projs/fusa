@@ -5,7 +5,7 @@
 //
 // STRUCTURE:
 //   mbus_clk domain : ia_bus_timeo_regfile (SCM register model, mbus leaf)
-//   ia_bus_aclk    : ia_bus_timeo_gen (timeout monitors + FuSa integrity)
+//   ia_bus_aclk    : ia_bus_timeo_core (timeout monitors + FuSa integrity)
 //   CDC            : inside the regfile (toggle handshake mbus->aclk for
 //                    config/W1C/actions; 2-flop sync aclk->mbus for status)
 //
@@ -26,7 +26,7 @@
 //   rst is asynchronous active-high; the monitor synchronizes its release
 //   internally (async assert / 3-flop sync release).
 //============================================================================
-module ia_timeo_gen_wrap #(
+module ia_bus_timeo_top #(
     parameter int          NUM_M          = 4,       // AXI master ports
     parameter int          OTD_MAX        = 8,       // outstanding saturation
     parameter int          OTD_W          = $clog2(OTD_MAX+1),
@@ -147,7 +147,7 @@ module ia_timeo_gen_wrap #(
     //--------------------------------------------------------------------------
     // Timeout monitor (ia_bus_aclk domain)
     //--------------------------------------------------------------------------
-    ia_bus_timeo_gen #(
+    ia_bus_timeo_core #(
         .NUM_M          (NUM_M),
         .NUM_IA         (NUM_IA),
         .OTD_MAX        (OTD_MAX),

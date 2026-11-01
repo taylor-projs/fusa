@@ -99,7 +99,7 @@ pready 永久拉低, CPU 总线挂死。该故障只能在 apb_clk 域检测 (�
   drain: 屏蔽新 req 发起, 新访问立即 pready+pslverr 快速失败, 直到
   迟到 ack 到达被消化, 链路自动恢复正常 (toggle 重新对齐)。mbus 侧
   永久死亡时 drain 保持, 后续访问全部快速 SLVERR, 不 hang。
-- **计数器双轨 + 双比较 OR 触发** (同 ia_bus_timeo_gen / cmm_regfile
+- **计数器双轨 + 双比较 OR 触发** (同 ia_bus_timeo_core / cmm_regfile
   的看门狗惯例): 任一单点翻转立即强发事件 (fail-visible, 永不漏报)。
 - **边界拍保护**: rdy 同拍优先, ack 恰在 timeout 拍返回时按正常完成,
   不误报。

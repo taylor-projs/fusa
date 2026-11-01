@@ -111,6 +111,18 @@ merge_cov () {
         ${DIRS[@]/#/-dir } -report urg_report -format both > /dev/null 2>&1 || true )
     grep -A 20 "Total Coverage" "$BASE/urg_report/dashboard.txt" 2>/dev/null || \
        echo "(summary in $BASE/urg_report/, or view in GUI)"
+    # 结构性常量 toggle 排除 (tie-off/dead bit/工具限制; 明细见 .el 头注释).
+    # -excl_strict 只排除真实未覆盖对象; RTL 变更后需重新生成:
+    #   cd obj_vcs/<tb> && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
+    local EXCL="$SIM/tgl_struct_excl.el"
+    if [ -f "$EXCL" ]; then
+       echo "== coverage summary (toggle: structural-const excluded) =="
+       ( cd "$BASE" && rm -rf urg_report_excl && urg -lca -flex_merge modules \
+           ${DIRS[@]/#/-dir } -elfile "$EXCL" -excl_strict \
+           -report urg_report_excl -format both > /dev/null 2>&1 || true )
+       grep -A 3 "Total Coverage" "$BASE/urg_report_excl/dashboard.txt" 2>/dev/null || \
+          echo "(summary in $BASE/urg_report_excl/)"
+    fi
 }
 
 case "$1" in

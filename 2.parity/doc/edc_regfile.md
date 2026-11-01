@@ -6,7 +6,7 @@
 1. **apb2mbus 交互时序**：APB3 访问如何跨域到 mbus(24MHz) 并返回；
 2. **edc_regfile 寄存器说明**：每实例 256B cfg/sta 寄存器组的逐条说明。
 
-对应 RTL：`rtl/apb2mbus.sv`、`rtl/edc_regfile.sv`、`rtl/edc_gen_chk_top.sv`。
+对应 RTL：`rtl/apb2mbus.sv`、`rtl/edc_regfile.sv`、`rtl/edc_core.sv`。
 
 ## 1. 访问路径总览
 

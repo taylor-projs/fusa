@@ -62,10 +62,23 @@ if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    exit 1
 fi
 
-echo "== coverage summary =="
+echo "== coverage summary (raw) =="
 urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
 grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
    echo "(summary in $OUT/urg_report/)"
+
+# 结构常量 toggle 排除 (inst_bad 译码死位: NP=2 下 paddr[15:9] 永不可
+# 锁存为 1 - addr/r_apb.paddr_q/rin_apb.paddr_q 的 [15:9]).
+# -excl_strict 只排除真实未覆盖对象; RTL 变更后需重新生成:
+#   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
+EXCL="$(cd "$(dirname "$0")" && pwd)/tgl_struct_excl.el"
+if [ -f "$EXCL" ]; then
+   echo "== coverage summary (toggle: structural-const excluded) =="
+   urg -dir simv.vdb -elfile "$EXCL" -excl_strict \
+       -report urg_report_excl -format both > /dev/null 2>&1 || true
+   grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
+      echo "(summary in $OUT/urg_report_excl/)"
+fi
 
 echo "== done =="
 echo "   波形: bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

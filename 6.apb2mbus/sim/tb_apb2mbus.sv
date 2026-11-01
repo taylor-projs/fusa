@@ -13,6 +13,11 @@
 //   T7  ce 拍命令奇偶 par == ^{addr,wr,wdata} 常时检查
 //   T8  slave 恢复瞬间立即访问: drain 未释放窗内立即 SLVERR (不挂死),
 //       迟到 ack 消化 (drain 自清) 后访问恢复正常
+//   T9  h_dup 双轨注错 (SEU FI): 在途等待窗内强制 hang_cnt_n 一位错误
+//       极性 -> 早熟 SLVERR + hang_evt, 迟到写仍以原负载生效
+//   T10 覆盖率激励: 请求保持通路地址/数据位扫 (含非对齐/inst1 边界),
+//       越界地址输入位扫 (paddr[15:9] 输入翻转, 不锁存), 仿真中途复位
+//       (rstn 1->0->1, 两域同步) 后功能恢复
 // ============================================================================
 module tb_apb2mbus;
 
@@ -249,6 +254,81 @@ module tb_apb2mbus;
       chk("T8d write after heal    ", err === 1'b0);
       apb_acc(16'h000C, 32'h0, 1'b0, err, rd, wc);
       chk("T8e readback after heal ", (err === 1'b0) && (rd === 32'h5AFE_0001));
+
+      // ---- T9: h_dup 双轨注错 (在途等待窗内, 早熟 SLVERR) ----
+      // 正常往返 ~17 apb 拍; 第 ~6 拍把反相轨 hang_cnt_n[5] 强制成错误
+      // 极性 (计数值 <32, 自然极性应为 1) -> h_dup 失配 -> to_fire 提前,
+      // mbus 侧传输照旧完成, 迟到 ack 由 drain 消化
+      ce_snap = ce_cnt;
+      hang_evt_seen = 1'b0;
+      fork
+         apb_acc(16'h0004, 32'hF00D_0086, 1'b1, err, rd, wc);
+         begin
+            repeat (6) @(posedge apb_clk);
+            @(negedge apb_clk);
+            force dut.r_apb.hang_cnt_n[5] = 1'b0;
+            repeat (4) @(posedge apb_clk);
+            @(negedge apb_clk);
+            release dut.r_apb.hang_cnt_n[5];
+         end
+      join
+      chk("T9a h_dup early slverr  ", err === 1'b1);
+      chk("T9b h_dup fast (<TO)    ", wc < HANG_TO-3);
+      repeat (4) @(posedge apb_clk);
+      chk("T9c hang_evt pulsed     ", hang_evt_seen === 1'b1);
+      repeat (30) @(posedge apb_clk);       // 迟到 ack + drain 自清
+      chk("T9d in-flight ce fired  ", ce_cnt === ce_snap + 1);
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
+      chk("T9e late write landed   ", (err === 1'b0) && (rd === 32'hF00D_0086));
+
+      // ---- T10a: 请求保持通路地址/数据位扫 (含非对齐与 [7:5]) ----
+      // paddr[15:8]<NP 才会被锁存; 位扫均在 inst0/inst1 合法窗内,
+      // 数据 0x86/0x81 覆盖 pwdata_q/prdata/rdat_cap 的 [7]/[2:1]/[0]
+      apb_acc(16'h0021, 32'h0000_0086, 1'b1, err, rd, wc);   // [5],[0]=1
+      chk("T10a unaligned wr ok    ", err === 1'b0);
+      apb_acc(16'h0021, 32'h0, 1'b0, err, rd, wc);
+      chk("T10b unaligned rd ok    ", (err === 1'b0) && (rd === 32'h0000_0086));
+      apb_acc(16'h0042, 32'h0000_0081, 1'b1, err, rd, wc);   // [6],[1]=1, 数据→81
+      chk("T10c wr [6]/[1] ok      ", err === 1'b0);
+      apb_acc(16'h0042, 32'h0, 1'b0, err, rd, wc);
+      chk("T10d rd data 81         ", (err === 1'b0) && (rd === 32'h0000_0081));
+      apb_acc(16'h0084, 32'h0000_0086, 1'b1, err, rd, wc);   // [7],[2]=1
+      chk("T10e wr [7] ok          ", err === 1'b0);
+      apb_acc(16'h0084, 32'h0, 1'b0, err, rd, wc);
+      chk("T10f rd data 86         ", (err === 1'b0) && (rd === 32'h0000_0086));
+      apb_acc(16'h0110, 32'h1357_9BDF, 1'b1, err, rd, wc);   // 回 inst1, 高位清零
+      chk("T10g inst1 wr ok        ", err === 1'b0);
+      apb_acc(16'h0110, 32'h0, 1'b0, err, rd, wc);
+      chk("T10h inst1 rd ok        ", (err === 1'b0) && (rd === 32'h1357_9BDF));
+      apb_acc(16'h0000, 32'h600D_0042, 1'b1, err, rd, wc);   // 全部位回 0
+      chk("T10i base wr ok         ", err === 1'b0);
+      apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);
+      chk("T10j base rd ok         ", (err === 1'b0) && (rd === 32'h600D_0042));
+
+      // ---- T10b: 越界地址输入位扫 (paddr[15:9] 输入翻转; 不锁存不传输) ----
+      ce_snap = ce_cnt;
+      apb_acc(16'h0200, 32'h0, 1'b0, err, rd, wc);            // bit9
+      chk("T10k oob[9] slverr      ", err === 1'b1);
+      apb_acc(16'h0800, 32'h0, 1'b0, err, rd, wc);            // bit11
+      chk("T10l oob[11] slverr     ", err === 1'b1);
+      apb_acc(16'hF800, 32'h0, 1'b0, err, rd, wc);            // bits[15:11]
+      chk("T10m oob[15:11] slverr  ", err === 1'b1);
+      repeat (10) @(posedge apb_clk);
+      chk("T10n oob sweep no ce    ", ce_cnt === ce_snap);
+
+      // ---- T10c: 仿真中途复位 (rstn 1->0->1, 两域) 后功能恢复 ----
+      apb_rstn  = 1'b0;
+      mbus_rstn = 1'b0;
+      repeat (5) @(posedge apb_clk);
+      apb_rstn  = 1'b1;
+      mbus_rstn = 1'b1;
+      repeat (10) @(posedge apb_clk);
+      apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);            // 复位丢保持值? 读回见分晓
+      chk("T10o rstn recovered rd  ", err === 1'b0);
+      apb_acc(16'h0008, 32'h5E53_0008, 1'b1, err, rd, wc);
+      chk("T10p post-rst wr ok     ", err === 1'b0);
+      apb_acc(16'h0008, 32'h0, 1'b0, err, rd, wc);
+      chk("T10q post-rst rd ok     ", (err === 1'b0) && (rd === 32'h5E53_0008));
 
       // ---- T6/T7: 常时检查汇总 ----
       chk("T6 rail complement      ", rail_bad === 0);

@@ -1,7 +1,7 @@
-# ia_timeo_gen_wrap 覆盖率与功能安全（SIL2）分析
+# ia_bus_timeo_top 覆盖率与功能安全（SIL2）分析
 
-**分析对象**：`ia_timeo_gen_wrap`（[ia_timeo_gen_wrap.sv](ia_timeo_gen_wrap.sv)）及其子模块
-`ia_bus_timeo_gen`（[ia_bus_timeo_gen.sv](ia_bus_timeo_gen.sv)）、`ia_bus_timeo_regfile`（[regfile.sv](regfile.sv)）、`reg_wrap`（[reg_wrap.sv](reg_wrap.sv)）
+**分析对象**：`ia_bus_timeo_top`（[ia_bus_timeo_top.sv](../rtl/ia_bus_timeo_top.sv)）及其子模块
+`ia_bus_timeo_core`（[ia_bus_timeo_core.sv](../rtl/ia_bus_timeo_core.sv)）、`ia_bus_timeo_regfile`（[ia_bus_timeo_regfile.sv](../rtl/ia_bus_timeo_regfile.sv)）、`reg_wrap`（[reg_wrap.sv](../rtl/reg_wrap.sv)）
 
 **标准依据**：IEC 61508:2010（E/E/PE 功能安全），SIL2 目标；参考 TI Hercules Safety Manual SPNU575 的监控器验证方法（同源设计参考）
 
@@ -48,7 +48,7 @@
 
 ### 2.2 各模块分支覆盖清单（需特殊激励的项加 ★）
 
-#### ia_bus_timeo_gen（监控核）
+#### ia_bus_timeo_core（监控核）
 
 | 代码位置 | 分支 | 激励需求 |
 |---|---|---|

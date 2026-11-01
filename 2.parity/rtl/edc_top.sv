@@ -28,7 +28,7 @@
 // 即 EDC 通过 AXI user 位经 NIC 在 SI 与 MI 之间搬运, 一端生成一端检查.
 // user 宽度 (IDW=4 时): awuser/aruser=21, wuser=12, buser=6, ruser=13.
 //
-//   mbus 地址: [15:8] = 实例号, [7:0] = IP 内寄存器偏移 (见 edc_gen_chk_top).
+//   mbus 地址: [15:8] = 实例号, [7:0] = IP 内寄存器偏移 (见 edc_core).
 //   共 NP = NM + NS 个实例.
 // ============================================================================
 module edc_top #(
@@ -319,7 +319,7 @@ module edc_top #(
    generate
       for (p = 0; p < NM; p = p + 1) begin: g_mport
          // mbus 广播: ce/wr/addr/wdata 送到所有实例, 各实例用 IDX 自行译码
-         edc_gen_chk_top #(
+         edc_core #(
             .IDW  (IDW                                     ),
             .IDX  (p                                       ),
             .SIDE (0)          // 主端口 = SI: 请求 GEN / 响应 CHK)
@@ -440,7 +440,7 @@ module edc_top #(
    generate
       for (q = 0; q < NS; q = q + 1) begin: g_sport
          // mbus 广播, 实例号 = NM + q
-         edc_gen_chk_top #(
+         edc_core #(
             .IDW  (IDW                                     ),
             .IDX  (NM + q                                  ),
             .SIDE (1)          // 从端口 = MI: 请求 CHK / 响应 GEN)

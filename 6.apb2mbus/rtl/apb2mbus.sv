@@ -63,7 +63,7 @@
 //     drain: 屏蔽新 req 发起, 新访问立即 pready+pslverr 快速失败,
 //     直到迟到 ack 到达被消化, 链路自动恢复正常 (toggle 重新对齐).
 //     mbus 侧永久死亡时 drain 保持, 后续访问全部快速 SLVERR, 不 hang.
-//   * 计数器双轨 + 双比较 OR 触发 (同 ia_bus_timeo_gen/cmm_regfile 的
+//   * 计数器双轨 + 双比较 OR 触发 (同 ia_bus_timeo_core/cmm_regfile 的
 //     看门狗惯例): 任一单点翻转立即强发事件 (fail-visible, 永不漏报).
 //   * HANG_TO 取值: 正常往返 ≈ 3 拍 mbus (req 同步链) + 1 拍 ce
 //     + 3 拍 apb (ack 同步链); 按最慢 mbus/最快 apb 折算后留 >=4x 裕量.
@@ -207,7 +207,7 @@ module apb2mbus #(
 
    // 看门狗触发: 计数器双轨 + 双比较 OR (任一单点翻转立即强发,
    // fail-visible, 永不漏报). rdy 同拍优先 (边界拍正常完成, 不误报;
-   // 见 ia_bus_timeo_gen "boundary-cycle guard")
+   // 见 ia_bus_timeo_core "boundary-cycle guard")
    assign h_fire_a = (  r_apb.hang_cnt    >= HANG_LAST);
    assign h_fire_b = ((~r_apb.hang_cnt_n) >= HANG_LAST);
    assign h_dup    = (  r_apb.hang_cnt_n != ~r_apb.hang_cnt);

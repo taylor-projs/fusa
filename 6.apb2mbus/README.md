@@ -41,11 +41,11 @@ cd sim && bash run_vcs.sh          # 编译 + 仿真, 产物 obj_vcs/
 高。WSKID_BEATS=16 时 fill_cnt 是 5 bit，缓冲只有 [0:15]。正常模式最后一拍 fill_cnt=15、wlast=0 时，m_wready 条件是 fill_cnt < 16，仍然为 1。这一拍会写 wbuf[15]，然后 fill_cnt 加到 16。再来一拍非 wlast，索引 16，越界。
 改法: 缓冲深度改成 WSKID_BEATS+1，或者 m_wready 在 fill_cnt==WSKID_BEATS-1 且 !m_wlast 时拉低。awlen 也要在入口拦住，awlen+1 > WSKID_BEATS 直接不收。
 
-2. hang_prot_core.sv:379 以及同文件 386/435/442，ia_bus_timeo_gen.sv 同样写法
+2. hang_prot_core.sv:379 以及同文件 386/435/442，ia_bus_timeo_core.sv 同样写法
 中。比较写成 cnt >= thr-1。thr=1 时第一拍 stall 就超时，实际允许的 stall 拍数比配置少 1。thr=0 有保护，不会下溢。
 改法: (cnt + 1 >= thr) && (thr != 0)。双轨那路同样改。
 
-3. hang_prot_core.sv:497-505, 542-550，ia_bus_timeo_gen.sv 同样
+3. hang_prot_core.sv:497-505, 542-550，ia_bus_timeo_core.sv 同样
 中。rd_otd/wr_otd 到 OTD_MAX 后，同拍又有新请求又有完成，两个分支都不进，计数停在上限。之后只有新请求、没有完成时也不再加。真实 outstanding 被丢掉，挂死可能看不见。
 改法: 饱和时同拍握手可以保持，但必须单独锁存 otd_sat，当 FuSa 事件报出去。不能把饱和当成正常深度。
 

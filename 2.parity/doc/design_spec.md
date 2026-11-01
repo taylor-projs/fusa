@@ -85,7 +85,7 @@
 | `rtl/edc_chk.sv` | B / R 响应通道（5 站点），MODE 可配，EDC 随 user 位 |
 | `rtl/edc_regfile.sv` | 24MHz mbus 寄存器文件（cfg + sta + RW1C + 命令 toggle），纯 mbus 域 |
 | `rtl/edc_reg_wrap.sv` | 寄存器奇偶保护单元（存储 + 偶校验 + 自测注错 + 自愈粘滞） |
-| `rtl/edc_gen_chk_top.sv` | 单端口 IP：封装 edc_regfile + CDC + edc_gen + edc_chk + ESM（SIDE 参数） |
+| `rtl/edc_core.sv` | 单端口 IP：封装 edc_regfile + CDC + edc_gen + edc_chk + ESM（SIDE 参数） |
 | `rtl/apb2mbus.sv` | APB3 → mbus 桥（含 APB ↔ 24MHz 异步握手） |
 | `rtl/edc_top.sv` | 集成顶层（NM 个 master 口 + NS 个 slave 口，ESM 汇聚） |
 | `doc/edc_regfile.md` | apb2mbus 交互时序图 + edc_regfile 寄存器逐条说明 |
@@ -212,7 +212,7 @@ CHK (MODE=1): 父级已寄存 {payload, 随路 EDC} -> 重算比对 + 注错
   不修改已寄存 payload，转发数据无损；
 - `o_err` 为未门控原始电平，父级仅在通道 `vld=1`（有有效拍驻留）时上报。
 
-站点错误在 AXI 域按**电平**输出；`edc_gen_chk_top` 内部再转成粘滞状态
+站点错误在 AXI 域按**电平**输出；`edc_core` 内部再转成粘滞状态
 （站点有错时该拍持续为高，粘滞位置 1）。**只有 CHK 一侧报告错误**——
 GEN 侧站点 `o_err` 恒 0，因此同一端口上响应站（13..17）在 SI 报错、
 请求站（0..12）在 MI 报错。
@@ -286,13 +286,13 @@ rdat 2FF (s1/s2) -> prdata
 读延迟约 4 个 mbus 周期 + 5 个 APB 周期，软件无需关心具体数值，
 只看 `pready`。
 
-## 8. edc_gen_chk_top 内部寄存器与 CDC
+## 8. edc_core 内部寄存器与 CDC
 
 寄存器与 CDC 的分工：
 
 - `edc_regfile`（本文件）：24MHz 域，实现下面 8.1 的 cfg/sta 寄存器、
   `sel` 实例译码、读 mux、RW1C 掩码累加、`cmd_t` 命令翻转与 `cmd_pend` 管理；
-- `edc_gen_chk_top`：只做 CDC（§8.2~8.4）与 gen/chk 例化。
+- `edc_core`：只做 CDC（§8.2~8.4）与 gen/chk 例化。
 
 ### 8.1 寄存器映射（每实例 256B，位于 edc_regfile）
 
@@ -438,7 +438,7 @@ edc_reg_wrap (每寄存器, mbus 域或 AXI 域):
 顶层只做四件事：
 
 1. 例化 `apb2mbus`；
-2. generate 展开 `edc_gen_chk_top`，把 `ce / wr / addr / wdata` **广播**给
+2. generate 展开 `edc_core`，把 `ce / wr / addr / wdata` **广播**给
    所有实例（不再在顶层做实例译码，译码在 `edc_regfile` 内按 `IDX` 完成）；
 3. mbus 读回：`mb_rdata = |{ip_rdata[0], ..., ip_rdata[NP-1]}`，未选中实例
    输出 0，因此或逻辑等价于选择器，且新增实例不需要改 apb2mbus；
@@ -516,7 +516,7 @@ nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`
 
 ## 11. 集成约束
 
-1. `edc_gen_chk_top` 每个实例的 AXI 侧时钟由所在端口提供，mbus 侧统一 24MHz；
+1. `edc_core` 每个实例的 AXI 侧时钟由所在端口提供，mbus 侧统一 24MHz；
 2. cfg 写只应在业务流量配置阶段（或 APB 空闲时）进行，多 bit 负载的
    准静态假设依赖这一点；
 3. `NP ≤ 256`（`addr[15:8]` 限制）；单站点 `DW ≤ 64`（原语限制），
@@ -581,7 +581,7 @@ nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`
    （零等待当拍自完成），见 §7.2。
 
 5. **SI/MI 拆分 + user 位传输**（本轮）：`edc_chguard` 改为双模 `edc_site`
-   （`MODE` 0=GEN/1=CHK），`edc_gen/edc_chk` 各带 `MODE`，`edc_gen_chk_top`
+   （`MODE` 0=GEN/1=CHK），`edc_gen/edc_chk` 各带 `MODE`，`edc_core`
    增加 `SIDE`，顶层按端口类型绑定 `SIDE=0/1`；EDC 向量从/到 AXI user 位
    切片，tb 新增 `tb_relay_cdc` 模拟 NIC fabric 跨时钟搬运。原先 tb 直接
    驱动 `mm_*`/`ss_*` 的方式改为外部只驱动 `sm_*`/`ms_*`，中间由 fabric

@@ -34,7 +34,7 @@ register parity, fault injection and config-path hang monitoring.
 rtl/
   reg_wrap.sv         register cell: storage + even parity + selftest injection
                       + sticky flt (inverted duplicate) + W1C (CPU priority)
-  cmm_clk_dut_chk.sv   one measurement channel (dut-domain prescaler 2FF->ref,
+  cmm_clk_dut_mon.sv   one measurement channel (dut-domain prescaler 2FF->ref,
                       window count, dual compare, debounce, dead detect,
                       dual-rail counters, injection points)
   cmm_regfile.sv      mbus leaf + register wraps (both domains) + CDC toggle

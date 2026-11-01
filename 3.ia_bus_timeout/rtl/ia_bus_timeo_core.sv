@@ -117,7 +117,7 @@
 //     the room gates back-pressure the (OTD_MAX+1)-th request, so the
 //     event can only fire on standalone use / integration violation.
 //============================================================================
-module ia_bus_timeo_gen #(
+module ia_bus_timeo_core #(
     parameter int          NUM_M          = 4,       // AXI master ports monitored
     parameter int          NUM_IA         = 2*NUM_M, // streams: RD+WR per master
     parameter int          OTD_MAX        = 8,       // outstanding saturation

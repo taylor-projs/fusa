@@ -99,13 +99,20 @@ module tb_edc_top;
 
    reg apb_clk = 0, mbus_clk = 0, m_clk = 0, s_clk = 0;
    reg apb_rstn = 0, mbus_rstn = 0, m_rstn = 0, s_rstn = 0;
+   reg mbus_run = 1;   // 0 = mbus_clk 停 (T23 模拟时钟死亡)
    always #10   apb_clk  = ~apb_clk;
-   always #21   mbus_clk = ~mbus_clk;
+   always begin #21; if (mbus_run) mbus_clk = ~mbus_clk; end
    always #6.5  m_clk    = ~m_clk;
    always #8.5  s_clk    = ~s_clk;
 
    integer errors = 0;
    reg slverr_seen = 0;
+
+   // ---------------- T23: mb_hang_evt 单拍脉冲见到即记 ----------------
+   reg hang_evt_seen = 0;
+   always @(posedge apb_clk) begin
+      if (dut.mb_hang_evt) hang_evt_seen = 1;
+   end
 
    // ---------------- T10: 分布式 mbus 结构监视 ----------------
    integer mbus_ce_cnt = 0;
@@ -124,7 +131,7 @@ module tb_edc_top;
          end
       end
    end
-   task check(input cond, input [8*56-1:0] msg);
+   task automatic check(input cond, input [8*56-1:0] msg);
       if (!cond) begin errors = errors + 1; $display("FAIL: %0s", msg); end
       else $display("PASS: %0s", msg);
    endtask
@@ -136,7 +143,7 @@ module tb_edc_top;
    wire [31:0] apb_prdata;
    wire        apb_pready, apb_pslverr;
 
-   task apb_wr(input [15:0] a, input [31:0] d);
+   task automatic apb_wr(input [15:0] a, input [31:0] d);
       begin
          @(negedge apb_clk);
          apb_psel = 1; apb_penable = 0; apb_pwrite = 1;
@@ -148,7 +155,7 @@ module tb_edc_top;
          @(negedge apb_clk);
       end
    endtask
-   task apb_rd(input [15:0] a, output [31:0] d);
+   task automatic apb_rd(input [15:0] a, output [31:0] d);
       begin
          @(negedge apb_clk);
          apb_psel = 1; apb_penable = 0; apb_pwrite = 0;
@@ -272,22 +279,25 @@ module tb_edc_top;
    wire [BUW-1:0]  ms_buser;
    wire [RUW-1:0]  ms_ruser;
 
-   // 外部 slave 驱动响应 (GEN 在 MI 侧, user 输入被忽略, 驱 0)
+   // 外部 slave 驱动响应 (GEN 在 MI 侧, user 输入被忽略, 常态驱 0;
+   // T18 起改为可驱寄存器以翻转 user 边带覆盖点)
    reg  [IDW-1:0] ms_bid_drv = 4'h3, ms_rid_drv = 4'h5;
    reg  [1:0]     ms_bresp_drv = 2'b00, ms_rresp_drv = 2'b00;
    reg  [63:0]    ms_rdata_drv = 64'hDEAD_BEEF_CAFE_0000;
    reg            ms_rlast_drv = 1;
    reg            ms_bvalid_drv = 0, ms_rvalid_drv = 0;
+   reg  [BUW-1:0] ms_buser_drv = 0;
+   reg  [RUW-1:0] ms_ruser_drv = 0;
 
    assign ms_bid   = ms_bid_drv;
    assign ms_bresp = ms_bresp_drv;
-   assign ms_buser = 0;
+   assign ms_buser = ms_buser_drv;
    assign ms_bvalid = ms_bvalid_drv;
    assign ms_rid   = ms_rid_drv;
    assign ms_rdata = ms_rdata_drv;
    assign ms_rresp = ms_rresp_drv;
    assign ms_rlast = ms_rlast_drv;
-   assign ms_ruser = 0;
+   assign ms_ruser = ms_ruser_drv;
    assign ms_rvalid = ms_rvalid_drv;
 
    wire o_esm_err, o_esm_fault, o_irq;
@@ -323,10 +333,29 @@ module tb_edc_top;
       end
    end
 
+   // ---------------- T19: 通道节拍计数器 ----------------
+   // 各通道传输拍 (valid&&ready 的 posedge) 计数, 供回压背靠背相位核对拍数;
+   // AW 另记地址日志验背靠背不丢拍/不乱序. 与 rlog 同规: posedge 采样沿前值.
+   integer    ms_aw_cnt = 0, ms_w_cnt = 0, ms_ar_cnt = 0;
+   integer    ms_b_cnt = 0, sm_b_cnt = 0;
+   reg [39:0] ms_aw_log [0:7];
+   always @(posedge s_clk) begin
+      if (ms_awvalid && ms_awready) begin
+         ms_aw_log[ms_aw_cnt % 8] = ms_awaddr;
+         ms_aw_cnt = ms_aw_cnt + 1;
+      end
+      if (ms_wvalid && ms_wready)   ms_w_cnt = ms_w_cnt + 1;
+      if (ms_arvalid && ms_arready) ms_ar_cnt = ms_ar_cnt + 1;
+      if (ms_bvalid && ms_bready)   ms_b_cnt = ms_b_cnt + 1;
+   end
+   always @(posedge m_clk) begin
+      if (sm_bvalid && sm_bready)   sm_b_cnt = sm_b_cnt + 1;
+   end
+
    // 从机侧发一拍 R 并等它被 DUT 收走 (ms_rvalid=1 期间 ms_rready 为 1 的 posedge).
    // 判定必须放在 posedge: negedge 采样有 "同槽组合变化采到旧值" 的竞态, 且只有
    // posedge 才是数据真正入 slice 的时刻 — 返回后下一拍 negedge 换数才不污染已收拍
-   task r_beat(input [63:0] d, input [IDW-1:0] id, input last);
+   task automatic r_beat(input [63:0] d, input [IDW-1:0] id, input last);
       reg got;
       begin
          @(negedge s_clk);
@@ -337,6 +366,62 @@ module tb_edc_top;
             @(posedge s_clk);
             if (ms_rready) got = 1;   // 本 posedge 数据被收走
          end
+      end
+   endtask
+
+   // T20: 定向 EDC 位注错 — inj_pos[DW+k] 恰好翻 CHK 站点内层 syndrome[k].
+   // 注错只在 CHK 一侧有效且不改载荷, 端到端字段检查不受影响; INJ_EN=F 时
+   // 错误可归因 -> 只置 STA_ERR, FAULT 被掩. inst: 0=mport 1=sport;
+   // site: 站点号; pos: INJ_POS 低 32 位; ch: 0=AW 1=AR 2=B (匹配通道打一拍)
+   task automatic t20_inj(input integer inst, input integer site,
+                          input [31:0] pos, input integer ch);
+      reg [15:0] base;
+      reg [31:0] en;
+      begin
+         $display("T20: inst%0d site%0d inj_pos=%08h", inst, site, pos);
+         base = (inst == 0) ? 16'h0000 : 16'h0100;
+         apb_wr(base + 16'h10 + site*8, pos);      // INJ_POS 低字
+         apb_wr(base + 16'h14 + site*8, 32'h0);    // INJ_POS 高字
+         // INJ_EN: 72b = 3 字 x 6 nibble; 字 = 0x00 + 4*(site/6),
+         // nibble 位移 = 4*(site%6), nibble=F 开 (与 T9 编码一致)
+         en = 32'hF << (4*(site % 6));
+         if (site < 6)       apb_wr(base + 16'h00, en);
+         else if (site < 12) apb_wr(base + 16'h04, en);
+         else                apb_wr(base + 16'h08, en);
+         repeat (10) @(negedge m_clk);             // cfg CDC 落到 AXI 域
+         repeat (6)  @(negedge s_clk);
+         if (ch == 0) begin                        // AW 打一拍
+            @(negedge m_clk); sm_awvalid = 1;
+            @(negedge m_clk); sm_awvalid = 0;
+            while (!(ms_awvalid && ms_awready)) @(negedge s_clk);
+            while (ms_awvalid) @(negedge s_clk);
+         end
+         else if (ch == 1) begin                   // AR 打一拍
+            @(negedge m_clk); sm_arvalid = 1;
+            @(negedge m_clk); sm_arvalid = 0;
+            while (!(ms_arvalid && ms_arready)) @(negedge s_clk);
+            while (ms_arvalid) @(negedge s_clk);
+         end
+         else begin                                // B 打一拍
+            @(negedge s_clk); ms_bvalid_drv = 1;
+            @(negedge s_clk); ms_bvalid_drv = 0;
+            while (!(sm_bvalid && sm_bready)) @(negedge m_clk);
+            while (sm_bvalid) @(negedge m_clk);
+         end
+         repeat (4) @(negedge mbus_clk);           // sta 2FF 回读
+         apb_rd(base + 16'hA0, rdata);
+         $display("T20: inst%0d site%0d ERR=%08h", inst, site, rdata);
+         check(rdata === (32'h1 << site), "T20: site ERR set");
+         apb_rd(base + 16'hA4, rdata);
+         check(rdata === 32'h0, "T20: FAULT masked (INJ_EN on)");
+         apb_wr(base + 16'hA0, 32'h1 << site);     // ERR W1C
+         apb_wr(base + 16'h00, 32'h0);             // INJ_EN 全关
+         apb_wr(base + 16'h04, 32'h0);
+         apb_wr(base + 16'h08, 32'h0);
+         apb_wr(base + 16'h10 + site*8, 32'h0);    // INJ_POS 清 0
+         repeat (4) @(negedge mbus_clk);
+         apb_rd(base + 16'hA0, rdata);
+         check(rdata === 32'h0, "T20: ERR W1C clean");
       end
    endtask
 
@@ -1203,6 +1288,532 @@ module tb_edc_top;
       apb_rd(16'h00A4, rdata);
       check(rdata === 32'h0, "T17c: inst0 FAULT W1C");
       check(o_esm_err === 1'b0 && o_esm_fault === 1'b0, "T17: clean status");
+
+      // -------- T18: user 边带翻转 + 全零载荷拍 (GEN 站点内层 chk 覆盖) --------
+      // GEN 模式功能上忽略随路 user 输入 (EDC 自算), 驱动它们翻转仅打
+      // u_ip/u_gen/u_chk 端口与内层 edc_i/edc/edc_ej/t_edc 覆盖点; 全零拍
+      // (载荷与 user 同 0) 使 GEN 站点内层 chk syndrome=0 -> o_err 打 0 侧
+      // (常态非零载荷下该 chk 的 o_err 恒 1, 属结构性单端).
+      begin : t18
+         integer k;
+         // a) 随机 user 值, 五通道各过 4 拍
+         for (k = 0; k < 4; k = k + 1) begin
+            sm_awuser = $random;
+            sm_aruser = $random;
+            sm_wuser  = $random;
+            ms_buser_drv = $random;
+            ms_ruser_drv = $random;
+            @(negedge m_clk); sm_awvalid = 1;
+            @(negedge m_clk); sm_awvalid = 0;
+            while (!(ms_awvalid && ms_awready)) @(negedge s_clk);
+            while (ms_awvalid) @(negedge s_clk);
+            @(negedge m_clk); sm_wvalid = 1;
+            @(negedge m_clk); sm_wvalid = 0;
+            while (!(ms_wvalid && ms_wready)) @(negedge s_clk);
+            while (ms_wvalid) @(negedge s_clk);
+            @(negedge m_clk); sm_arvalid = 1;
+            @(negedge m_clk); sm_arvalid = 0;
+            while (!(ms_arvalid && ms_arready)) @(negedge s_clk);
+            while (ms_arvalid) @(negedge s_clk);
+            @(negedge s_clk); ms_bvalid_drv = 1;
+            @(negedge s_clk); ms_bvalid_drv = 0;
+            while (!(sm_bvalid && sm_bready)) @(negedge m_clk);
+            while (sm_bvalid) @(negedge m_clk);
+            r_beat({$random, $random}, 4'h6, 1'b1);
+            @(negedge s_clk); ms_rvalid_drv = 0;
+            while (!(sm_rvalid && sm_rready)) @(negedge m_clk);
+            while (sm_rvalid) @(negedge m_clk);
+         end
+
+         // a2) 逐位走 1: user 边带每一位确定打满两个方向 (端口/内层 edc 网络
+         //     为组合路径, 无需节拍; 此时载荷为非零默认值, GEN 内层 chk 的
+         //     syndrome/t_edc 随之逐位翻转)
+         for (k = 0; k < AWUW; k = k + 1) begin
+            sm_awuser = 1 << k;
+            sm_aruser = 1 << k;
+            sm_wuser  = (k < WUW) ? (1 << k) : 0;
+            ms_buser_drv = (k < BUW) ? (1 << k) : 0;
+            ms_ruser_drv = (k < RUW) ? (1 << k) : 0;
+            @(negedge m_clk);
+         end
+         sm_awuser = 0; sm_aruser = 0; sm_wuser = 0;
+         ms_buser_drv = 0; ms_ruser_drv = 0;
+         @(negedge m_clk);
+
+         // b) 全零拍: 载荷与 user 同 0 -> GEN 内层 chk syndrome=0 (o_err 0 侧)
+         sm_awid = 0; sm_awaddr = 0; sm_awlen = 0; sm_awsize = 0;
+         sm_awburst = 0; sm_awlock = 0; sm_awcache = 0; sm_awprot = 0;
+         sm_awqos = 0; sm_awregion = 0; sm_awuser = 0;
+         sm_arid = 0; sm_araddr = 0; sm_arlen = 0; sm_arsize = 0;
+         sm_arburst = 0; sm_arlock = 0; sm_arcache = 0; sm_arprot = 0;
+         sm_arqos = 0; sm_arregion = 0; sm_aruser = 0;
+         sm_wdata = 0; sm_wstrb = 0; sm_wlast = 0; sm_wuser = 0;
+         ms_bid_drv = 0; ms_bresp_drv = 0; ms_buser_drv = 0;
+         ms_rid_drv = 0; ms_rdata_drv = 0; ms_rresp_drv = 0;
+         ms_rlast_drv = 0; ms_ruser_drv = 0;
+         repeat (2) @(negedge m_clk);   // 零值驻留, 内层组合 chk 打到 0
+         @(negedge m_clk); sm_awvalid = 1;
+         @(negedge m_clk); sm_awvalid = 0;
+         while (!(ms_awvalid && ms_awready)) @(negedge s_clk);
+         check(ms_awid === 4'h0 && ms_awaddr === 40'h0, "T18: zero aw e2e");
+         while (ms_awvalid) @(negedge s_clk);
+         @(negedge m_clk); sm_wvalid = 1;
+         @(negedge m_clk); sm_wvalid = 0;
+         while (!(ms_wvalid && ms_wready)) @(negedge s_clk);
+         check(ms_wdata === 64'h0 && ms_wlast === 1'b0, "T18: zero w e2e");
+         while (ms_wvalid) @(negedge s_clk);
+         @(negedge m_clk); sm_arvalid = 1;
+         @(negedge m_clk); sm_arvalid = 0;
+         while (!(ms_arvalid && ms_arready)) @(negedge s_clk);
+         check(ms_arid === 4'h0 && ms_araddr === 40'h0, "T18: zero ar e2e");
+         while (ms_arvalid) @(negedge s_clk);
+         @(negedge s_clk); ms_bvalid_drv = 1;
+         @(negedge s_clk); ms_bvalid_drv = 0;
+         while (!(sm_bvalid && sm_bready)) @(negedge m_clk);
+         check(sm_bid === 4'h0 && sm_bresp === 2'b00, "T18: zero b e2e");
+         while (sm_bvalid) @(negedge m_clk);
+         r_beat(64'h0, 4'h0, 1'b0);
+         @(negedge s_clk); ms_rvalid_drv = 0;
+         while (!(sm_rvalid && sm_rready)) @(negedge m_clk);
+         check(sm_rdata === 64'h0 && sm_rlast === 1'b0, "T18: zero r e2e");
+         while (sm_rvalid) @(negedge m_clk);
+
+         // c) 回非零默认: 内层 chk syndrome 回非零 (o_err 1 侧)
+         sm_awid = 4'h3; sm_awaddr = 40'h0012_3456_78; sm_awlen = 8'h0F;
+         sm_awsize = 3'd3; sm_awburst = 2'd1;
+         sm_arid = 4'h5; sm_araddr = 40'h009A_BCDE_F0; sm_arlen = 8'h03;
+         sm_arsize = 3'd3; sm_arburst = 2'd1;
+         sm_wdata = 64'h0123_4567_89AB_CDEF; sm_wstrb = 8'hFF; sm_wlast = 1;
+         ms_bid_drv = 4'h3; ms_rid_drv = 4'h5;
+         ms_rdata_drv = 64'hDEAD_BEEF_CAFE_0000; ms_rlast_drv = 1;
+         repeat (4) @(negedge m_clk);
+         repeat (4) @(negedge s_clk);
+
+         // d) 错位 APB 地址: mbus addr[1:0] 打 01/10/11 (无译码命中, 无副作用)
+         apb_rd(16'h00A1, rdata);
+         check(rdata === 32'h0, "T18: misaligned rd 0xA1 -> 0");
+         apb_wr(16'h01A2, 32'h0);
+         apb_rd(16'h00A3, rdata);
+         check(rdata === 32'h0, "T18: misaligned rd 0xA3 -> 0");
+         apb_wr(16'h01A3, 32'h0);
+         repeat (4) @(negedge mbus_clk);
+         apb_rd(16'h00A0, rdata);
+         check(rdata === 32'h0, "T18: inst0 ERR clean");
+         apb_rd(16'h01A0, rdata);
+         check(rdata === 32'h0, "T18: inst1 ERR clean");
+         check(o_esm_err === 1'b0 && o_esm_fault === 1'b0, "T18: esm clean");
+      end
+
+      // -------- T19: 握手回压 (各级 ready 的 0 侧) --------
+      // a) mport 请求通道 3 拍背靠背: fabric busy -> skid 驻留 -> sm_*ready 翻 0
+      //    (negedge 采样 ready 预告下一 posedge 是否收拍: 首拍必收, 之后按
+      //     ready 逐拍换址; 末拍收下后再撤 valid, 保证恰好 3 拍)
+      // b) sport 请求通道: ms_*ready=0 驻留 -> ss_*ready 翻 0
+      // c) sport B 背靠背: fabric busy -> ms_bready 翻 0
+      // d) mport B: sm_bready=0 驻留 -> mm_bready 翻 0
+      begin : t19
+         integer n, base, base2;
+         sm_awuser = 0; sm_aruser = 0; sm_wuser = 0;
+         ms_buser_drv = 0; ms_ruser_drv = 0;
+
+         // a1) AW x3 背靠背
+         base = ms_aw_cnt;
+         sm_awid = 4'h9; sm_awaddr = 40'h0000_0000_1000;
+         @(negedge m_clk); sm_awvalid = 1;
+         n = 1;                              // 首拍 (skid 空闲) 必收
+         while (n < 3) begin
+            @(negedge m_clk);
+            if (sm_awready) begin
+               n = n + 1;
+               sm_awaddr = sm_awaddr + 40'h40;
+               sm_awid   = sm_awid + 4'h1;
+            end
+         end
+         @(negedge m_clk); sm_awvalid = 0;   // 末拍已在上一 posedge 收下
+         while (ms_aw_cnt < base + 3) @(negedge s_clk);
+         check(ms_aw_log[base % 8]       === 40'h0000_0000_1000
+               && ms_aw_log[(base+1) % 8] === 40'h0000_0000_1040
+               && ms_aw_log[(base+2) % 8] === 40'h0000_0000_1080,
+               "T19: 3 back-to-back aw in order");
+
+         // a2) W x3 背靠背
+         base = ms_w_cnt;
+         sm_wdata = 64'hAAAA_5555_0000_0000; sm_wstrb = 8'hFF; sm_wlast = 1;
+         @(negedge m_clk); sm_wvalid = 1;
+         n = 1;
+         while (n < 3) begin
+            @(negedge m_clk);
+            if (sm_wready) begin
+               n = n + 1;
+               sm_wdata = sm_wdata + 64'h1;
+            end
+         end
+         @(negedge m_clk); sm_wvalid = 0;
+         while (ms_w_cnt < base + 3) @(negedge s_clk);
+         check(1'b1, "T19: 3 back-to-back w drained");
+
+         // a3) AR x3 背靠背
+         base = ms_ar_cnt;
+         sm_arid = 4'hC; sm_araddr = 40'h0000_0000_2000; sm_arlen = 8'h00;
+         @(negedge m_clk); sm_arvalid = 1;
+         n = 1;
+         while (n < 3) begin
+            @(negedge m_clk);
+            if (sm_arready) begin
+               n = n + 1;
+               sm_araddr = sm_araddr + 40'h40;
+            end
+         end
+         @(negedge m_clk); sm_arvalid = 0;
+         while (ms_ar_cnt < base + 3) @(negedge s_clk);
+         check(1'b1, "T19: 3 back-to-back ar drained");
+
+         // b1) sport AW: ms_awready=0 驻留
+         ms_awready = 0;
+         @(negedge m_clk); sm_awvalid = 1;
+         @(negedge m_clk); sm_awvalid = 0;
+         while (!ms_awvalid) @(negedge s_clk);
+         repeat (4) @(negedge s_clk);
+         check(ms_awvalid === 1'b1, "T19: aw stalled at sport (ms_awready=0)");
+         ms_awready = 1;
+         while (ms_awvalid) @(negedge s_clk);
+
+         // b2) sport W: ms_wready=0 驻留
+         ms_wready = 0;
+         @(negedge m_clk); sm_wvalid = 1;
+         @(negedge m_clk); sm_wvalid = 0;
+         while (!ms_wvalid) @(negedge s_clk);
+         repeat (4) @(negedge s_clk);
+         check(ms_wvalid === 1'b1, "T19: w stalled at sport (ms_wready=0)");
+         ms_wready = 1;
+         while (ms_wvalid) @(negedge s_clk);
+
+         // b3) sport AR: ms_arready=0 驻留
+         ms_arready = 0;
+         @(negedge m_clk); sm_arvalid = 1;
+         @(negedge m_clk); sm_arvalid = 0;
+         while (!ms_arvalid) @(negedge s_clk);
+         repeat (4) @(negedge s_clk);
+         check(ms_arvalid === 1'b1, "T19: ar stalled at sport (ms_arready=0)");
+         ms_arready = 1;
+         while (ms_arvalid) @(negedge s_clk);
+
+         // c) sport B 背靠背: fabric busy 期间 ms_bready 翻 0
+         base = ms_b_cnt; base2 = sm_b_cnt;
+         ms_bid_drv = 4'h2; ms_bresp_drv = 2'b01;
+         @(negedge s_clk); ms_bvalid_drv = 1;
+         repeat (8) begin
+            @(negedge s_clk);
+            ms_bid_drv = ms_bid_drv + 4'h1;
+         end
+         ms_bvalid_drv = 0;
+         while (sm_b_cnt !== ms_b_cnt) @(negedge m_clk);
+         check(ms_b_cnt > base + 1, "T19: >=2 b beats under backpressure");
+         check(sm_b_cnt - base2 === ms_b_cnt - base,
+               "T19: b beats fabric in/out match");
+         ms_bid_drv = 4'h3; ms_bresp_drv = 2'b00;
+
+         // d) mport B: sm_bready=0 驻留 -> mm_bready 翻 0
+         sm_bready = 0;
+         @(negedge s_clk); ms_bvalid_drv = 1;
+         @(negedge s_clk); ms_bvalid_drv = 0;
+         while (!sm_bvalid) @(negedge m_clk);
+         repeat (4) @(negedge m_clk);
+         check(sm_bvalid === 1'b1, "T19: b stalled at mport (sm_bready=0)");
+         sm_bready = 1;
+         while (sm_bvalid) @(negedge m_clk);
+
+         // 收尾: 恢复默认 + 双实例干净
+         sm_awid = 4'h3; sm_awaddr = 40'h0012_3456_78; sm_awlen = 8'h0F;
+         sm_arid = 4'h5; sm_araddr = 40'h009A_BCDE_F0; sm_arlen = 8'h03;
+         sm_wdata = 64'h0123_4567_89AB_CDEF;
+         repeat (4) @(negedge mbus_clk);
+         apb_rd(16'h00A0, rdata);
+         check(rdata === 32'h0, "T19: inst0 ERR clean");
+         apb_rd(16'h01A0, rdata);
+         check(rdata === 32'h0, "T19: inst1 ERR clean");
+         check(o_esm_err === 1'b0 && o_esm_fault === 1'b0, "T19: esm clean");
+      end
+
+      // -------- T20: 定向 EDC 位注错 (CHK 站点内层 syndrome 残量位) --------
+      // 每站 inj_pos[DW+k] 恰好翻 syndrome[k]; 只打残量所列 7 站:
+      //   sport(请求 CHK): site0 aw_hi s[2]/s[4], site2 aw_attri0 s[1],
+      //     site8 ar_hi s[4], site9 ar_lo s[1..4], site10 ar_attri0 s[0..3],
+      //     site12 ar_id s[0..2];  mport(响应 CHK): site14 b_id s[0..2].
+      t20_inj(1, 0,  32'h0140_0000, 0);
+      t20_inj(1, 2,  32'h0000_1000, 0);
+      t20_inj(1, 8,  32'h0100_0000, 1);
+      t20_inj(1, 9,  32'h01E0_0000, 1);
+      t20_inj(1, 10, 32'h0000_7800, 1);
+      t20_inj(1, 12, 32'h0000_0070, 1);
+      t20_inj(0, 14, 32'h0000_0070, 2);
+      repeat (4) @(negedge mbus_clk);
+      check(o_esm_err === 1'b0 && o_esm_fault === 1'b0, "T20: esm clean");
+
+      // -------- T21: 寄存器自检 + W1C 全量扫描 (双实例 regsel 0..12) --------
+      // 每个 wrap: REG_SELFTEST 翻 par_q -> par_err -> flt 置位 -> PERRk;
+      // RW 类 wrap 先重写寄存器恢复校验再 W1C (否则 par_err 重挂 flt);
+      // follower 类 (5/6/11/12, wr=1'b1) 下一拍自愈. AXI 域 wrap (7..12)
+      // 自检/清除都经命令 CDC (mport=m_clk 域, sport=s_clk 域).
+      // 扫描同时打满: cmd_streq/strsel/w1c 同步链, par_w1c_r/mask,
+      // pf_s1/s2, perr[12:0], par_flt_axi, st_pls, cmd_pay_axi 等.
+      begin : t21
+         integer k, inst;
+         reg [15:0] base;
+         reg [31:0] perr_bit;
+         for (inst = 0; inst < 2; inst = inst + 1) begin
+            base = (inst == 0) ? 16'h0000 : 16'h0100;
+            for (k = 0; k <= 12; k = k + 1) begin
+               perr_bit = 32'h1 << (4 + k);
+               apb_wr(base + 16'hB0, (k << 9) | 32'h1A); // key=0xA+SELFTEST
+               if (k >= 7) begin             // AXI 域: cmd CDC + sticky + 2FF
+                  if (inst == 0) repeat (6) @(negedge m_clk);
+                  else           repeat (6) @(negedge s_clk);
+               end
+               repeat (2) @(negedge mbus_clk);
+               apb_rd(base + 16'hAC, rdata);
+               check((rdata & perr_bit) === perr_bit, "T21: selftest PERRk set");
+               // RW 类 wrap: 重写寄存器恢复校验 (此时各 cfg 寄存器值全 0)
+               case (k)
+                  0: begin
+                        apb_wr(base + 16'h00, 32'h0);
+                        apb_wr(base + 16'h04, 32'h0);
+                        apb_wr(base + 16'h08, 32'h0);
+                     end
+                  1:  apb_wr(base + 16'h0C, 32'h0);
+                  2:  apb_wr(base + 16'hA8, 32'h0);
+                  3:  apb_wr(base + 16'h10, 32'h0);
+                  4:  apb_wr(base + 16'hA0, 32'h0);
+                  7: begin
+                        apb_wr(base + 16'h00, 32'h0);
+                        apb_wr(base + 16'h04, 32'h0);
+                        apb_wr(base + 16'h08, 32'h0);
+                     end
+                  8:  apb_wr(base + 16'h0C, 32'h0);
+                  9:  apb_wr(base + 16'hA8, 32'h0);
+                  10: apb_wr(base + 16'h10, 32'h0);
+                  default: ;                  // 5/6/11/12 follower 自愈
+               endcase
+               apb_wr(base + 16'hAC, perr_bit);      // W1C PERRk
+               if (k >= 7) begin
+                  if (inst == 0) repeat (6) @(negedge m_clk);
+                  else           repeat (6) @(negedge s_clk);
+               end
+               repeat (2) @(negedge mbus_clk);
+               apb_rd(base + 16'hAC, rdata);
+               check((rdata & perr_bit) === 32'h0, "T21: PERRk W1C cleared");
+            end
+            apb_rd(base + 16'hAC, rdata);
+            check(rdata === 32'h0000_0002, "T21: inst REGPAR clean");
+         end
+
+         // mport PAR_SELFTEST 锁存 + bad key (sport 侧已在 T11 做过)
+         apb_wr(16'h00B0, 32'h0000_002A);      // key=0xA + PAR_SELFTEST
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0000_0001, "T21: mport PAR_SELFTEST latch");
+         apb_wr(16'h00AC, 32'h0000_0001);      // bit0 只清锁存
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0000_0002, "T21: mport latch W1C");
+         apb_wr(16'h00B0, 32'h0000_0012);      // key=0x2 (错) + REG_SELFTEST
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0000_0002, "T21: mport bad key ignored");
+
+         // mport PERR13: 强制 m_clk 域命令同步链 1 bit (同 T12 对 sport 手法)
+         force dut.g_mport[0].u_ip.r.cmd_en_s2 = 72'h0000000000000004;
+         apb_wr(16'h0000, 32'h0);              // 命令在途 -> 脉冲拍发现失配
+         @(posedge m_clk);                     // FI hold: 跨 posedge 再 release
+         release dut.g_mport[0].u_ip.r.cmd_en_s2;
+         repeat (6) @(negedge m_clk);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0002_0001, "T21: mport in-flight parity -> PERR13");
+         check(o_reg_par_fault === 1'b1, "T21: mport reg_par_fault asserted");
+         apb_wr(16'h0000, 32'h0);              // 恢复影子 (强制期间载入错值)
+         apb_wr(16'h00AC, 32'h0002_0000);      // W1C bit17 = PERR13
+         repeat (6) @(negedge m_clk);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0000_0002, "T21: mport PERR13 cleared");
+      end
+
+      // -------- T22: 双轨一致性 (dup_err) 故障注入扫描 ----------------
+      // 每个 edc_reg_wrap 的 flt_q_n 反轨强制 0 (flt_q=0 时应为 1) ->
+      // dup_err 检出, 自愈方向为置位 (flt<-1) -> PERRk. perr13_q_n /
+      // perr14_q_n / par_lq_n 同理. 层次化 packed 成员 release 不 deposit,
+      // 必须跨 >=1 个属主时钟 posedge 再 release (军规). 读回 0xAC 全位
+      // 置位即 firing 证明; 再一次 0xAC 全位 W1C 收尾.
+      begin : t22
+         // ---- inst0 (mport): 7 mbus wrap + 6 m_clk wrap + perr13/14 + par_lq
+         force dut.g_mport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_err2.r.flt_q_n      = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.u_fault2.r.flt_q_n    = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.r.perr14_q_n          = 1'b0;
+         force dut.g_mport[0].u_ip.u_regfile.r.par_lq_n            = 1'b0;
+         force dut.g_mport[0].u_ip.u_inj_en.r.flt_q_n              = 1'b0;
+         force dut.g_mport[0].u_ip.u_inj_force.r.flt_q_n           = 1'b0;
+         force dut.g_mport[0].u_ip.u_irqen.r.flt_q_n               = 1'b0;
+         force dut.g_mport[0].u_ip.u_inj_pos.r.flt_q_n             = 1'b0;
+         force dut.g_mport[0].u_ip.u_err_st.r.flt_q_n              = 1'b0;
+         force dut.g_mport[0].u_ip.u_fault_st.r.flt_q_n            = 1'b0;
+         force dut.g_mport[0].u_ip.r.perr13_q_n                    = 1'b0;
+         repeat (2) @(negedge mbus_clk);  // mbus 域 wrap 跨 2 posedge
+         repeat (2) @(negedge m_clk);     // m_clk 域 wrap 跨 2 posedge
+         release dut.g_mport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_err2.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.u_fault2.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.r.perr14_q_n;
+         release dut.g_mport[0].u_ip.u_regfile.r.par_lq_n;
+         release dut.g_mport[0].u_ip.u_inj_en.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_inj_force.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_irqen.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_inj_pos.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_err_st.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_fault_st.r.flt_q_n;
+         release dut.g_mport[0].u_ip.r.perr13_q_n;
+         repeat (6) @(negedge m_clk);     // AXI 域 pf 2FF + perr 回读
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0007_FFF1, "T22: mport dup_err all 15 PERR set");
+         apb_wr(16'h00AC, 32'h0007_FFF1); // 全位 W1C (含 bit18/17:4/bit0)
+         repeat (6) @(negedge m_clk);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h00AC, rdata);
+         check(rdata === 32'h0000_0002, "T22: mport all W1C clean");
+
+         // ---- inst1 (sport): 7 mbus wrap + 6 s_clk wrap + perr13/14 + par_lq
+         force dut.g_sport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_err2.r.flt_q_n      = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.u_fault2.r.flt_q_n    = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.r.perr14_q_n          = 1'b0;
+         force dut.g_sport[0].u_ip.u_regfile.r.par_lq_n            = 1'b0;
+         force dut.g_sport[0].u_ip.u_inj_en.r.flt_q_n              = 1'b0;
+         force dut.g_sport[0].u_ip.u_inj_force.r.flt_q_n           = 1'b0;
+         force dut.g_sport[0].u_ip.u_irqen.r.flt_q_n               = 1'b0;
+         force dut.g_sport[0].u_ip.u_inj_pos.r.flt_q_n             = 1'b0;
+         force dut.g_sport[0].u_ip.u_err_st.r.flt_q_n              = 1'b0;
+         force dut.g_sport[0].u_ip.u_fault_st.r.flt_q_n            = 1'b0;
+         force dut.g_sport[0].u_ip.r.perr13_q_n                    = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         repeat (2) @(negedge s_clk);     // s_clk 域 wrap 跨 2 posedge
+         release dut.g_sport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_err2.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.u_fault2.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.r.perr14_q_n;
+         release dut.g_sport[0].u_ip.u_regfile.r.par_lq_n;
+         release dut.g_sport[0].u_ip.u_inj_en.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_inj_force.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_irqen.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_inj_pos.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_err_st.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_fault_st.r.flt_q_n;
+         release dut.g_sport[0].u_ip.r.perr13_q_n;
+         repeat (6) @(negedge s_clk);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h01AC, rdata);
+         check(rdata === 32'h0007_FFF1, "T22: sport dup_err all 15 PERR set");
+         apb_wr(16'h01AC, 32'h0007_FFF1);
+         repeat (6) @(negedge s_clk);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h01AC, rdata);
+         check(rdata === 32'h0000_0002, "T22: sport all W1C clean");
+         check(o_reg_par_fault === 1'b0 && o_reg_par_fault_n === 1'b1,
+               "T22: reg_par_fault dual-rail clean");
+      end
+
+      // -------- T23: apb2mbus hang 看门狗 (mbus_clk 死亡/恢复) --------
+      // HANG_TO=64 (RTL 默认, edc_top 未覆盖): req 发出后 64 拍 apb_clk
+      // ack 未归 -> 当笔 pready+pslverr 强制完成 + hang_evt 单拍脉冲,
+      // drain 屏蔽新访问 (快速 SLVERR); mbus_clk 恢复后迟到 ack 消化
+      // drain 自清, 链路自愈. 覆盖 hang_cnt/h_fire/to_fire/hang_evt/
+      // drain/mb_hang_evt 全部 toggle 方向.
+      begin : t23
+         integer wc;
+         reg [31:0] rdata;
+         // (a) mbus_clk 停 -> 读 inst0 ID 超时: ~HANG_TO 拍后 SLVERR
+         hang_evt_seen = 1'b0;
+         @(negedge apb_clk);
+         mbus_run = 1'b0;
+         @(negedge apb_clk);
+         apb_psel = 1; apb_penable = 0; apb_pwrite = 0;
+         apb_paddr = 16'h00FC;              // inst0 ID (只读, 无副作用)
+         @(negedge apb_clk);
+         apb_penable = 1;
+         wc = 0;
+         while (!apb_pready) begin
+            @(negedge apb_clk);
+            wc = wc + 1;
+         end
+         check(apb_pslverr === 1'b1, "T23a: timeout access SLVERR");
+         check(wc >= 60 && wc <= 66, "T23b: timeout ~= HANG_TO(64)");
+         apb_psel = 0; apb_penable = 0;
+         @(negedge apb_clk);
+         repeat (4) @(posedge apb_clk);     // hang_evt 在 to_fire 后 1 拍
+         check(hang_evt_seen === 1'b1, "T23c: mb_hang_evt pulsed");
+         // (b) drain 期间新访问快速失败 (不再发起 mbus 传输)
+         apb_rd(16'h00FC, rdata);
+         check(slverr_seen === 1'b1, "T23d: drain fast-fail SLVERR");
+         // (c) mbus_clk 恢复 -> 迟到 ack 消化, drain 自清, 链路恢复
+         mbus_run = 1'b1;
+         repeat (300) @(negedge apb_clk);
+         apb_rd(16'h00FC, rdata);
+         check(slverr_seen === 1'b0 && rdata === 32'hEDC0_1000,
+               "T23e: link recovered, ID read ok");
+         check(o_esm_err === 1'b0 && o_esm_fault === 1'b0,
+               "T23f: hang not an ESM error");
+      end
+
+      // -------- T24: h_dup 双轨注错 (SEU -> 早熟 SLVERR + hang_evt) --------
+      // 看门狗计数器双轨: 正常 hang_cnt_n = ~hang_cnt, h_dup 恒 0.
+      // 在途等待窗内把反相轨 hang_cnt_n[5] 强制成错误极性 (计数 <32 时
+      // 自然值为 1) -> h_dup 失配 -> to_fire 提前 -> 当笔 SLVERR +
+      // hang_evt; mbus_clk 正常, 传输照常完成, 迟到 ack 由 drain 消化.
+      // (mbus_clk 存活时 SLVERR 只能来自 to_fire, 计数远未到 63, 即
+      //  h_dup 路径的铁证)
+      begin : t24
+         reg [31:0] rdata;
+         hang_evt_seen = 1'b0;
+         fork
+            begin : t24_acc
+               apb_rd(16'h00FC, rdata);     // inst0 ID (只读, 无副作用)
+            end
+            begin : t24_fi
+               repeat (6) @(posedge apb_clk);
+               @(negedge apb_clk);
+               force dut.u_apb2mbus.r_apb.hang_cnt_n[5] = 1'b0;
+               repeat (4) @(posedge apb_clk);   // 跨 posedge 保持后 release
+               @(negedge apb_clk);
+               release dut.u_apb2mbus.r_apb.hang_cnt_n[5];
+            end
+         join
+         check(slverr_seen === 1'b1, "T24a: h_dup early SLVERR");
+         repeat (4) @(posedge apb_clk);
+         check(hang_evt_seen === 1'b1, "T24b: mb_hang_evt pulsed");
+         repeat (30) @(negedge apb_clk);        // 迟到 ack + drain 自清
+         apb_rd(16'h00FC, rdata);
+         check(slverr_seen === 1'b0 && rdata === 32'hEDC0_1000,
+               "T24c: link recovered, ID read ok");
+         check(o_esm_err === 1'b0 && o_esm_fault === 1'b0,
+               "T24d: h_dup FI not an ESM error");
+      end
 
       // -------- 中途复位: 让各域复位分支的 toggle 点翻转 (覆盖率) --------
       // 全程功能已验完, 这里只做复位脉冲, 不再校验功能

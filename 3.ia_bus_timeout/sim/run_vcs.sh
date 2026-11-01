@@ -15,12 +15,12 @@ TOP=tb_ia_timeo_gen_wrap
 mkdir -p "$OUT"
 
 cat > "$OUT/filelist.f" <<EOF
-$ROOT/../6.apb2mbus/rtl/sync_dff.sv
-$ROOT/../6.apb2mbus/rtl/sync_2dff.sv
-$ROOT/reg_wrap.sv
-$ROOT/ia_bus_timeo_gen.sv
-$ROOT/regfile.sv
-$ROOT/ia_timeo_gen_wrap.sv
+$ROOT/../../6.apb2mbus/rtl/sync_dff.sv
+$ROOT/../../6.apb2mbus/rtl/sync_2dff.sv
+$ROOT/../rtl/reg_wrap.sv
+$ROOT/../rtl/ia_bus_timeo_core.sv
+$ROOT/../rtl/ia_bus_timeo_regfile.sv
+$ROOT/../rtl/ia_bus_timeo_top.sv
 $ROOT/tb_ia_timeo_gen_wrap.sv
 EOF
 
@@ -75,10 +75,24 @@ if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    exit 1
 fi
 
-echo "== coverage summary =="
+echo "== coverage summary (raw) =="
 urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
 grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
    echo "(summary in $OUT/urg_report/, or view in GUI)"
+
+# 结构常量 toggle 排除 (cfg_key 常量 / 读回零扩展高半字 / image 寄存器
+# wr 恒 1 / 复位同步 tie-high — 任何激励都翻不动). -excl_strict 保证只
+# 排除真实未覆盖对象; RTL 变更后需重新生成:
+#   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
+#   (再从模板中摘取对应 CHECKSUM 块, 见 tgl_struct_excl.el 头注释)
+EXCL="$ROOT/tgl_struct_excl.el"
+if [ -f "$EXCL" ]; then
+   echo "== coverage summary (toggle: structural-const excluded) =="
+   urg -dir simv.vdb -elfile "$EXCL" -excl_strict \
+       -report urg_report_excl -format both > /dev/null 2>&1 || true
+   grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
+      echo "(summary in $OUT/urg_report_excl/)"
+fi
 
 echo "== done =="
 echo "   波形:   bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

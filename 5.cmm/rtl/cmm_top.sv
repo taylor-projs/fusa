@@ -5,12 +5,12 @@
 // Monitors N_DUT clocks under test against one of two selectable reference
 // clocks (refclk0/refclk1, REFSEL via GCTRL). Measurement: per-channel
 // prescaled-DUT edges counted per reference window, window compare with
-// debounce (FAIL_FREQ) + no-edge timeout (DEAD) - see cmm_clk_dut_chk.
+// debounce (FAIL_FREQ) + no-edge timeout (DEAD) - see cmm_clk_dut_mon.
 //
 //   +-----------+      clk_ref       +------------------------------+
 //   | refclk0 --+->-- clk_ref ------>| window gen (dual-rail)       |
 //   | refclk1 --+   (clk mux, note)  | FSM ARM/RUN/ERR (one-hot)    |
-//   +-----------+                    | N x cmm_clk_dut_chk           |
+//   +-----------+                    | N x cmm_clk_dut_mon            |
 //                                    | sticky status (dup pairs)    |
 //   clk_dut[N-1:0] ----------------->| aggregation + nERR + ESM     |
 //                                    +------------------------------+
@@ -254,7 +254,7 @@ module cmm_top #(
 
     generate
         for (genvar i = 0; i < N_DUT; i = i + 1) begin : g_ch
-            cmm_clk_dut_chk #(
+            cmm_clk_dut_mon #(
                 .PSC   (DUT_PSC[4*i +: 4]),
                 .CNT_W (CNT_W            ),
                 .N_DEB (N_DEB            )

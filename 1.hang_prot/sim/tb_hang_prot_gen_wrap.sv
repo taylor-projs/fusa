@@ -55,6 +55,24 @@
 //       park-kill dummy-length sweep (len 0/3/7/8/255, all 3 classes)
 //   P23 payload variety: full-range addr/id/len/size/burst/prot reads and
 //       writes with junk data/strobes, slave SLVERR + junk-bid injection
+//   P24 mid-sim reset (rst + mbus_rstn) at full quiescence: sync_dff reset
+//       pins toggle, rst-only stickies clear; P1 config re-applied
+//   P25 W-skid payload sweep: deterministic complement pairs (pv_const)
+//       buffered under an s-AW stall -> slot0/slot1 alternation
+//   P26 recover FIFO sweeps: 8-deep same-class parks (OTD_MAX=8) walk every
+//       AR-FIFO entry/pointer/parity bit (class0 gets an extra all-ones-id
+//       round), AW-FIFO id rounds; second mid-sim reset returns stored ids
+//   P27 response-encoding sweep: DECERR (2'b11) windows on R and B pass
+//       through untouched; phantom junk-rid R bursts sunk at empty ledger
+//   P28 mbus address high-bit sweeps + reg_wrap dup-rail deposits
+//       (u_r1..u_r8, u_c4..u_c6 flt_q_n) -> heal-to-SET -> W1C
+//   P29 rd_r2a_cf: 8 parked reads + a hand-driven 9th AR stalled on
+//       ar_room=0; rd_cnt_a_n deposit fires the comparator mid-climb
+//   P30 long-AW wedge x2 (len=255 latches awlen_q[7:3]; 8-beat W cap stalls
+//       -> r2a timeout -> mode sink drains -> dummy B); inter-wedge short
+//       write walks alloc_p so wedge 2 lands slot1
+//   P31 sir_dis FI (s_in_rst rail pair mismatch -> int_dis -> forced entry,
+//       exit blocked while live) + mode_dis FI (mode_r_n rail deposit)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
 // crosses to aclk via the toggle handshake; mb_wr_wait() polls
@@ -249,7 +267,7 @@ module tb_hang_prot_gen_wrap;
     // at 0x00..0x24); P18 also drives wrong-instance / misaligned / OOR
     // addresses through the same tasks.
     //------------------------------------------------------------------------
-    task mb_wr(input [15:0] a, input [31:0] d);
+    task automatic mb_wr(input [15:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr = a; mbus_wdata = d; mbus_wr = 1'b1;
@@ -258,7 +276,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task mb_rd(input [15:0] a, output [31:0] d);
+    task automatic mb_rd(input [15:0] a, output [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr = a; mbus_wdata = 32'b0; mbus_wr = 1'b0;
@@ -271,7 +289,7 @@ module tb_hang_prot_gen_wrap;
 
     // bad command parity: the leaf IGNORES the write (wr_ok gates on
     // !par_bad) but latches PERR_CMD (SCMREGPARSTAT[14])
-    task mb_wr_badpar(input [15:0] a, input [31:0] d);
+    task automatic mb_wr_badpar(input [15:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr = a; mbus_wdata = d; mbus_wr = 1'b1;
@@ -282,7 +300,7 @@ module tb_hang_prot_gen_wrap;
 
     // config write + wait for the CDC handshake to drain (zero-wait leaf:
     // a dependent write while busy would be DROPPED)
-    task mb_wr_wait(input [15:0] a, input [31:0] d);
+    task automatic mb_wr_wait(input [15:0] a, input [31:0] d);
         logic [31:0] v;
         begin
             mb_wr(a, d);
@@ -318,7 +336,21 @@ module tb_hang_prot_gen_wrap;
     logic [1:0]  pv_arburst = 2'b01, pv_awburst = 2'b01;
     logic [2:0]  pv_arprot = '0, pv_awprot = '0;
 
+    // P25-P31 toggle-sweep knobs: pv_const overrides the W payload with a
+    // compile-time constant (complement pairs close every wbuf/sbuf bit to
+    // exact constants), rresp_decerr/bresp_decerr drive 2'b11 windows on
+    // the slave channels (resp_any relaxes the collector for the exotic
+    // encoding), ph_q queues phantom R bursts (junk rid, empty ledger -
+    // sunk by the recover's phantom-absorb, m side never sees a beat)
+    bit        pv_const     = 0;
+    logic [31:0] pv_wdata   = 32'h0;
+    logic [3:0]  pv_wstrb   = 4'hF;
+    bit        rresp_decerr = 0;
+    bit        bresp_decerr = 0;
+    bit        resp_any     = 0;
+
     logic [11:0] rd_q [$];          // accepted ARs: {id[11:8], len[7:0]}
+    logic [11:0] ph_q [$];          // phantom R bursts {rid, len} (P27)
     int  aw_pend = 0, b_pend = 0;   // writes accepted / B owed (TB ledger)
 
     assign s_arready = slv_alive && !slv_ar_hang;
@@ -353,8 +385,12 @@ module tb_hang_prot_gen_wrap;
         s_rvalid = 0; s_rlast = 0; s_rid = '0; s_rdata = '0; s_rresp = 2'b00;
         forever begin
             s_rvalid = 0; s_rlast = 0;
-            while (rd_q.size() == 0 || !slv_alive || slv_r_hang) @(negedge aclk);
-            e  = rd_q.pop_front();
+            while ((rd_q.size() == 0 && ph_q.size() == 0)
+                   || !slv_alive || slv_r_hang) @(negedge aclk);
+            // phantom bursts (P27) are served only with an EMPTY real ledger
+            // (the recover's phantom-absorb sinks them, m side never sees)
+            if (rd_q.size() == 0) e = ph_q.pop_front();
+            else                  e = rd_q.pop_front();
             bi = 0;
             stop = 0;
             while (bi <= e[7:0] && !stop) begin
@@ -365,8 +401,10 @@ module tb_hang_prot_gen_wrap;
                     s_rdata  = pv_mode ? $random
                                        : (32'hA500_0000 | {16'b0, e[11:8], bi[7:0]});
                     // PV: SLVERR on beat 1 of multi-beat reads (collector
-                    // resp check relaxed while resp_relax=1)
-                    s_rresp  = (pv_mode && (bi == 1)) ? 2'b10 : 2'b00;
+                    // resp check relaxed while resp_relax=1);
+                    // P27: rresp_decerr drives a full DECERR window
+                    s_rresp  = rresp_decerr ? 2'b11 :
+                               ((pv_mode && (bi == 1)) ? 2'b10 : 2'b00);
                     s_rlast  = (bi == e[7:0]);
                     while (!(s_rready && s_rvalid) && !stop) begin
                         @(negedge aclk);
@@ -400,7 +438,9 @@ module tb_hang_prot_gen_wrap;
                 // the DUT): drive a free-running junk nibble. PV alternates
                 // SLVERR/OKAY on the s-B channel (resp pass-through).
                 s_bid    = b_junk[3:0];
-                s_bresp  = (pv_mode && b_junk[0]) ? 2'b10 : 2'b00;
+                // P27: bresp_decerr drives a full DECERR window
+                s_bresp  = bresp_decerr ? 2'b11 :
+                           ((pv_mode && b_junk[0]) ? 2'b10 : 2'b00);
                 b_junk   = b_junk + 1;
                 while (!s_bready && !stop) begin
                     @(negedge aclk);
@@ -530,7 +570,7 @@ module tb_hang_prot_gen_wrap;
     end
 `endif
 
-    task m_read(output [1:0] resp, output [31:0] data);
+    task automatic m_read(output [1:0] resp, output [31:0] data);
         begin
             @(negedge aclk);
             m_arvalid = 1'b1; m_arid = 4'h1; m_araddr = 32'h1000;
@@ -587,7 +627,7 @@ module tb_hang_prot_gen_wrap;
 
     // multi-beat read: counts R handshakes (posedge sampling - immune to the
     // back-to-back dummy level-hold), expects rlast on beat len+1
-    task m_read_mb(output [1:0] resp, input [7:0] len, output integer nbeats);
+    task automatic m_read_mb(output [1:0] resp, input [7:0] len, output integer nbeats);
         begin
             @(negedge aclk);
             m_arvalid = 1'b1; m_arid = 4'h1; m_araddr = 32'h1800;
@@ -628,7 +668,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task m_write(output [1:0] resp);
+    task automatic m_write(output [1:0] resp);
         begin
             @(negedge aclk);
             m_awvalid = 1'b1; m_awid = 4'h2; m_awaddr = 32'h2000;
@@ -686,7 +726,7 @@ module tb_hang_prot_gen_wrap;
     endtask
 
     // 4-beat INCR write burst (multi-beat wskid fill + replay coverage)
-    task m_write_mb(output [1:0] resp);
+    task automatic m_write_mb(output [1:0] resp);
         integer k;
         begin
             @(negedge aclk);
@@ -782,6 +822,13 @@ module tb_hang_prot_gen_wrap;
                     $display("[%0t] ERR: recover-mode R resp %b != SLVERR",
                              $time, m_rresp); errors++;
                 end
+            end else if (resp_any) begin
+                // P27 DECERR window: the exotic encoding must pass through
+                // UNTOUCHED (stronger than relax: checked, not ignored)
+                if (rresp_decerr && m_rresp !== 2'b11) begin
+                    $display("[%0t] ERR: DECERR window R resp %b != 2'b11",
+                             $time, m_rresp); errors++;
+                end
             end else if (resp_relax) begin
                 // PV: the slave injects SLVERR on some beats; only the exotic
                 // encodings (bit0: EXOKAY/DECERR) must never appear
@@ -805,6 +852,11 @@ module tb_hang_prot_gen_wrap;
             if (recover_active) begin
                 if (m_bresp != 2'b10) begin
                     $display("[%0t] ERR: recover-mode B resp %b != SLVERR",
+                             $time, m_bresp); errors++;
+                end
+            end else if (resp_any) begin
+                if (bresp_decerr && m_bresp !== 2'b11) begin
+                    $display("[%0t] ERR: DECERR window B resp %b != 2'b11",
                              $time, m_bresp); errors++;
                 end
             end else if (resp_relax) begin
@@ -836,7 +888,7 @@ module tb_hang_prot_gen_wrap;
         end
     end
 
-    task m_ar_fire(input [3:0] id, input [7:0] len);
+    task automatic m_ar_fire(input [3:0] id, input [7:0] len);
         int w;
         begin
             @(negedge aclk);
@@ -858,7 +910,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task m_aw_fire(input [3:0] id, input [7:0] len);
+    task automatic m_aw_fire(input [3:0] id, input [7:0] len);
         int w;
         begin
             @(negedge aclk);
@@ -881,7 +933,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task m_wburst(input [7:0] len, input bit w_first);
+    task automatic m_wburst(input [7:0] len, input bit w_first);
         int i, w;
         bit done;
         int tx;                            // data tag of THIS burst
@@ -894,9 +946,11 @@ module tb_hang_prot_gen_wrap;
                 @(negedge aclk);
                 while (m_w_pause) @(negedge aclk);
                 m_wvalid = 1;
-                m_wdata  = pv_mode ? $random
-                                   : {8'hD0, tx[7:0], i[7:0]}; // data variety
-                m_wstrb  = pv_mode ? (4'h1 << (i % 4)) : 4'hF; // walk strobes
+                m_wdata  = pv_const ? pv_wdata                 // P25 exact fill
+                                    : (pv_mode ? $random
+                                               : {8'hD0, tx[7:0], i[7:0]});
+                m_wstrb  = pv_const ? pv_wstrb
+                                    : (pv_mode ? (4'h1 << (i % 4)) : 4'hF);
                 m_wlast  = (i == len);
                 w = 0;
                 while (!m_wready && w < WDT_LIMIT) begin
@@ -915,7 +969,7 @@ module tb_hang_prot_gen_wrap;
     endtask
 
     // count-target waits with watchdog
-    task m_r_wait(input int target);
+    task automatic m_r_wait(input int target);
         int w;
         begin
             w = 0;
@@ -928,7 +982,7 @@ module tb_hang_prot_gen_wrap;
             end
         end
     endtask
-    task m_b_wait(input int target);
+    task automatic m_b_wait(input int target);
         int w;
         begin
             w = 0;
@@ -942,7 +996,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task wait_recover_entry;
+    task automatic wait_recover_entry;
         int w;
         begin
             w = 0;
@@ -953,7 +1007,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task wait_auto_exit;
+    task automatic wait_auto_exit;
         int w;
         begin
             w = 0;
@@ -967,7 +1021,7 @@ module tb_hang_prot_gen_wrap;
         end
     endtask
 
-    task w1c_all;
+    task automatic w1c_all;
         begin
             mb_wr_wait(16'h00, 32'h3);  // r2a sticky
             mb_wr_wait(16'h04, 32'h3);  // r2r sticky
@@ -975,7 +1029,7 @@ module tb_hang_prot_gen_wrap;
     endtask
 
     // scorebook closure: fired == retired
-    task check_closure;
+    task automatic check_closure;
         begin
             if (r_bursts != reads_fired) begin
                 $display("[%0t] ERR: reads fired %0d retired %0d",
@@ -2577,9 +2631,10 @@ module tb_hang_prot_gen_wrap;
         // P23: payload variety (genuine pass-through toggle): full-range
         //      addr/id/len/size/burst/prot on reads (no skid cap), write
         //      payloads with junk data + walking strobes, slave-side junk
-        //      s_bid / SLVERR injection. m_awlen[7:3] stays design-
-        //      unreachable (WSKID_BEATS=8 caps any replayable write burst
-        //      at len<=7) -> annotated exclusion, not stimulus.
+        //      s_bid / SLVERR injection. m_awlen[7:3] is NOT reachable by a
+        //      replayable burst (WSKID_BEATS=8 caps len<=7) but IS latched
+        //      by a len=255 AW that wedges in the skid -> P30's long-AW
+        //      wedges close it (a's P31d proved the flow).
         //      OTD_MAX=8 keeps all six ARs inside the ledger (no AR stall,
         //      so no threshold raise needed - the timeout coverage is P19's).
         // ====================================================================
@@ -2617,11 +2672,607 @@ module tb_hang_prot_gen_wrap;
         check_closure();
         $display("P23: payload variety clean");
 
+        // ====================================================================
+        // P24: mid-sim reset - rst 0->1->0 plus mbus_rstn 1->0->1 at full
+        //      quiescence. Toggles the reset pin of every sync_dff/sync_2dff
+        //      (regfile CDC chain, monitor rst_sync/rst_dly) and clears the
+        //      rst-only sticky state (sk_fault/iflt rails still latched from
+        //      P14-P22: their 1->0 direction is unreachable without a real
+        //      reset). P2 config is re-applied afterwards so the monitor
+        //      thresholds/ENA are live for P25..P31.
+        // ====================================================================
+        $display("\n--- P24: mid-sim reset ---");
+        @(negedge aclk);
+        rst = 1; mbus_rstn = 0;
+        repeat (8) @(negedge aclk);
+        mbus_rstn = 1;
+        repeat (8) @(negedge aclk);
+        rst = 0;
+        repeat (8) @(negedge aclk);
+        mb_wr_wait(16'h0014, 32'd15);           // r2a (P2 redo)
+        mb_wr_wait(16'h0018, 32'd20);           // r2r
+        mb_wr_wait(16'h0010, 32'h0000_00AF);    // key'd ENA on
+        mb_rd     (16'h000C, rd_val);           // SCMOTD re-cleared by reset
+        if (rd_val[OTD_W-1:0] !== 0 || rd_val[2*OTD_W-1:OTD_W] !== 0) begin
+            $display("[%0t] ERR: SCMOTD not 0 after mid-sim reset", $time);
+            errors++;
+        end
+        check_closure();
+
+        // ====================================================================
+        // P25: W-skid payload sweep - deterministic complement pairs close
+        //      the wbuf/sbuf/wpar 1->0 holes left by P13/P23's one-shot data
+        //      (a bit that only ever latched a 1). pv_const drives the exact
+        //      payload; each pair is buffered under an s-AW stall so burst
+        //      2k lands in slot0 and 2k+1 in slot1 (deterministic
+        //      alternation), and the pv_awaddr walk toggles awaddr_q bits on
+        //      both slots. Pairs A-F run len=15: this wrapper builds the
+        //      wskid with WSKID_BEATS=16, so only a 16-beat burst touches
+        //      wbuf/sbuf/wpar beats [15:8]. Thresholds are raised first: the
+        //      stall parks replayed writes well past thr 15/20 (no monitor
+        //      trip).
+        // ====================================================================
+        $display("\n--- P25: W-skid payload sweep ---");
+        mb_wr_wait(16'h0014, 32'd128);          // r2a
+        mb_wr_wait(16'h0018, 32'd128);          // r2r
+        pv_mode = 1; resp_relax = 1; pv_const = 1;
+        pv_awsize = 3'd2; pv_awburst = 2'b01; pv_awprot = '0;
+        m_bready = 1;
+        b0 = b_recv;
+        // pair A: all-ones fill of both slots (0->1 on every buffered bit)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'hFFFF_FFF0; pv_wdata = 32'hFFFF_FFFF; pv_wstrb = 4'hF;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'h0000_0000;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 2);
+        // pair B: all-zeros (1->0 on every buffered data/strobe bit)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'hAAAA_AAA8; pv_wdata = 32'h0000_0000; pv_wstrb = 4'h0;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'h5555_5550;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 4);
+        // pair C: single-bit data, strb 0 (wpar = ^data ^ ^strb = 1: 0->1)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h1234_5670; pv_wdata = 32'h0000_0001; pv_wstrb = 4'h0;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'h89AB_CDE0;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 6);
+        // pair D: zeros again (wpar 1->0)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h0000_0010; pv_wdata = 32'h0000_0000; pv_wstrb = 4'h0;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'hFFFF_FF00;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 8);
+        // pairs E/F: alternating-byte complements (mixed-direction walk)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h3333_3330; pv_wdata = 32'hAAAA_AAAA; pv_wstrb = 4'hA;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'hCCCC_CC00;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 10);
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h0F0F_0F00; pv_wdata = 32'h5555_5555; pv_wstrb = 4'h5;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        pv_awaddr = 32'hF0F0_F000;
+        m_aw_fire(4'h2, 15); m_wburst(15, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 12);
+        // pairs G/H: short bursts (beats = 1 / 2) for the beats-counter low
+        // bits; the all-zero addresses also return awaddr_q[31] to 0
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h0000_0000; pv_wdata = 32'hFFFF_FFFF; pv_wstrb = 4'hF;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 14);
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h5555_5550; pv_wdata = 32'h5555_5555; pv_wstrb = 4'h5;
+        m_aw_fire(4'h2, 1); m_wburst(1, 0);
+        pv_awaddr = 32'hAAAA_AAA8;
+        m_aw_fire(4'h2, 1); m_wburst(1, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 16);
+        // pair I: unaligned addrs (awaddr_q[2:1]) + max size/burst encodings
+        // (awsize_q[2], awburst_q[1]) on both slots
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h0000_0006; pv_wdata = 32'hFFFF_FFFF; pv_wstrb = 4'hF;
+        pv_awsize = 3'd7; pv_awburst = 2'b11;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        pv_awaddr = 32'h0000_00FA;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 18);
+        // pair J: encodings back to zero (awsize_q/awburst_q/awaddr_q 1->0)
+        slv_aw_hang = 1;
+        pv_awaddr = 32'h0000_0000; pv_wdata = 32'h0000_0000; pv_wstrb = 4'h0;
+        pv_awsize = 3'd0; pv_awburst = 2'b00;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        slv_aw_hang = 0;
+        m_b_wait(b0 + 20);
+        pv_awsize = 3'd2; pv_awburst = 2'b01;
+        pv_const = 0; pv_mode = 0; resp_relax = 0;
+        check_closure();
+        $display("P25: W-skid payload sweep clean");
+
+        // ====================================================================
+        // P26: recover FIFO sweeps - 8-deep SAME-class parks (OTD_MAX=8) so
+        //      every AR-FIFO entry len/par bit, every pointer bit (ar_wr/
+        //      ar_rp full 0..7 range) and ar_occ[3] toggles. Recipe per
+        //      class: FF x8 (every entry stores all-ones), 00 x8 (1->0),
+        //      01 x8 (parity direction); class0 gets an extra 0C round
+        //      (entry1 bits[3:2] sit outside the FF/00 union hole pattern)
+        //      and its FF round walks rbeat_cnt. The 0C round uses id 2:
+        //      ar_par = ^id ^ ^len, so id 0 stores par=0 for EVERY len of
+        //      the 0C/FF/00 rounds - id 2 (^2=1, ^0C=0) stores par=1 on all
+        //      8 entries, and the FF/00 rounds (id 0) return it to 0.
+        //      Reads park with m_rready=0, writes park with m_bready=0;
+        //      parks stay far below thr 128.
+        // ====================================================================
+        $display("\n--- P26: recover FIFO sweeps ---");
+        m_rready = 0; m_bready = 1;
+        r0 = r_bursts;
+        m_ar_fire(4'h2, 8'h0C);              // class0: bits[3:2] set, par=1
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        m_ar_fire(4'h2, 8'h0C);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;                        // drain: ar_rp walks 0..7
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h0, 8'hFF);              // class0: 8-deep all-ones
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        m_ar_fire(4'h0, 8'hFF);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h0, 8'h00);              // class0: lens back to 0
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        m_ar_fire(4'h0, 8'h00);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h1, 8'hFF);              // class1: 8-deep all-ones len
+        m_ar_fire(4'h1, 8'hFF);              //   (every ENTRY bit sees 1 -
+        m_ar_fire(4'h1, 8'hFF);              //   the ring walks e0..e7)
+        m_ar_fire(4'h1, 8'hFF);
+        m_ar_fire(4'h1, 8'hFF);
+        m_ar_fire(4'h1, 8'hFF);
+        m_ar_fire(4'h1, 8'hFF);
+        m_ar_fire(4'h1, 8'hFF);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h1, 8'h00);              // class1: lens back to 0
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        m_ar_fire(4'h1, 8'h00);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h1, 8'h01);              // class1: odd len -> par 1->0
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        m_ar_fire(4'h1, 8'h01);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h3, 8'hFF);              // class2: 8-deep all-ones len
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        m_ar_fire(4'h3, 8'hFF);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h3, 8'h01);              // class2: odd len (par 0->1,
+        m_ar_fire(4'h3, 8'h01);              //   len[7:1] back to 0)
+        m_ar_fire(4'h3, 8'h01);
+        m_ar_fire(4'h3, 8'h01);
+        m_ar_fire(4'h3, 8'h01);
+        m_ar_fire(4'h3, 8'h01);
+        m_ar_fire(4'h3, 8'h01);
+        m_ar_fire(4'h3, 8'h01);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h3, 8'h00);              // class2: pars/bit0 back to 0
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        m_ar_fire(4'h3, 8'h00);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        // AW rounds: all-ones then all-zeros ids parked 8-deep (every aw_id
+        // entry bit sees both directions; aw_wr walks 0..7 and wraps)
+        m_bready = 0;
+        b0 = b_recv;
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);  // AW: id all-ones
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        m_aw_fire(4'hF, 0); m_wburst(0, 0);
+        repeat (4) @(posedge aclk);
+        m_bready = 1;
+        m_b_wait(b0 + 8);
+        m_bready = 0;
+        b0 = b_recv;
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);  // AW: id all-zeros (1->0)
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        m_aw_fire(4'h0, 0); m_wburst(0, 0);
+        repeat (4) @(posedge aclk);
+        m_bready = 1;
+        m_b_wait(b0 + 8);
+        check_closure();
+        // Z0d: class0 id all-ones round - the id2/id0 rounds above leave
+        // class0 entry bits {0,2,3} at 0 post-P24; storing 4'hF on every
+        // entry sets them (0->1), and the second mid-sim reset below
+        // returns them (1->0)
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        m_ar_fire(4'hF, 8'h00);
+        repeat (4) @(posedge aclk);
+        m_rready = 1;
+        m_r_wait(r0 + 8);
+        // second mid-sim reset: FIFO entries are NOT cleared on pop (only
+        // reset clears), so the class2 ids stored by the rounds above
+        // (entries 4..7 first stored post-P24: 0->1 only) get their 1->0
+        // here. Config re-applied for P29/P30 (thr 128).
+        @(negedge aclk);
+        rst = 1; mbus_rstn = 0;
+        repeat (8) @(negedge aclk);
+        mbus_rstn = 1;
+        repeat (8) @(negedge aclk);
+        rst = 0;
+        repeat (8) @(negedge aclk);
+        mb_wr_wait(16'h0014, 32'd128);          // r2a
+        mb_wr_wait(16'h0018, 32'd128);          // r2r
+        mb_wr_wait(16'h0010, 32'h0000_00AF);    // key'd ENA on
+        check_closure();
+        $display("P26: recover FIFO sweeps clean");
+
+        // ====================================================================
+        // P27: response-encoding + phantom-R sweep. DECERR (2'b11) windows
+        //      on the slave R/B channels toggle every resp bit0 through the
+        //      pass-through muxes (collector checks the exact 2'b11 while
+        //      the window flag is up). The phantom bursts: junk rid R at an
+        //      EMPTY ledger - the recover's phantom-absorb drives s_rready=1
+        //      and sinks them (m side never sees a beat); rid low bits must
+        //      avoid 2'b11 (N_CLS=3: ar_occ[3] does not exist).
+        // ====================================================================
+        $display("\n--- P27: DECERR + phantom-R sweep ---");
+        resp_any = 1;
+        rresp_decerr = 1;
+        m_rready = 1;
+        r0 = r_bursts;
+        m_ar_fire(4'h0, 8'd3);               // DECERR beats on real reads
+        m_ar_fire(4'h5, 8'd0);
+        m_r_wait(r0 + 2);
+        rresp_decerr = 0;
+        bresp_decerr = 1;
+        b0 = b_recv;
+        m_aw_fire(4'h2, 8'd1); m_wburst(1, 0);
+        m_b_wait(b0 + 1);
+        bresp_decerr = 0;
+        resp_any = 0;
+        repeat (10) @(posedge aclk);         // ledgers fully drained
+        ph_q.push_back({4'h4, 8'd1});        // phantom R: junk rids toggle
+        ph_q.push_back({4'h0, 8'd0});        //   s_rid[3:2] (real traffic is
+        ph_q.push_back({4'hD, 8'd0});        //   remap-constant there)
+        ph_q.push_back({4'h6, 8'd2});
+        ph_q.push_back({4'h1, 8'd0});
+        ph_q.push_back({4'h2, 8'd1});
+        repeat (80) @(posedge aclk);         // phantom bursts drain (absorbed)
+        if (ph_q.size() != 0) begin
+            $display("[%0t] ERR: phantom R queue did not drain", $time);
+            errors++;
+        end
+        check_closure();
+        $display("P27: DECERR + phantom-R sweep clean");
+
+        // ====================================================================
+        // P28: mbus address high-bit sweeps + reg_wrap dup-rail deposits
+        //   (a) alias (addr[7:6]) and wrong-instance (addr[14:9]) accesses -
+        //       dropped by the decode (no checks), they only toggle the
+        //       pins / comparator inputs
+        //   (b) every image/shadow flt_q_n (P20 covered u_r0) -> dup_err
+        //       pulse -> heal-to-SET; SCMREGPARSTAT W1C clears (both ways).
+        //       par_lq_n[2:1] are NOT deposited: par_l_dup_f's RHS
+        //       (par_lq_n != ~par_lq) is a 1-bit scalar zero-extended
+        //       into [2:0] (SV != on vectors), so dup_f[2:1] are
+        //       structurally constant 0 - no TB force can pulse them
+        //       (NOT a VCS force-routing issue); annotated exclusion.
+        // ====================================================================
+        $display("\n--- P28: mbus sweeps + reg_wrap dup rails ---");
+        mb_rd(16'h0080, rd_val);             // addr[7] alias of the 0x00 row
+        mb_rd(16'h00C0, rd_val);             // addr[7:6]
+        mb_rd(16'h7E04, rd_val);             // wrong instance (addr[14:9])
+        mb_rd(16'h3A0C, rd_val);             // wrong instance, mixed bits
+        mb_wr(16'h0180, 32'h0000_0003);      // wrong-instance write (dropped)
+        mb_rd(16'h0000, rd_val);             // pins back low
+`ifdef IVERILOG
+        u_dut.u_regfile.u_r1.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r2.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r3.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r4.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r5.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r6.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r7.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_r8.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_c4.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_c5.r.flt_q_n = 1'b0;
+        u_dut.u_regfile.u_c6.r.flt_q_n = 1'b0;
+`else
+        force   u_dut.u_regfile.u_r1.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold: seq latches the forced value (Rule 3)
+        release u_dut.u_regfile.u_r1.r.flt_q_n;
+        force   u_dut.u_regfile.u_r2.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r2.r.flt_q_n;
+        force   u_dut.u_regfile.u_r3.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r3.r.flt_q_n;
+        force   u_dut.u_regfile.u_r4.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r4.r.flt_q_n;
+        force   u_dut.u_regfile.u_r5.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r5.r.flt_q_n;
+        force   u_dut.u_regfile.u_r6.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r6.r.flt_q_n;
+        force   u_dut.u_regfile.u_r7.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r7.r.flt_q_n;
+        force   u_dut.u_regfile.u_r8.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_regfile.u_r8.r.flt_q_n;
+        force   u_dut.u_regfile.u_c4.r.flt_q_n = 1'b0;
+        @(posedge aclk);             // FI hold (aclk-domain shadows, Rule 3)
+        release u_dut.u_regfile.u_c4.r.flt_q_n;
+        force   u_dut.u_regfile.u_c5.r.flt_q_n = 1'b0;
+        @(posedge aclk);             // FI hold (Rule 3)
+        release u_dut.u_regfile.u_c5.r.flt_q_n;
+        force   u_dut.u_regfile.u_c6.r.flt_q_n = 1'b0;
+        @(posedge aclk);             // FI hold (Rule 3)
+        release u_dut.u_regfile.u_c6.r.flt_q_n;
+`endif
+        repeat (8) @(negedge mbus_clk);
+        mb_wr_wait(16'h0024, 32'h0000_7FF1); // W1C: r0..r8 + c4..c6 + par_lq
+        repeat (8) @(negedge mbus_clk);
+        mb_rd(16'h0024, rd_val);
+        if ({rd_val[14], rd_val[13], rd_val[0]} !== 3'b000) begin
+            $display("[%0t] ERR: P28 par W1C stuck (%h)", $time, rd_val);
+            errors++;
+        end
+        $display("P28: mbus sweeps + reg_wrap dup rails clean");
+
+        // ====================================================================
+        // P29: rd_r2a_cf - the one comparator never exercised (needs a
+        //      STALLED AR: the r2a counters gate on arvalid && !arready).
+        //      Park OTD_MAX=8 reads (m_rready=0 -> ar_room closes), then
+        //      hand-drive a 9th AR which stalls; the rd_cnt_a_n deposit
+        //      fires the comparator mid-climb -> forced r2a entry.
+        // ====================================================================
+        $display("\n--- P29: rd_r2a_cf ---");
+        m_rready = 0;
+        r0 = r_bursts;
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        m_ar_fire(4'h0, 0);
+        @(negedge aclk);
+        m_arvalid = 1; m_arid = 4'h4; m_araddr = 32'h1000; m_arlen = '0;
+        m_arsize = 3'd2; m_arburst = 2'b01; m_arprot = '0;   // stalled AR
+        repeat (8) @(posedge aclk);          // rd_cnt_a climbing (thr 128)
+        @(negedge aclk);                     // mid-cycle deposit (P20 style)
+`ifdef IVERILOG
+        u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+`else
+        force   u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+        @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
+        release u_dut.u_mon.g_m[0].r.rd_cnt_a_n;
+`endif
+        wait_recover_entry();                // cf + f force the r2a fire
+        @(negedge aclk);
+        m_arvalid = 0;                       // never accepted: withdraw (a
+                                             //   real ESM would reset the NIC)
+        m_rready = 1;                        // dummy Rs drain the parked 8
+        m_r_wait(r0 + 8);
+        m_rready = 0;
+        wait_auto_exit();
+        check_closure();
+        w1c_all();
+        $display("P29: rd_r2a_cf clean");
+
+        // ====================================================================
+        // P30: long-AW wedge x2 (P7 flow with len=255): awlen_q[7:3] latch,
+        //      s_awlen mirrors them, the 8-beat W cap stalls the burst, and
+        //      the resumed drain walks fill_cnt up to 8 (bit3). TWO wedges:
+        //      the recover's force_clear resets alloc_p=0, so a plain second
+        //      wedge would land slot0 AGAIN - one normal write between the
+        //      wedges walks alloc_p to 1, then wedge 2 allocates slot1.
+        // ====================================================================
+        $display("\n--- P30: long-AW wedges ---");
+        m_bready = 1;
+        m_w_pause = 1;
+        b0 = b_recv;
+        fork
+            begin
+                m_aw_fire(4'h6, 8'hFF);
+                m_wburst(8'hFF, 0);          // 8 beats buffer, then stall
+            end
+            begin : p30_resume
+                wait_recover_entry();        // wr r2a timeout (WLAST never)
+                repeat (30) @(posedge aclk);
+                if (!recover_active) begin
+                    $display("[%0t] ERR: P30 exit while wopen", $time);
+                    errors++;
+                end
+                m_w_pause = 0;               // resume: mode sink drains
+            end
+        join
+        m_b_wait(b0 + 1);                    // dummy B
+        m_bready = 0;
+        wait_auto_exit();
+        check_closure();
+        w1c_all();
+        // ring restart: force_clear reset alloc_p=0 - one normal write walks
+        // alloc_p to 1, then wedge 2 allocates slot1
+        m_bready = 1;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        m_b_wait(b0 + 2);
+        // second wedge: slot1 (alloc_p walked)
+        m_w_pause = 1;
+        b0 = b_recv;
+        fork
+            begin
+                m_aw_fire(4'h6, 8'hFF);
+                m_wburst(8'hFF, 0);
+            end
+            begin : p30_resume2
+                wait_recover_entry();
+                repeat (30) @(posedge aclk);
+                if (!recover_active) begin
+                    $display("[%0t] ERR: P30 wedge2 exit while wopen", $time);
+                    errors++;
+                end
+                m_w_pause = 0;
+            end
+        join
+        m_b_wait(b0 + 1);                    // dummy B
+        m_bready = 0;
+        wait_auto_exit();
+        check_closure();
+        w1c_all();
+        // short writes afterwards: awlen_q/s_awlen[7:3] toggle back (1->0)
+        m_bready = 1;
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        m_aw_fire(4'h2, 0); m_wburst(0, 0);
+        m_b_wait(b0 + 3);
+        m_bready = 0;
+        check_closure();
+        $display("P30: long-AW wedges clean");
+
+        // ====================================================================
+        // P31: ESM rail FI
+        //   (a) sir_dis: break the s_in_rst rail pair (the ESM drives a
+        //       consistent level) -> 1-cycle detect -> int_dis forces the
+        //       recover ENTRY (fail toward containment); exit BLOCKED while
+        //       the mismatch is live (idle ledgers do NOT reopen the path);
+        //       heal -> AUTO exit; the iflt latch keeps skid_fault sticky.
+        //   (b) mode_dis: mode_r_n rail deposit (mode_r=0) -> forced entry;
+        //       mode_ff rewrites both rails at entry -> self-heal -> exit.
+        // ====================================================================
+        $display("\n--- P31: ESM rail FI ---");
+        s_in_rst_n = 0;                        // pair (0,0): rail mismatch
+        wait_recover_entry();
+        if (!skid_fault) begin
+            $display("[%0t] ERR: P31 skid_fault not raised (sir)", $time);
+            errors++;
+        end
+        repeat (50) @(posedge aclk);
+        if (!recover_active) begin
+            $display("[%0t] ERR: P31 exit despite live s_in_rst mismatch",
+                     $time);
+            errors++;
+        end
+        s_in_rst_n = 1;                        // heal the pair
+        wait_auto_exit();
+        if (!skid_fault) begin
+            $display("[%0t] ERR: P31 skid_fault not sticky (sir)", $time);
+            errors++;
+        end
+        w1c_all();
+`ifdef IVERILOG
+        u_dut.u_recover.r.mode_r_n = 1'b0;     // rail flip (mode_r=0)
+`else
+        force   u_dut.u_recover.r.mode_r_n = 1'b0;
+        @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
+        release u_dut.u_recover.r.mode_r_n;
+`endif
+        wait_recover_entry();
+        wait_auto_exit();
+        w1c_all();
+        $display("P31: ESM rail FI clean");
+
         // ---- summary ------------------------------------------------------------
         check_closure();
         repeat (20) @(negedge aclk);
         $display("\n=============================================");
-        if (errors == 0) $display("TB_GEN PASS: all scenario checks clean (P1..P23)");
+        if (errors == 0) $display("TB_GEN PASS: all scenario checks clean (P1..P31)");
         else             $display("TB_GEN FAIL: %0d errors", errors);
         $display("--- coverage bins (count > 0 = hit) ---");
         $display("  err_event rises     : %0d", cov_err_rise);

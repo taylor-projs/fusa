@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 //============================================================================
-// cmm_clk_dut_chk - one DUT-clock measurement channel (clock monitor slice)
+// cmm_clk_dut_mon - one DUT-clock measurement channel (clock monitor slice)
 //
 // MEASUREMENT PRINCIPLE (window ratio-metric count):
 //   The DUT clock is prescaled in its OWN domain (free-running divide by
@@ -54,7 +54,7 @@
 // boundary (edge_cnt resets at window_end); both are << the window
 // threshold margin (production window is +/-5% of ~1-2k counts).
 //============================================================================
-module cmm_clk_dut_chk #(
+module cmm_clk_dut_mon #(
     parameter int  PSC       = 3,        // prescaler tap: square = clk_dut/2^(PSC+1), 0..15
     parameter int  CNT_W     = 12,       // edge/shadow/noedge counter width
     parameter logic [1:0] N_DEB = 2'd3   // FAIL_FREQ debounce [windows], <= 3
