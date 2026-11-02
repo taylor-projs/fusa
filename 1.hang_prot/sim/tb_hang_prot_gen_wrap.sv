@@ -252,7 +252,7 @@ module tb_hang_prot_gen_wrap;
 `elsif FSDB
     initial begin
         $fsdbDumpfile("tb_hang_prot_gen_wrap.fsdb");
-        $fsdbDumpvars(0, tb_hang_prot_gen_wrap);
+        $fsdbDumpvars(0, tb_hang_prot_gen_wrap, "+all"); // "+all": incl. struct members
     end
 `else
     initial begin

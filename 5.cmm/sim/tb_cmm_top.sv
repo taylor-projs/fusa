@@ -372,7 +372,8 @@ module tb_cmm_top;
     initial begin
 `ifdef DUMP_FSDB
         $fsdbDumpfile("tb_cmm_top.fsdb");     // VCS+Verdi: needs -P novas.tab pli.a
-        $fsdbDumpvars(0, tb_cmm_top, "+mda"); //   (or -debug_access+all on new VCS)
+        $fsdbDumpvars(0, tb_cmm_top, "+all"); // "+all" also dumps struct members
+                                             // (r/v/r_mb); "+mda"/bare omit them
 `elsif DUMP
         $dumpfile("tb_cmm_top.vcd");
         $dumpvars(0, tb_cmm_top);

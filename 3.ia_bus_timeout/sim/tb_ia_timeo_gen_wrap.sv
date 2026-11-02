@@ -119,7 +119,7 @@ module tb_ia_timeo_gen_wrap;
 `ifdef FSDB
     initial begin
         $fsdbDumpfile("tb_ia_timeo_gen_wrap.fsdb");
-        $fsdbDumpvars(0, tb_ia_timeo_gen_wrap);
+        $fsdbDumpvars(0, tb_ia_timeo_gen_wrap, "+all"); // "+all": incl. struct members
     end
 `else
     initial begin
