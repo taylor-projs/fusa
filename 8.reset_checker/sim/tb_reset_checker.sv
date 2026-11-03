@@ -81,6 +81,9 @@ module tb_reset_checker;
     logic rst_por_n_err, rst_por_n_err_n, rchk_par_fault, rchk_par_fault_n;
     logic rst_sync;
 
+    // DFT scan control (functional phases keep it 0)
+    logic scan_mode = 0;
+
     //=========================================================================
     // DUT
     //=========================================================================
@@ -102,7 +105,8 @@ module tb_reset_checker;
         .rst_por_n_err_n  (rst_por_n_err_n),
         .rchk_par_fault   (rchk_par_fault ),
         .rchk_par_fault_n (rchk_par_fault_n),
-        .rst_sync         (rst_sync       )
+        .rst_sync         (rst_sync       ),
+        .scan_mode        (scan_mode      )
     );
 
     //=========================================================================
@@ -863,6 +867,39 @@ module tb_reset_checker;
         mb_wr(A_REGPAR, 32'h0000_0010);
         mb_rd(A_REGPAR, rd);
         chk(rd[4] == 1'b0, "T95 ctrl dup W1C clear (no rewrite)");
+        repeat (2) @(posedge mbus_clk);
+
+        //---------------------------------------------------------------------
+        // Phase 18: DFT scan_mode - industry idiom: mux at the reset
+        // synchronizer OUTPUT (0 = 2FF q, 1 = raw rstn). Under scan the
+        // synchronized resets are selectable to their raw sources (direct
+        // primary-input control); the sync FFs themselves stay untouched.
+        // Functional mode must come back unchanged.
+        //---------------------------------------------------------------------
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);   // EN=1 FI=0 (m_g = reset_m)
+        @(negedge mbus_clk);
+        reset_p = 1'b0;                        // known rail state (both low)
+        reset_m = 1'b0;
+        scan_mode = 1'b1;
+        reset_p = 1'b1;                        // rising p rail under scan
+        #1;
+        chk(rst_sync == 1'b1, "T96 scan mux: rst_sync sel raw rstn (bypass 2FF)");
+        reset_m = 1'b0;                        // divergent drive - ignored in scan
+        repeat (2) @(posedge mbus_clk);
+        #1;                                    // past the posedge NBA (no race)
+        chk(dut.r.cnt == 5'd2, "T97 scan: viol-domain reset = raw reset_p (no 2FF), counter runs");
+        chk(dut.viol == 1'b0, "T97b scan: m forced to p, reset_m ignored (no divergence)");
+        @(negedge mbus_clk);
+        scan_mode = 1'b0;                      // functional again
+        reset_p  = 1'b0;                       // re-agree: instant async wipe
+        reset_m  = 1'b0;
+        #1;                                    // let the async-wipe NBA settle
+        chk(dut.r.cnt == 5'd0, "T98 scan exit: functional async wipe restored");
+        rails(1, 1, 0);                        // release both rails
+        #1;
+        chk(rst_sync == 1'b0, "T99 scan exit: release waits for the 2FF");
+        repeat (4) @(posedge mbus_clk);
+        chk(rst_sync == 1'b1, "T100 scan exit: rst_sync released after 2FF");
         repeat (2) @(posedge mbus_clk);
 
         if (nerrs == 0) begin

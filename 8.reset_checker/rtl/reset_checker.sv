@@ -10,7 +10,7 @@
 // sees a different reset than the rest - fail-visible immediately.
 //
 //   reset_p --------------> rst_sync --> p_s --+   rstn_pair (raw XOR)
-//                                              XOR|-----------------------> rst_sync --> rstn_pair_s
+//                                              XOR|-----------------------> rst_sync --> rstn_pair_g
 //   reset_m --[XOR FI]----> rst_sync --> m_s --+  (assert=async clr,        (release=2FF)     |
 //                                                  release=2FF)       CNT[4:0] / err <------+--> rst_por_n_err(_n)
 //
@@ -32,7 +32,7 @@
 //     rail sync FFs reset from the RAIL itself, not from mbus_rstn - the
 //     monitor stays live (fail-visible) while the bus is in reset.
 //   - the persistence counter and the post-expire fault register are NOT
-//     reset by mbus_rstn: their active-low async reset is rstn_pair_s =
+//     reset by mbus_rstn: their active-low async reset is rstn_pair_g =
 //     rst_sync of the raw pair XOR (rstn_pair = p_s ^ m_s). Re-agreement
 //     (XOR=0) clears the pair sync output ASYNCHRONOUSLY - an instant
 //     debounce wipe of counter AND err; a divergence (XOR=1) RELEASES it
@@ -91,6 +91,15 @@ module reset_checker #(
     input  logic                  reset_p,     // p-rail copy (nRESET)
     input  logic                  reset_m,     // m-rail copy (must equal p)
 
+    // DFT: scan shift control. 1 = the whole monitor funnels to a single
+    // control point, the raw p rail: rst_sync cell output muxes select the
+    // raw rails, m_g is forced to p (no divergence, outputs quiet), and the
+    // pair XOR itself is redefined to reset_p - so the viol-domain reset is
+    // directly controllable from a primary input (no 2FF); the sync FFs
+    // themselves shift as normal chains. Monitor function is off by
+    // definition in scan.
+    input  logic                  scan_mode,
+
     // safety outputs
     output logic                  rst_por_n_err,   // pair fault (active-high)
     output logic                  rst_por_n_err_n, // inverted rail (dual rail)
@@ -112,7 +121,9 @@ module reset_checker #(
     logic p_g;
     logic m_g;
     assign p_g = reset_p;
-    assign m_g = reset_m ^ cfg_fi;
+    // DFT: scan forces the m copy to follow p (bypass FI) - the rails never
+    // diverge in scan, the monitor stays quiet
+    assign m_g = scan_mode ? reset_p : reset_m ^ cfg_fi;
 
     //=========================================================================
     // rail synchronizers: house rst_sync wrapper (reset synchronizer:
@@ -124,16 +135,24 @@ module reset_checker #(
     logic p_s;
     logic m_s;
 
-    rst_sync u_rst_p (
-        .clk   (mbus_clk),
-        .rstn  (p_g     ),
-        .rstn_s(p_s     )
+    rst_sync #(
+        .SYNC_LVL_NUM (2     ),               // 一级亚稳吸收 + 一级解析
+        .DEF_VAL      (1'b0  )                // 低有效: 断言 0 / 释放 1
+    ) u_rst_p (
+        .clk      (mbus_clk ),
+        .rstn     (p_g      ),
+        .scan_mode(scan_mode),
+        .rstn_s   (p_s      )
     );
 
-    rst_sync u_rst_m (
-        .clk   (mbus_clk),
-        .rstn  (m_g     ),
-        .rstn_s(m_s     )
+    rst_sync #(
+        .SYNC_LVL_NUM (2     ),
+        .DEF_VAL      (1'b0  )
+    ) u_rst_m (
+        .clk      (mbus_clk ),
+        .rstn     (m_g      ),
+        .scan_mode(scan_mode),
+        .rstn_s   (m_s      )
     );
 
     //=========================================================================
@@ -148,22 +167,31 @@ module reset_checker #(
     logic  div_b;
     logic  viol;
     logic  rstn_pair;
-    logic  rstn_pair_s;
+    logic  rstn_pair_g;
     assign div_a     = ~p_s &  m_s;     // p rail low only
     assign div_b     =  p_s & ~m_s;     // m rail low only
     assign viol      = div_a | div_b;
-    assign rstn_pair = p_s ^ m_s;
+    // DFT: scan redefines "pair agreement" as "follow the p rail" - this
+    // feeds the u_rst_pair input, whose scan output mux passes it straight
+    // through, so the viol-domain async reset becomes the raw p rail
+    // (primary-input controllable, no 2FF); with m_g also forced to p the
+    // rails never diverge in scan (viol=0, monitor quiet)
+    assign rstn_pair = scan_mode ? reset_p : (p_s ^ m_s);
 
-    rst_sync u_rst_pair (
-        .clk   (mbus_clk  ),
-        .rstn  (rstn_pair ),
-        .rstn_s(rstn_pair_s)
+    rst_sync #(
+        .SYNC_LVL_NUM (2     ),
+        .DEF_VAL      (1'b0  )
+    ) u_rst_pair (
+        .clk      (mbus_clk    ),
+        .rstn     (rstn_pair   ),
+        .scan_mode(scan_mode   ),
+        .rstn_s   (rstn_pair_g )
     );
 
     //=========================================================================
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
     //   - viol 域: counter + counter-expire 后的 err 寄存器, 异步复位 =
-    //     rstn_pair 经 rst_sync 释放同步后的 rstn_pair_s (一致即时清零,
+    //     rstn_pair 经 rst_sync 释放同步后的 rstn_pair_g (一致即时清零,
     //     分歧经 2FF 释放计数)
     //   - mbus 域: 分类事件 + 判定粘滞 (SW 诊断记录, 分歧消失后仍保留,
     //     W1C 清)
@@ -282,7 +310,7 @@ module reset_checker #(
         v  = r;
 
         // persistence counter: released by the pair-sync reset itself
-        // (rstn_pair_s=1 <=> diverging); free-runs to all-ones, saturates
+        // (rstn_pair_g=1 <=> diverging); free-runs to all-ones, saturates
         if (!sat_a && !sat_b) begin
             v.cnt   =   r.cnt + 5'd1;
             v.cnt_n = ~(r.cnt + 5'd1);
@@ -300,11 +328,11 @@ module reset_checker #(
     //=========================================================================
     // 时序进程: 只做复位装载与 r <= rin
     //   - viol 域 (counter + counter-expire 后寄存器): 异步复位 =
-    //     rstn_pair 经 rst_sync 释放同步后的 rstn_pair_s
+    //     rstn_pair 经 rst_sync 释放同步后的 rstn_pair_g
     //   - 事件域 (SW 诊断粘滞): 异步复位 = mbus_rstn
     //=========================================================================
-    always_ff @(posedge mbus_clk or negedge rstn_pair_s) begin : seq_viol
-        if (!rstn_pair_s) begin
+    always_ff @(posedge mbus_clk or negedge rstn_pair_g) begin : seq_viol
+        if (!rstn_pair_g) begin
             r <= VIOL_REG_RST;
         end else begin
             r <= rin;

@@ -110,6 +110,7 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 | rst_por_n_err / _n | out | 分歧告警（高有效，活式：恢复一致自动清 0）+ 反相轨 |
 | rchk_par_fault / _n | out | 寄存器奇偶/命令奇偶完整性事件 |
 | rst_sync | out | p 轨经 rst_sync（复位同步器：异步断言/2FF 释放）后的输出，下游复位入口直接使用；同步 FF 复位 = 轨自身 |
+| scan_mode | in | DFT：1 = 监控器收拢到单一控制点 reset_p——rst_sync 单元输出 mux 选原始轨、m_g 强制随 p（分歧恒 0，输出静默）、pair XOR 重定义为 reset_p（viol 域复位经主输入直接可控、不经 2FF）；同步 FF 照常挂链，监控功能在 scan 下无定义 |
 
 ## 5. 寄存器详细说明
 
@@ -233,8 +234,10 @@ INJ 与 PASS 可同拍复合。
 | WKEY | 4'h5 | keyed 寄存器键值 |
 | IDX | 0 | mbus 实例号（addr[15:8]） |
 | SAT_VAL（内部常量） | 5'h1F | 计数全 1 饱和值（滤波窗口 = 32 采样拍，规格固定，不可配） |
+| rst_sync.SYNC_LVL_NUM（例化单元） | 2 | 复位同步器级数（≥2：一级亚稳吸收 + 一级解析），本设计三处例化均为 2 |
+| rst_sync.DEF_VAL（例化单元） | 1'b0 | 断言期间输出值（低有效复位；释放值 = ~DEF_VAL） |
 
-## 7. 验证（tb_reset_checker，95 checks）
+## 7. 验证（tb_reset_checker，101 checks）
 
 | 相位 | 覆盖 |
 |---|---|
@@ -255,6 +258,7 @@ INJ 与 PASS 可同拍复合。
 | P15 冗余 force | cnt_n/cnt 单轨污染即触发；sat_a/sat_b 单独饱和臂触发；ev_da/ev_db/ev_err/lst 反相冗余 SEU 清零自愈回置位 |
 | P16 复位重断言 | FI 于释放轨（m_g=1^1 组合）；mbus_rstn 重断言 → CTRL fail-safe 重载、EV/REGPAR 清、ID 可读 |
 | P17 冗余自愈扩展 | 早期 cnt dup（未饱和先触发）；u_ctrl/u_evimg/u_statimg wrap 反相轨 force → dup_err 自愈置位 REGPAR[4]/[5]/[6] → W1C 清（parity 未坏，无需重写） |
+| P18 DFT scan | scan_mode：同步器 Q 输出 mux（0=2FF q，1=原始 rstn）；m 强制随 p（reset_m 无视、分歧恒 0）；viol 域复位 = 原始 reset_p（计数器即刻可控）；退出 scan 后 2FF 语义完整恢复 |
 
 运行（VM）：`cd ~/work/rst_checker/sim && ./run_vcs.sh`（`cov` 模式出覆
 盖率；Verdi 用 `./run_verdi.sh`）。覆盖率（`tgl_struct_excl.el` 结构排
