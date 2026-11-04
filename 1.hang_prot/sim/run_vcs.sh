@@ -94,6 +94,18 @@ EOF
        grep "ERR:" "$OUT/sim.log" | head -20
        exit 1
     fi
+    # SVA 失败同样算失败: VCS 断言失败行带 " failed at "; 设计内预期 FI
+    # 可见性的 $error (wskid sk_oh_msg 自检) 只打 "Error:" 无该标记
+    if grep -q " failed at " "$OUT/sim.log"; then
+       echo "ERROR: [$SHORT] SVA failures:"
+       grep " failed at " "$OUT/sim.log" | head -20
+       exit 1
+    fi
+    # 最终 PASS 行必须出现 (防 sim 中途挂掉但 testdata 已写的边角)
+    if ! grep -q "TB_$(echo $SHORT | tr 'a-z' 'A-Z') PASS" "$OUT/sim.log"; then
+       echo "ERROR: [$SHORT] TB did not print its final PASS line"
+       exit 1
+    fi
     echo "== [$SHORT] PASS =="
 }
 

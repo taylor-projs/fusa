@@ -47,6 +47,7 @@ module ia_bus_timeo_top #(
     // ---- monitor clock / reset ---------------------------------------------
     input  logic                 ia_bus_aclk,
     input  logic                 rst,              // async, active-high
+    input  logic                 scan_mode,        // DFT: bypass core reset sync
 
     // ---- AXI4 observation only (ia_bus_aclk domain) ------------------------
     input  logic [NUM_M-1:0]     axi_arvalid,
@@ -157,6 +158,7 @@ module ia_bus_timeo_top #(
     ) u_ia_bus_timeo_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
+        .scan_mode           (scan_mode),
 
         .axi_arvalid         (axi_arvalid),
         .axi_arready         (axi_arready),

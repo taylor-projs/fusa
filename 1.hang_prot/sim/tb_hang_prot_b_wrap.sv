@@ -98,6 +98,7 @@ module tb_hang_prot_b_wrap;
 
     logic mbus_clk = 0, aclk = 0;
     logic mbus_rstn = 0, rst = 1;
+    logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
 
@@ -195,6 +196,7 @@ module tb_hang_prot_b_wrap;
 
         .ia_bus_aclk   (aclk),
         .rst           (rst),
+        .scan_mode     (scan_mode),
 
         .m_arvalid (m_arvalid), .m_arready (m_arready),
         .m_arid    (m_arid),    .m_araddr  (m_araddr),
@@ -1000,6 +1002,22 @@ module tb_hang_prot_b_wrap;
         repeat (5) @(negedge aclk);
         rst = 0;
         repeat (5) @(negedge aclk);
+
+        // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
+        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        scan_mode = 1;
+        rst = 1;
+        #1;                                   // settle, no clock edge needed
+        if (u_dut.u_hang_prot_core.rst_s !== 1'b1) begin
+            $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
+        end
+        rst = 0;
+        #1;
+        if (u_dut.u_hang_prot_core.rst_s !== 1'b0) begin
+            $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
+        end
+        scan_mode = 0;
+        repeat (3) @(negedge aclk);           // chain re-syncs to released
 
         // ---- P1: mbus config -----------------------------------------------
         mb_wr_wait(8'h14, 32'd32);           // r2a

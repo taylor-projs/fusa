@@ -127,6 +127,7 @@ module ia_bus_timeo_core #(
 ) (
     input  logic clk,
     input  logic rst,                          // async active-high; release synced inside
+    input  logic scan_mode,                    // DFT: 1 = bypass reset sync (raw rst path)
 
     // ---- AXI4 read channel, observation only ----------------------------
     input  logic [NUM_M-1:0] axi_arvalid,      // read address request
@@ -192,8 +193,8 @@ module ia_bus_timeo_core #(
     // synchronizer rule): raw active-high rst -> .rstn = ~rst; DEF_VAL = 0
     // makes rstn_s assert low asynchronously and release after SYNC_LVL_NUM
     // = 3 flops; rst_s = ~rstn_s keeps the module-internal active-high
-    // polarity (same 3-cycle release latency). scan_mode tied off (this
-    // monitor has no DFT port).
+    // polarity (same 3-cycle release latency). scan_mode is routed up to
+    // the top (DFT reset bypass, same convention as 8.reset_checker).
     //--------------------------------------------------------------------------
     logic rstn_i;
     assign rstn_i = ~rst;
@@ -202,10 +203,10 @@ module ia_bus_timeo_core #(
        .SYNC_LVL_NUM(   3),
        .DEF_VAL     (1'b0)
     ) u_rst_sync (
-       .clk      (   clk),
-       .rstn     (rstn_i),
-       .scan_mode( 1'b0),
-       .rstn_s   (rstn_s)
+       .clk      (      clk),
+       .rstn     (   rstn_i),
+       .scan_mode(scan_mode),
+       .rstn_s   (   rstn_s)
     );
     logic rst_s;
     assign rst_s = ~rstn_s;

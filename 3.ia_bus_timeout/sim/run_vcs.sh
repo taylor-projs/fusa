@@ -76,6 +76,21 @@ if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    exit 1
 fi
 
+# TB 自检结果: "ERR:" 行 / SVA 断言失败行 (" failed at ") / 缺最终
+# TB PASS 行都算失败 (此前脚本完全不查 TB 结果, 盲区)
+if grep -q "ERR:" sim.log; then
+   echo "ERROR: TB reported errors:"; grep "ERR:" sim.log | head -20
+   cd "$ROOT"; exit 1
+fi
+if grep -q " failed at " sim.log; then
+   echo "ERROR: SVA failures:"; grep " failed at " sim.log | head -20
+   cd "$ROOT"; exit 1
+fi
+if ! grep -q "TB PASS" sim.log; then
+   echo "ERROR: TB did not print its final PASS line"
+   cd "$ROOT"; exit 1
+fi
+
 echo "== coverage summary (raw) =="
 urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
 grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \

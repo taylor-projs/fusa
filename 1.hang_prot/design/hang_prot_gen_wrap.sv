@@ -107,6 +107,7 @@ module hang_prot_gen_wrap #(
     // ---- monitor clock / reset ---------------------------------------------
     input  logic                 ia_bus_aclk,
     input  logic                 rst,              // async, active-high
+    input  logic                 scan_mode,        // DFT: bypass core reset sync
     // ---- s-domain reset hold (ESM; ia_bus_aclk domain, LEVEL) ---------------
     // "the s-side (interconnect/main) domain is held in reset": forces a
     // clean drain + slot clear + deferred exit around every downstream
@@ -478,6 +479,7 @@ module hang_prot_gen_wrap #(
     ) u_hang_prot_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
+        .scan_mode           (scan_mode),
 
         .axi_arvalid         (m_arvalid),
         .axi_arready         (m_arready),

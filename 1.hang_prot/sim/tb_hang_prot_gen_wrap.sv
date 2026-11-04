@@ -91,6 +91,7 @@ module tb_hang_prot_gen_wrap;
 
     logic mbus_clk = 0, aclk = 0;
     logic mbus_rstn = 0, rst = 1;
+    logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
 
@@ -192,6 +193,7 @@ module tb_hang_prot_gen_wrap;
 
         .ia_bus_aclk   (aclk),
         .rst           (rst),
+        .scan_mode     (scan_mode),
         .s_in_rst      (s_in_rst),
         .s_in_rst_n    (s_in_rst_n),
 
@@ -406,7 +408,15 @@ module tb_hang_prot_gen_wrap;
                     s_rresp  = rresp_decerr ? 2'b11 :
                                ((pv_mode && (bi == 1)) ? 2'b10 : 2'b00);
                     s_rlast  = (bi == e[7:0]);
-                    while (!(s_rready && s_rvalid) && !stop) begin
+                    // Hold the beat; decide the handshake ONLY on a settled
+                    // posedge sample. (The old entry evaluation raced its own
+                    // s_rid drive: s_rready decoded from the PREVIOUS beat's
+                    // rid could still read 1 -> phantom handshake -> valid
+                    // retracted mid-stall, an m-side AXI violation through
+                    // the comb pass-through. P31c's first parked beat hit it.)
+                    while (!stop) begin
+                        @(posedge aclk);          // handshake completes only here
+                        if (s_rready) break;      // settled value at this edge
                         @(negedge aclk);
                         if (!slv_alive) stop = 1;
                     end
@@ -1112,6 +1122,22 @@ module tb_hang_prot_gen_wrap;
         repeat (5) @(negedge aclk);
         @(negedge mbus_clk); mbus_rstn = 1; rst = 0;
         repeat (10) @(negedge aclk);
+
+        // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
+        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        scan_mode = 1;
+        rst = 1;
+        #1;                                   // settle, no clock edge needed
+        if (u_dut.u_hang_prot_core.rst_s !== 1'b1) begin
+            $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
+        end
+        rst = 0;
+        #1;
+        if (u_dut.u_hang_prot_core.rst_s !== 1'b0) begin
+            $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
+        end
+        scan_mode = 0;
+        repeat (3) @(negedge aclk);           // chain re-syncs to released
 
         // ---- P1: readback after reset --------------------------------------
         $display("\n--- P1: reset readback ---");

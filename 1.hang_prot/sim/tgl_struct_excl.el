@@ -3,6 +3,8 @@
 // exclusions (urg -elfile, merged report of tb a/b/gen).
 // Every entry is a constant/tie-off/dead bit or a proven tool
 // limitation; nothing stimulus-reachable is excluded.
+// (rst_sync scan_mode tie-off exclusions were retired once scan_mode
+// was routed to the top and TB P0 toggles it - now covered.)
 // Instance paths refreshed for the u_<module_name> renaming +
 // the rst_sync reset-synchronizer swap (regenerate after RTL
 // changes):
@@ -34,14 +36,6 @@ Toggle fu_src_live [6] "logic fu_src_live[6:0]"
 Toggle g_m[0].rd_otd_sat "logic g_m[0].rd_otd_sat"
 Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
-
-// ====================================================================
-// u_rst_sync (house reset synchronizer, was sync_2dff+sync_dff
-// chain): scan_mode tied 1b0 (monitor has no DFT port).
-// ====================================================================
-CHECKSUM: "3763488821 1322227951"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_core.u_rst_sync
-Toggle scan_mode "logic scan_mode"
 
 // ====================================================================
 // u_hang_prot_recover: r.rbeat_cnt/rbeat_cnt_n bit8 dead - the
@@ -149,13 +143,6 @@ Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
 
 // ====================================================================
-// u_rst_sync: scan_mode tied 1b0 (see a-TB note).
-// ====================================================================
-CHECKSUM: "3763488821 1322227951"
-INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_core.u_rst_sync
-Toggle scan_mode "logic scan_mode"
-
-// ====================================================================
 // u_hang_prot_regfile: fusrc_s1/s2[6] + par_l_dup_f[2:1]
 // (see a-TB note).
 // ====================================================================
@@ -194,13 +181,6 @@ Toggle fu_src_live [6] "logic fu_src_live[6:0]"
 Toggle g_m[0].rd_otd_sat "logic g_m[0].rd_otd_sat"
 Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
-
-// ====================================================================
-// u_rst_sync: scan_mode tied 1b0 (see a-TB note).
-// ====================================================================
-CHECKSUM: "3763488821 1322227951"
-INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_core.u_rst_sync
-Toggle scan_mode "logic scan_mode"
 
 // ====================================================================
 // u_hang_prot_recover: rbeat_cnt bit8 dead / ar_id class-constant

@@ -62,6 +62,7 @@ module hang_prot_main2mcu_mon #(
     // ---- island clock / reset ----------------------------------------------
     input  logic                 ia_bus_aclk,
     input  logic                 rst,              // async, active-high
+    input  logic                 scan_mode,        // DFT: bypass core reset sync
 
     // ---- AXI4 m side (main = master via ADB400; unit = slave) --------------
     input  logic                 m_arvalid,
@@ -391,6 +392,7 @@ module hang_prot_main2mcu_mon #(
     ) u_hang_prot_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
+        .scan_mode           (scan_mode),
 
         .axi_arvalid         (m_arvalid),
         .axi_arready         (m_arready),
