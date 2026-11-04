@@ -2675,7 +2675,7 @@ module tb_hang_prot_gen_wrap;
         // ====================================================================
         // P24: mid-sim reset - rst 0->1->0 plus mbus_rstn 1->0->1 at full
         //      quiescence. Toggles the reset pin of every sync_dff/sync_2dff
-        //      (regfile CDC chain, monitor rst_sync/rst_dly) and clears the
+        //      (regfile CDC chain, monitor u_rst_sync) and clears the
         //      rst-only sticky state (sk_fault/iflt rails still latched from
         //      P14-P22: their 1->0 direction is unreachable without a real
         //      reset). P2 config is re-applied afterwards so the monitor

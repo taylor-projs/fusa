@@ -17,6 +17,7 @@ mkdir -p "$OUT"
 cat > "$OUT/filelist.f" <<EOF
 $ROOT/../../6.apb2mbus/rtl/sync_dff.sv
 $ROOT/../../6.apb2mbus/rtl/sync_2dff.sv
+$ROOT/../../rst_checker/rtl/rst_sync.sv
 $ROOT/../rtl/reg_wrap.sv
 $ROOT/../rtl/ia_bus_timeo_core.sv
 $ROOT/../rtl/ia_bus_timeo_regfile.sv

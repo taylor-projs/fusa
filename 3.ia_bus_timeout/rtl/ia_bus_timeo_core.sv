@@ -188,27 +188,27 @@ module ia_bus_timeo_core #(
     // These are the ONLY flops in the module clocked with the raw rst.
     // to_clear remains a purely synchronous data-path signal (cfg-bus key
     // restart) - it must never enter an async sensitivity list.
-    // Cell wraps (6.apb2mbus/rtl): the cells reset to 0 on active-low
-    // rstn, this chain asserts to 1 on active-high rst -> d tied to 1,
-    // rstn = ~rst, rst_s = ~q (same 3-cycle release latency).
+    // House rst_sync unit (8.reset_checker/rtl/rst_sync.sv, FuSa-wide reset
+    // synchronizer rule): raw active-high rst -> .rstn = ~rst; DEF_VAL = 0
+    // makes rstn_s assert low asynchronously and release after SYNC_LVL_NUM
+    // = 3 flops; rst_s = ~rstn_s keeps the module-internal active-high
+    // polarity (same 3-cycle release latency). scan_mode tied off (this
+    // monitor has no DFT port).
     //--------------------------------------------------------------------------
     logic rstn_i;
     assign rstn_i = ~rst;
-    logic rst_q2, rst_q3;
-    sync_2dff #(.WIDTH(1)) u_sync_2dff (
-        .clk  (clk   ),
-        .rstn (rstn_i),
-        .d    (1'b1  ),
-        .q    (rst_q2)
-    );
-    sync_dff #(.WIDTH(1)) u_sync_dff (
-        .clk  (clk   ),
-        .rstn (rstn_i),
-        .d    (rst_q2),
-        .q    (rst_q3)
+    logic rstn_s;
+    rst_sync #(
+       .SYNC_LVL_NUM(   3),
+       .DEF_VAL     (1'b0)
+    ) u_rst_sync (
+       .clk      (   clk),
+       .rstn     (rstn_i),
+       .scan_mode( 1'b0),
+       .rstn_s   (rstn_s)
     );
     logic rst_s;
-    assign rst_s = ~rst_q3;
+    assign rst_s = ~rstn_s;
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)

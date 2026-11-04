@@ -2562,8 +2562,8 @@ module tb_hang_prot_b_wrap;
         // ====================================================================
         // P24: mid-sim reset (a-TB P27 port) - rst 0->1->0 plus mbus_rstn
         //      1->0->1 at full quiescence. Toggles the reset pin of every
-        //      sync_dff/sync_2dff (regfile CDC chain, monitor rst_sync/
-        //      rst_dly) and clears the rst-only sticky state (sk_fault_q is
+        //      sync_dff/sync_2dff (regfile CDC chain, monitor u_rst_sync)
+        //      and clears the rst-only sticky state (sk_fault_q is
         //      still latched from P8/P21: its 1->0 direction is unreachable
         //      without a real reset). P1 config is re-applied afterwards so
         //      the monitor thresholds/ENA are live for P25..P29.

@@ -21,6 +21,7 @@ BASE="${VCS_OUT:-$SIM/obj_vcs}"
 cat > /tmp/hp_filelist.f <<EOF
 $ROOT/../6.apb2mbus/rtl/sync_dff.sv
 $ROOT/../6.apb2mbus/rtl/sync_2dff.sv
+$ROOT/../rst_checker/rtl/rst_sync.sv
 $ROOT/design/reg_wrap.sv
 $ROOT/design/hang_prot_regfile.sv
 $ROOT/design/hang_prot_core.sv
