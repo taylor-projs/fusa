@@ -116,12 +116,12 @@
 
 | # | 项 | 注入方式 | 覆盖目的 |
 |---|---|---|---|
-| F1 | ena_q SEU 三分支 | `force u_mon.ena_q` | 码字纠错/检测 |
+| F1 | ena_q SEU 三分支 | `force u_ia_bus_timeo_core.ena_q` | 码字纠错/检测 |
 | F2 | thr_a_qn/thr_r_qn 翻转 | force | 阈值副本失配→复位回退 |
 | F3 | 计数器/深度 `_n` 副本翻转（7 类×每流） | force | CNT 失配 + 故障强制立即触发 |
 | F4 | 双比较器分歧（force 一侧 `_n`） | force | CMP 源 |
 | F5 | 状态位 `_n` 翻转 | force | STAT 源 + 自愈置位 |
-| F6 | aclk 影子 reg_wrap 奇偶翻转（force `u_c5.par_q` 等） | force | aclk 域存储检查 + flt 跨域同步路径 |
+| F6 | aclk 影子 reg_wrap 奇偶翻转（force `u_c_thresh0.par_q` 等） | force | aclk 域存储检查 + flt 跨域同步路径 |
 | F7 | 在途锁存 wdata_q/wpar_q 翻转 | force（写飞行中） | wpar_err 按地址归属 |
 | F8 | fault_q_n / par_lq_n 翻转 | force | 副本自愈（reg_wrap/锁存） |
 | F9 | ena_rd 读回中间码字 | force | 译码 fail-visible |
@@ -256,7 +256,7 @@ A_not_late: assert property (@(posedge aclk) disable iff (rst_s)
 属后续回归补齐项，非 DUT 缺口。
 
 **调试中发现并修复的 DUT 缺口**：regfile 的 `cfg_wr` 原为 `req_edge`
-同拍组合脉冲，而 aclk 域配置影子（u_c4/c5/c6）在同一拍才加载数据——
+同拍组合脉冲，而 aclk 域配置影子（u_c_ena/c5/c6）在同一拍才加载数据——
 monitor 的 `ena_q/thr_a_q/thr_r_q` 在该沿采到的是**旧值**，阈值/使能配置
 滞后一次写（写 TH1=5 后 monitor 仍用 255，req2resp 不触发）。修复：
 `cfg_wr` 改为寄存一拍脉冲（`cfg_wr_q`），与 `to_clear_q/selftest_q` 等
@@ -427,8 +427,8 @@ MTBF ≈ e^(t_MET/τ) / (f_clk × f_data × τ)
 ```systemverilog
 // F3 示例: 读流计数器副本翻转 → 下一拍 fire + fu_src CNT
 initial begin
-    @(negedge aclk);  force u_mon.g_m[0].rd_cnt_a_n = ~u_mon.g_m[0].rd_cnt_a_n;
-    @(negedge aclk);  release u_mon.g_m[0].rd_cnt_a_n;
+    @(negedge aclk);  force u_ia_bus_timeo_core.g_m[0].rd_cnt_a_n = ~u_ia_bus_timeo_core.g_m[0].rd_cnt_a_n;
+    @(negedge aclk);  release u_ia_bus_timeo_core.g_m[0].rd_cnt_a_n;
 end
 
 // F7 示例: 在途写锁存污染 → wpar_err + PERR 归属

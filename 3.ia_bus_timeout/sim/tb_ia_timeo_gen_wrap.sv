@@ -389,20 +389,20 @@ module tb_ia_timeo_gen_wrap;
 
     // fire watchers (aclk)
     always @(posedge aclk) begin
-        if (u_dut.u_mon.g_m[0].rd_r2a_to)  cov_r2a_fire   = cov_r2a_fire + 1;
-        if (u_dut.u_mon.g_m[0].rd_r2r_to)  cov_r2r_fire   = cov_r2r_fire + 1;
-        if (u_dut.u_mon.g_m[0].wr_r2a_to)  cov_wr_r2a_fire= cov_wr_r2a_fire + 1;
-        if (u_dut.u_mon.g_m[0].wr_r2r_to)  cov_wr_r2r_fire= cov_wr_r2r_fire + 1;
-        if (u_dut.u_mon.g_m[1].rd_r2a_to)  cov_r2a_m1_fire = cov_r2a_m1_fire + 1;
-        if (u_dut.u_mon.g_m[0].r.rd_cnt_a == 16'd14 && axi_arvalid[0]) cov_cnt_boundary = cov_cnt_boundary + 1;
-        if (u_dut.u_mon.g_m[0].r.rd_cnt_a > 16'd14) cov_cnt_over = cov_cnt_over + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_r2a_to)  cov_r2a_fire   = cov_r2a_fire + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_r2r_to)  cov_r2r_fire   = cov_r2r_fire + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].wr_r2a_to)  cov_wr_r2a_fire= cov_wr_r2a_fire + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].wr_r2r_to)  cov_wr_r2r_fire= cov_wr_r2r_fire + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[1].rd_r2a_to)  cov_r2a_m1_fire = cov_r2a_m1_fire + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a == 16'd14 && axi_arvalid[0]) cov_cnt_boundary = cov_cnt_boundary + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a > 16'd14) cov_cnt_over = cov_cnt_over + 1;
         if ($countones(u_dut.r2a_err_status | u_dut.r2r_err_status) > 1) cov_multi_fire = cov_multi_fire + 1;
     end
 
     // mbus-side watchers (DUT-internal pulses; ce is high at the posedge)
     always @(posedge mbus_clk) begin
-        if (u_dut.u_regfile.par_bad)  cov_par_bad = cov_par_bad + 1;
-        if (u_dut.u_regfile.wr_drop)  cov_wr_drop = cov_wr_drop + 1;
+        if (u_dut.u_ia_bus_timeo_regfile.par_bad)  cov_par_bad = cov_par_bad + 1;
+        if (u_dut.u_ia_bus_timeo_regfile.wr_drop)  cov_wr_drop = cov_wr_drop + 1;
         if (err_event)     cov_err_ev = cov_err_ev + 1;
         if (fu_fault)      cov_fu = cov_fu + 1;
         if (reg_par_fault) cov_par = cov_par + 1;
@@ -418,38 +418,38 @@ module tb_ia_timeo_gen_wrap;
     integer sat_rd = 0, sat_wr = 0, sat_dlv = 0;
 
     always @(posedge aclk) begin
-        if (u_dut.u_mon.ena_code_fault)                                fi_ena  = fi_ena  + 1;
-        if (u_dut.u_mon.thr_a_fault)                                   fi_thra = fi_thra + 1;
-        if (u_dut.u_mon.thr_r_fault)                                   fi_thrr = fi_thrr + 1;
-        if (u_dut.u_mon.g_m[0].rd_cnt_a_f || u_dut.u_mon.g_m[0].rd_cnt_r_f ||
-            u_dut.u_mon.g_m[0].wr_cnt_a_f || u_dut.u_mon.g_m[0].wr_cnt_r_f ||
-            u_dut.u_mon.g_m[1].rd_cnt_a_f || u_dut.u_mon.g_m[1].rd_cnt_r_f ||
-            u_dut.u_mon.g_m[1].wr_cnt_a_f || u_dut.u_mon.g_m[1].wr_cnt_r_f)  fi_cnt = fi_cnt + 1;
-        if (u_dut.u_mon.g_m[0].rd_otd_f || u_dut.u_mon.g_m[0].wr_otd_f ||
-            u_dut.u_mon.g_m[1].rd_otd_f || u_dut.u_mon.g_m[1].wr_otd_f)  fi_otd = fi_otd + 1;
-        if (u_dut.u_mon.g_m[0].wr_dlv_f || u_dut.u_mon.g_m[1].wr_dlv_f)  fi_dlv = fi_dlv + 1;
-        if (u_dut.u_mon.g_m[0].st_rd_a  || u_dut.u_mon.g_m[0].st_rd_r  ||
-            u_dut.u_mon.g_m[0].st_wr_a  || u_dut.u_mon.g_m[0].st_wr_r  ||
-            u_dut.u_mon.g_m[1].st_rd_a  || u_dut.u_mon.g_m[1].st_rd_r  ||
-            u_dut.u_mon.g_m[1].st_wr_a  || u_dut.u_mon.g_m[1].st_wr_r)  fi_st  = fi_st  + 1;
-        if (u_dut.u_mon.g_m[0].rd_r2a_cf || u_dut.u_mon.g_m[0].rd_r2r_cf ||
-            u_dut.u_mon.g_m[0].wr_r2a_cf || u_dut.u_mon.g_m[0].wr_r2r_cf ||
-            u_dut.u_mon.g_m[1].rd_r2a_cf || u_dut.u_mon.g_m[1].rd_r2r_cf ||
-            u_dut.u_mon.g_m[1].wr_r2a_cf || u_dut.u_mon.g_m[1].wr_r2r_cf) fi_cf = fi_cf + 1;
-        if (u_dut.u_mon.g_m[0].rd_otd_sat || u_dut.u_mon.g_m[1].rd_otd_sat) sat_rd = sat_rd + 1;
-        if (u_dut.u_mon.g_m[0].wr_otd_sat || u_dut.u_mon.g_m[1].wr_otd_sat) sat_wr = sat_wr + 1;
-        if (u_dut.u_mon.g_m[0].dlv_otd_sat || u_dut.u_mon.g_m[1].dlv_otd_sat) sat_dlv = sat_dlv + 1;
+        if (u_dut.u_ia_bus_timeo_core.ena_code_fault)                                fi_ena  = fi_ena  + 1;
+        if (u_dut.u_ia_bus_timeo_core.thr_a_fault)                                   fi_thra = fi_thra + 1;
+        if (u_dut.u_ia_bus_timeo_core.thr_r_fault)                                   fi_thrr = fi_thrr + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_cnt_a_f || u_dut.u_ia_bus_timeo_core.g_m[0].rd_cnt_r_f ||
+            u_dut.u_ia_bus_timeo_core.g_m[0].wr_cnt_a_f || u_dut.u_ia_bus_timeo_core.g_m[0].wr_cnt_r_f ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].rd_cnt_a_f || u_dut.u_ia_bus_timeo_core.g_m[1].rd_cnt_r_f ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].wr_cnt_a_f || u_dut.u_ia_bus_timeo_core.g_m[1].wr_cnt_r_f)  fi_cnt = fi_cnt + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_otd_f || u_dut.u_ia_bus_timeo_core.g_m[0].wr_otd_f ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].rd_otd_f || u_dut.u_ia_bus_timeo_core.g_m[1].wr_otd_f)  fi_otd = fi_otd + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].wr_dlv_f || u_dut.u_ia_bus_timeo_core.g_m[1].wr_dlv_f)  fi_dlv = fi_dlv + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].st_rd_a  || u_dut.u_ia_bus_timeo_core.g_m[0].st_rd_r  ||
+            u_dut.u_ia_bus_timeo_core.g_m[0].st_wr_a  || u_dut.u_ia_bus_timeo_core.g_m[0].st_wr_r  ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].st_rd_a  || u_dut.u_ia_bus_timeo_core.g_m[1].st_rd_r  ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].st_wr_a  || u_dut.u_ia_bus_timeo_core.g_m[1].st_wr_r)  fi_st  = fi_st  + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_r2a_cf || u_dut.u_ia_bus_timeo_core.g_m[0].rd_r2r_cf ||
+            u_dut.u_ia_bus_timeo_core.g_m[0].wr_r2a_cf || u_dut.u_ia_bus_timeo_core.g_m[0].wr_r2r_cf ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].rd_r2a_cf || u_dut.u_ia_bus_timeo_core.g_m[1].rd_r2r_cf ||
+            u_dut.u_ia_bus_timeo_core.g_m[1].wr_r2a_cf || u_dut.u_ia_bus_timeo_core.g_m[1].wr_r2r_cf) fi_cf = fi_cf + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].rd_otd_sat || u_dut.u_ia_bus_timeo_core.g_m[1].rd_otd_sat) sat_rd = sat_rd + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].wr_otd_sat || u_dut.u_ia_bus_timeo_core.g_m[1].wr_otd_sat) sat_wr = sat_wr + 1;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].dlv_otd_sat || u_dut.u_ia_bus_timeo_core.g_m[1].dlv_otd_sat) sat_dlv = sat_dlv + 1;
     end
 
     always @(posedge mbus_clk) begin
-        if (u_dut.u_regfile.wpar_err)                                 fi_wpar  = fi_wpar  + 1;
-        if (|u_dut.u_regfile.par_l_dup_f)                             fi_pldup = fi_pldup + 1;
-        if (u_dut.u_regfile.u_r0.dup_err || u_dut.u_regfile.u_r1.dup_err ||
-            u_dut.u_regfile.u_r2.dup_err || u_dut.u_regfile.u_r3.dup_err ||
-            u_dut.u_regfile.u_r4.dup_err || u_dut.u_regfile.u_r5.dup_err ||
-            u_dut.u_regfile.u_r6.dup_err || u_dut.u_regfile.u_r7.dup_err ||
-            u_dut.u_regfile.u_r8.dup_err || u_dut.u_regfile.u_c4.dup_err ||
-            u_dut.u_regfile.u_c5.dup_err || u_dut.u_regfile.u_c6.dup_err)  fi_dup   = fi_dup   + 1;
+        if (u_dut.u_ia_bus_timeo_regfile.wpar_err)                                 fi_wpar  = fi_wpar  + 1;
+        if (|u_dut.u_ia_bus_timeo_regfile.par_l_dup_f)                             fi_pldup = fi_pldup + 1;
+        if (u_dut.u_ia_bus_timeo_regfile.u_r_iaerr0.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_iaerr1.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_r_iastat.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_otd.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_r_cntrl.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_thresh0.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_r_thresh1.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_fustat.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.dup_err || u_dut.u_ia_bus_timeo_regfile.u_c_ena.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_c_thresh0.dup_err || u_dut.u_ia_bus_timeo_regfile.u_c_thresh1.dup_err)  fi_dup   = fi_dup   + 1;
     end
 
     //------------------------------------------------------------------------
@@ -871,104 +871,104 @@ module tb_ia_timeo_gen_wrap;
         // (1) coded-enable deviations: 3-flip (on+fault, self-heal),
         // 2-flip (ambiguous, value holds, monitoring stays ON),
         // 1-flip (off+fault, self-heal to 0000, rewrite on)
-        force u_dut.u_mon.r.ena_q = 4'b0111;
+        force u_dut.u_ia_bus_timeo_core.r.ena_q = 4'b0111;
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.ena_code_fault !== 1'b1) begin $display("ERR: ena 3-flip no fault"); errors++; end
-        release u_dut.u_mon.r.ena_q;
+        if (u_dut.u_ia_bus_timeo_core.ena_code_fault !== 1'b1) begin $display("ERR: ena 3-flip no fault"); errors++; end
+        release u_dut.u_ia_bus_timeo_core.r.ena_q;
         @(posedge aclk);
-        if (u_dut.u_mon.r.ena_q !== 4'b1111) begin $display("ERR: ena 3-flip no self-heal"); errors++; end
-        force u_dut.u_mon.r.ena_q = 4'b0011;
+        if (u_dut.u_ia_bus_timeo_core.r.ena_q !== 4'b1111) begin $display("ERR: ena 3-flip no self-heal"); errors++; end
+        force u_dut.u_ia_bus_timeo_core.r.ena_q = 4'b0011;
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.ena_ambig !== 1'b1) begin $display("ERR: ena 2-flip no ambig"); errors++; end
-        release u_dut.u_mon.r.ena_q;
+        if (u_dut.u_ia_bus_timeo_core.ena_ambig !== 1'b1) begin $display("ERR: ena 2-flip no ambig"); errors++; end
+        release u_dut.u_ia_bus_timeo_core.r.ena_q;
         @(posedge aclk);
-        if (u_dut.u_mon.r.ena_q !== 4'b0011) begin $display("ERR: ena 2-flip value did not hold"); errors++; end
+        if (u_dut.u_ia_bus_timeo_core.r.ena_q !== 4'b0011) begin $display("ERR: ena 2-flip value did not hold"); errors++; end
         mb_wr_wait(8'h10, 32'h0000_00AF);  // codeword write restores 1111
         repeat (4) @(negedge mbus_clk);
-        force u_dut.u_mon.r.ena_q = 4'b0001;
+        force u_dut.u_ia_bus_timeo_core.r.ena_q = 4'b0001;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.r.ena_q;
+        release u_dut.u_ia_bus_timeo_core.r.ena_q;
         @(posedge aclk);
-        if (u_dut.u_mon.r.ena_q !== 4'b0000) begin $display("ERR: ena 1-flip no heal to 0000"); errors++; end
+        if (u_dut.u_ia_bus_timeo_core.r.ena_q !== 4'b0000) begin $display("ERR: ena 1-flip no heal to 0000"); errors++; end
         mb_wr_wait(8'h10, 32'h0000_00AF);
         repeat (4) @(negedge mbus_clk);
         // (2) threshold dup mismatch (eff falls back to reset value)
         mb_wr_wait(8'h14, 32'h0001);
-        force u_dut.u_mon.r.thr_a_qn[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.r.thr_a_qn[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.thr_a_fault !== 1'b1) begin $display("ERR: thr_a dup no fault"); errors++; end
-        release u_dut.u_mon.r.thr_a_qn[0];
+        if (u_dut.u_ia_bus_timeo_core.thr_a_fault !== 1'b1) begin $display("ERR: thr_a dup no fault"); errors++; end
+        release u_dut.u_ia_bus_timeo_core.r.thr_a_qn[0];
         mb_wr_wait(8'h14, 32'd15);         // rewrite reloads q+qn coherently
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.thr_a_fault !== 1'b0) begin $display("ERR: thr_a fault stuck"); errors++; end
+        if (u_dut.u_ia_bus_timeo_core.thr_a_fault !== 1'b0) begin $display("ERR: thr_a fault stuck"); errors++; end
         mb_wr_wait(8'h18, 32'h0001);
-        force u_dut.u_mon.r.thr_r_qn[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.r.thr_r_qn[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.thr_r_fault !== 1'b1) begin $display("ERR: thr_r dup no fault"); errors++; end
-        release u_dut.u_mon.r.thr_r_qn[0];
+        if (u_dut.u_ia_bus_timeo_core.thr_r_fault !== 1'b1) begin $display("ERR: thr_r dup no fault"); errors++; end
+        release u_dut.u_ia_bus_timeo_core.r.thr_r_qn[0];
         mb_wr_wait(8'h18, 32'd255);
         repeat (2) @(posedge aclk);
-        if (u_dut.u_mon.thr_r_fault !== 1'b0) begin $display("ERR: thr_r fault stuck"); errors++; end
+        if (u_dut.u_ia_bus_timeo_core.thr_r_fault !== 1'b0) begin $display("ERR: thr_r fault stuck"); errors++; end
         // (3) counter dup mismatch, both masters (event fires NOW via the
         // f-term; heals back to 0 on the next idle edge)
-        force u_dut.u_mon.g_m[0].r.rd_cnt_a[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.rd_cnt_a[0];
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a[0];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[0].r.rd_cnt_r[5] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_r[5] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.rd_cnt_r[5];
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_r[5];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[0].r.wr_cnt_a[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_a[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_cnt_a[0];
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_a[0];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[0].r.wr_cnt_r[5] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_r[5] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_cnt_r[5];
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_r[5];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.rd_cnt_a[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_a[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.rd_cnt_a[0];
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_a[0];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.rd_cnt_r[5] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_r[5] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.rd_cnt_r[5];
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_r[5];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.wr_cnt_a[0] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_a[0] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_cnt_a[0];
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_a[0];
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.wr_cnt_r[5] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_r[5] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_cnt_r[5];
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_r[5];
         @(posedge aclk);
         // (4) outstanding-ledger dup mismatch (no idle reload - release
         // keeps the value -> TO_CLR restart, exactly the documented SW
         // recovery for a corrupted ledger)
-        force u_dut.u_mon.g_m[0].r.rd_otd[1] = 1'b1;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_otd[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.rd_otd[1];
-        force u_dut.u_mon.g_m[0].r.wr_otd[1] = 1'b1;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_otd[1];
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_otd[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_otd[1];
-        force u_dut.u_mon.g_m[0].r.wr_dlv[1] = 1'b1;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_otd[1];
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_dlv[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_dlv[1];
-        force u_dut.u_mon.g_m[1].r.rd_otd[1] = 1'b1;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_dlv[1];
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_otd[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.rd_otd[1];
-        force u_dut.u_mon.g_m[1].r.wr_otd[1] = 1'b1;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_otd[1];
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_otd[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_otd[1];
-        force u_dut.u_mon.g_m[1].r.wr_dlv[1] = 1'b1;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_otd[1];
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_dlv[1] = 1'b1;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_dlv[1];
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_dlv[1];
         mb_wr_wait(8'h10, 32'h0000_01AF);   // TO_CLR (keep ENA=1111)
         repeat (4) @(posedge aclk);
-        if (u_dut.u_mon.g_m[0].r.rd_otd !== 4'd0 || u_dut.u_mon.g_m[1].r.wr_dlv !== 4'd0) begin
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_otd !== 4'd0 || u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_dlv !== 4'd0) begin
             $display("ERR: TO_CLR did not restart ledgers (m0.rd_otd=%b m1.wr_dlv=%b)",
-                     u_dut.u_mon.g_m[0].r.rd_otd, u_dut.u_mon.g_m[1].r.wr_dlv); errors++;
+                     u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_otd, u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_dlv); errors++;
         end
         // (5) status dup mismatch: mismatch self-heals the bit to SET
         // (an SEU-cleared error is re-reported), then W1C at wrap-up.
@@ -977,38 +977,38 @@ module tb_ia_timeo_gen_wrap;
         mb_wr_wait(8'h00, 32'hF);           // r2a W1C
         mb_wr_wait(8'h04, 32'hF);           // r2r W1C
         repeat (4) @(negedge mbus_clk);
-        force u_dut.u_mon.g_m[0].r.rd_a_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_a_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.rd_a_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_a_st_n;
         @(posedge aclk);
-        if (u_dut.u_mon.g_m[0].r.rd_a_st !== 1'b1) begin $display("ERR: rd_a_st no heal-to-SET"); errors++; end
-        force u_dut.u_mon.g_m[0].r.rd_r_st_n = 1'b0;
+        if (u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_a_st !== 1'b1) begin $display("ERR: rd_a_st no heal-to-SET"); errors++; end
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_r_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.rd_r_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_r_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[0].r.wr_a_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_a_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_a_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_a_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[0].r.wr_r_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_r_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[0].r.wr_r_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_r_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.rd_a_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_a_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.rd_a_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_a_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.rd_r_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_r_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.rd_r_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_r_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.wr_a_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_a_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_a_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_a_st_n;
         @(posedge aclk);
-        force u_dut.u_mon.g_m[1].r.wr_r_st_n = 1'b0;
+        force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_r_st_n = 1'b0;
         repeat (2) @(posedge aclk);
-        release u_dut.u_mon.g_m[1].r.wr_r_st_n;
+        release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_r_st_n;
         @(posedge aclk);
         // (6) dual-comparator disagreement: hold an inverted-copy bit
         // wrong across the threshold boundary inside a short hang window
@@ -1018,27 +1018,27 @@ module tb_ia_timeo_gen_wrap;
             begin ar_hang(0, 12); axi_arvalid[0] = 1'b0; end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[0].r.rd_cnt_a_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[0].r.rd_cnt_a_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_a_n[2];
             end
         join
         fork
             begin aw_hang(0, 12); axi_awvalid[0] = 1'b0; end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[0].r.wr_cnt_a_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_a_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[0].r.wr_cnt_a_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_a_n[2];
             end
         join
         fork
             begin r_hang(0, 12); end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[0].r.rd_cnt_r_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_r_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[0].r.rd_cnt_r_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[0].r.rd_cnt_r_n[2];
             end
         join
         rd_drain(0, 1);
@@ -1046,9 +1046,9 @@ module tb_ia_timeo_gen_wrap;
             begin b_hang(0, 12); end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[0].r.wr_cnt_r_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_r_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[0].r.wr_cnt_r_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[0].r.wr_cnt_r_n[2];
             end
         join
         b_drain(0, 1);
@@ -1057,27 +1057,27 @@ module tb_ia_timeo_gen_wrap;
             begin ar_hang(1, 12); axi_arvalid[1] = 1'b0; end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[1].r.rd_cnt_a_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_a_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[1].r.rd_cnt_a_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_a_n[2];
             end
         join
         fork
             begin aw_hang(1, 12); axi_awvalid[1] = 1'b0; end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[1].r.wr_cnt_a_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_a_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[1].r.wr_cnt_a_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_a_n[2];
             end
         join
         fork
             begin r_hang(1, 12); end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[1].r.rd_cnt_r_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_r_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[1].r.rd_cnt_r_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[1].r.rd_cnt_r_n[2];
             end
         join
         rd_drain(1, 1);
@@ -1085,9 +1085,9 @@ module tb_ia_timeo_gen_wrap;
             begin b_hang(1, 12); end
             begin
                 @(negedge aclk);
-                force u_dut.u_mon.g_m[1].r.wr_cnt_r_n[2] = 1'b1;
+                force u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_r_n[2] = 1'b1;
                 repeat (10) @(negedge aclk);
-                release u_dut.u_mon.g_m[1].r.wr_cnt_r_n[2];
+                release u_dut.u_ia_bus_timeo_core.g_m[1].r.wr_cnt_r_n[2];
             end
         join
         b_drain(1, 1);
@@ -1105,9 +1105,9 @@ module tb_ia_timeo_gen_wrap;
             begin mb_wr(8'h14, 32'h5A5A); end
             begin
                 @(negedge mbus_clk); @(negedge mbus_clk);
-                force u_dut.u_regfile.r_mb.wpar_q = 1'b1;
+                force u_dut.u_ia_bus_timeo_regfile.r_mb.wpar_q = 1'b1;
                 repeat (4) @(posedge mbus_clk);
-                release u_dut.u_regfile.r_mb.wpar_q;
+                release u_dut.u_ia_bus_timeo_regfile.r_mb.wpar_q;
             end
         join
         repeat (6) @(negedge mbus_clk);
@@ -1123,9 +1123,9 @@ module tb_ia_timeo_gen_wrap;
         // 1-bit scalar - only bit0 can ever be set; the heal is bank-wide
         // (|par_l_dup_f), so bits [2:1] are structurally dead (excluded
         // in tgl_struct_excl.el). Shots below fault each latch bit in turn.
-        force u_dut.u_regfile.r_mb.par_lq_n = 3'b110;   // bit0 wrong (q=000)
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq_n = 3'b110;   // bit0 wrong (q=000)
         repeat (2) @(posedge mbus_clk);
-        release u_dut.u_regfile.r_mb.par_lq_n;
+        release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq_n;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
         if (rd_val[14:13] !== 2'b11) begin $display("ERR: par_lq dup did not heal-to-SET"); errors++; end
@@ -1137,9 +1137,9 @@ module tb_ia_timeo_gen_wrap;
         // W1C (q=000, n=111) a forced q[i]=1 is a bit-i fault. Each shot
         // needs its own W1C first - after any heal q=111 and a 1-forced
         // q bit would be a no-op.
-        force u_dut.u_regfile.r_mb.par_lq = 3'b010;     // q[1] fault
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 3'b010;     // q[1] fault
         repeat (2) @(posedge mbus_clk);
-        release u_dut.u_regfile.r_mb.par_lq;
+        release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
         if (rd_val[14:13] !== 2'b11) begin
@@ -1147,9 +1147,9 @@ module tb_ia_timeo_gen_wrap;
         end
         mb_wr_wait(8'h24, 32'h6001);
         repeat (6) @(negedge mbus_clk);
-        force u_dut.u_regfile.r_mb.par_lq = 3'b100;     // q[2] fault
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 3'b100;     // q[2] fault
         repeat (2) @(posedge mbus_clk);
-        release u_dut.u_regfile.r_mb.par_lq;
+        release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
         if (rd_val[14:13] !== 2'b11) begin
@@ -1160,30 +1160,30 @@ module tb_ia_timeo_gen_wrap;
         mb_rd(8'h24, rd_val);
         if (rd_val[14:13] !== 2'b00) begin $display("ERR: par_lq W1C failed (8b)"); errors++; end
         // (9) reg_wrap sticky dup SEU on every instance (12/12)
-        force u_dut.u_regfile.u_r0.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r0.r.flt_q_n;
-        force u_dut.u_regfile.u_r1.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r1.r.flt_q_n;
-        force u_dut.u_regfile.u_r2.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r2.r.flt_q_n;
-        force u_dut.u_regfile.u_r3.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r3.r.flt_q_n;
-        force u_dut.u_regfile.u_r4.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r4.r.flt_q_n;
-        force u_dut.u_regfile.u_r5.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r5.r.flt_q_n;
-        force u_dut.u_regfile.u_r6.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r6.r.flt_q_n;
-        force u_dut.u_regfile.u_r7.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r7.r.flt_q_n;
-        force u_dut.u_regfile.u_r8.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge mbus_clk); release u_dut.u_regfile.u_r8.r.flt_q_n;
-        force u_dut.u_regfile.u_c4.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge aclk);   release u_dut.u_regfile.u_c4.r.flt_q_n;
-        force u_dut.u_regfile.u_c5.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge aclk);   release u_dut.u_regfile.u_c5.r.flt_q_n;
-        force u_dut.u_regfile.u_c6.r.flt_q_n = 1'b0;
-        repeat (2) @(posedge aclk);   release u_dut.u_regfile.u_c6.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_iaerr0.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_iaerr0.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_iaerr1.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_iaerr1.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_iastat.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_iastat.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_otd.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_otd.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_cntrl.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_cntrl.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_thresh0.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_thresh0.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_thresh1.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_thresh1.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_fustat.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_fustat.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_c_ena.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge aclk);   release u_dut.u_ia_bus_timeo_regfile.u_c_ena.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_c_thresh0.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge aclk);   release u_dut.u_ia_bus_timeo_regfile.u_c_thresh0.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_c_thresh1.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge aclk);   release u_dut.u_ia_bus_timeo_regfile.u_c_thresh1.r.flt_q_n;
         repeat (4) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
         if (rd_val[12:4] !== 9'h1FF) begin $display("ERR: dup_err sweep PERR map %h", rd_val[12:4]); errors++; end

@@ -6,9 +6,9 @@
 // edc_core: 单个 AXI4 端口的 EDC 保护 IP (架构图中的 EDC_GEN_CHK_<i>)
 //
 //   本文件只是封装, 内部三个子模块:
-//     u_regfile : edc_regfile  -- 24MHz mbus 寄存器文件 (cfg + sta)
-//     u_gen     : edc_gen      -- AW / W / AR 请求通道
-//     u_chk     : edc_chk      -- B / R 响应通道
+//     u_edc_regfile : edc_regfile  -- 24MHz mbus 寄存器文件 (cfg + sta)
+//     u_edc_gen     : edc_gen      -- AW / W / AR 请求通道
+//     u_edc_chk     : edc_chk      -- B / R 响应通道
 //
 //   SIDE 决定本端口在 NIC 链路上的角色 (gen 与 chk 成对, 一端生成一端检查):
 //     SIDE=0 SI (主端口): 请求 GEN -> EDC 随 awuser/aruser/wuser 出发,
@@ -223,7 +223,7 @@ module edc_core #(
    edc_regfile #(
       .IDX    (IDX   ),
       .NSITES (NSITES)
-   ) u_regfile (
+   ) u_edc_regfile (
       .mbus_clk        (mbus_clk       ),
       .mbus_rstn       (mbus_rstn      ),
       .ce              (ce             ),
@@ -532,7 +532,7 @@ module edc_core #(
    edc_gen #(
       .IDW  (IDW     ),
       .MODE (GEN_MODE)
-   ) u_gen (
+   ) u_edc_gen (
       .clk            (axi_clk             ),
       .rstn           (axi_rstn            ),
       .s_axi_awid     (s_axi_awid          ),
@@ -609,7 +609,7 @@ module edc_core #(
    edc_chk #(
       .IDW  (IDW     ),
       .MODE (CHK_MODE)
-   ) u_chk (
+   ) u_edc_chk (
       .clk          (axi_clk                 ),
       .rstn         (axi_rstn                ),
       .m_axi_bid    (m_axi_bid               ),

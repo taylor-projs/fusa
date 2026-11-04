@@ -185,7 +185,7 @@ module nuclei300_edc_chk_fault_ej #(
   nuclei300_edc_chk #(
     .DW   (DW  ),
     .EDCW (EDCW)
-  ) u_edc_chk (
+  ) u_nuclei300_edc_chk (
     .i_dat (i_dat_ej ),
     .edc   (edc_ej   ),
     .o_err (o_err_raw)

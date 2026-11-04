@@ -163,7 +163,7 @@ module hang_prot_mcu2main_mon #(
         .AXI_ADDR_W     (AXI_ADDR_W),
         .AXI_DATA_W     (AXI_DATA_W),
         .WSKID_BEATS    (WSKID_BEATS)
-    ) u_core (
+    ) u_hang_prot_gen_wrap (
         .mbus_clk        (mbus_clk),
         .mbus_rstn       (mbus_rstn),
         .mbus_ce         (mbus_ce),

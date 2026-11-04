@@ -181,12 +181,12 @@ ack_t ◄──toggle── 回 ack              │
 
 | 实例 | 域 | 覆盖对象 | 说明 |
 |---|---|---|---|
-| u_r0..u_r3, u_r7, u_r8 | mbus_clk | 0x00/0x04/0x08/0x0C/0x1C/0x20 的 s2 镜像（SW 实际读到的值） | wr=1 跟随 s1，flt 同域直接用 |
-| u_c4/u_c5/u_c6 | **aclk** | SCMCNTRL.ENA / SCMTHRESH0 / SCMTHRESH1 配置影子 | 经 CDC 握手写入（req_edge 译码、数据稳定跨域）；cfg_ena/cfg_req2accept_max/cfg_req2resp_max 即其 rdata；**flt 2FF 同步回 mbus 域**聚合 |
+| u_r_iaerr0..u_r_otd, u_r_fustat, u_r_fusrc | mbus_clk | 0x00/0x04/0x08/0x0C/0x1C/0x20 的 s2 镜像（SW 实际读到的值） | wr=1 跟随 s1，flt 同域直接用 |
+| u_c_ena/u_c_thresh0/u_c_thresh1 | **aclk** | SCMCNTRL.ENA / SCMTHRESH0 / SCMTHRESH1 配置影子 | 经 CDC 握手写入（req_edge 译码、数据稳定跨域）；cfg_ena/cfg_req2accept_max/cfg_req2resp_max 即其 rdata；**flt 2FF 同步回 mbus 域**聚合 |
 | （latch） | mbus_clk | 在途写锁存 {wsel, wdata} 奇偶 | 瞬态窗口，锁存为 PERR9 |
 | （命令奇偶） | mbus_clk | 每次 `ce` 的 `par != ^{addr, wr, wdata}` 检查 | 锁存为 PERR_CMD（§3.4） |
 
-0x10/0x14/0x18 的读回显示（监控有效值回读）仍是 mbus 侧镜像 u_r4/u_r5/u_r6——PERR4/5/6 = 镜像 flt | 同步后的影子 flt（同一寄存器在两个域的存储各自检查，一个 PERR 位汇总）。
+0x10/0x14/0x18 的读回显示（监控有效值回读）仍是 mbus 侧镜像 u_r_cntrl/u_r_thresh0/u_r_thresh1——PERR4/5/6 = 镜像 flt | 同步后的影子 flt（同一寄存器在两个域的存储各自检查，一个 PERR 位汇总）。
 
 ### 5.2 注错、清除与上报
 

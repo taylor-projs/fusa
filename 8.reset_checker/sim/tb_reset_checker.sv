@@ -280,7 +280,7 @@ module tb_reset_checker;
             "T2 STAT counter zero at boot");
 
         mb_rd(A_CTRL, rd);
-        chk(rd[1:0] == 2'b01, "T3 CTRL reset value EN=1 FI=0");
+        chk(rd[3:0] == 4'b0001, "T3 CTRL reset MODE=NORMAL (EN=1 FI=0)");
 
         mb_rd(A_STAT, rd);
         chk(rd[9] == 1'b1, "T4 STAT shows EN=1 at boot (fail-safe on)");
@@ -303,7 +303,7 @@ module tb_reset_checker;
         //---------------------------------------------------------------------
         mb_wr(A_CTRL, 32'h0000_0001);          // no key
         mb_rd(A_CTRL, rd);
-        chk(rd[1:0] == 2'b01, "T10 unkeyed CTRL write rejected");
+        chk(rd[3:0] == 4'b0001, "T10 unkeyed CTRL write rejected");
 
         mb_wr(A_STAT, 32'hFFFF_FFFF);          // RO
         mb_wr(8'h18, 32'hFFFF_FFFF);           // unknown offset
@@ -311,7 +311,7 @@ module tb_reset_checker;
         chk(rd[18] == 1'b1, "T11 REG_PROT latched (unkeyed/RO/unknown)");
 
         mb_rd(A_CTRL, rd);
-        chk(rd[1:0] == 2'b01, "T12 CTRL unchanged after protected writes");
+        chk(rd[3:0] == 4'b0001, "T12 CTRL unchanged after protected writes");
 
         mb_rd(A_STAT, rd);
         chk(rd[9] == 1'b1 && rd[10] == 1'b0, "T13 STAT image unchanged (EN,FI)");
@@ -325,9 +325,9 @@ module tb_reset_checker;
         // counter itself is released by the rail XOR alone, EN only masks
         // the verdict)
         //---------------------------------------------------------------------
-        mb_wr(A_CTRL, KEY | 32'h0000_0000);    // keyed EN=0 FI=0
+        mb_wr(A_CTRL, KEY | 32'h0000_0004);    // keyed MODE=OFF (EN=0 FI=0)
         mb_rd(A_CTRL, rd);
-        chk(rd[1:0] == 2'b00, "T15 keyed EN=0 accepted");
+        chk(rd[3:0] == 4'b0100, "T15 keyed MODE=OFF accepted");
 
         viol_pulse(1'b0, 1'b1, 10);            // DIV_A for 10 cycles, EN=0
         repeat (8) @(posedge mbus_clk);
@@ -339,9 +339,9 @@ module tb_reset_checker;
         mb_rd(A_STAT, rd);
         chk(rd[0] == 1'b0, "T18 rails restored, viol gone");
 
-        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // keyed EN=1
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // keyed MODE=NORMAL
         mb_rd(A_CTRL, rd);
-        chk(rd[0] == 1'b1, "T19 keyed EN=1 re-accepted");
+        chk(rd[0] == 1'b1, "T19 keyed MODE=NORMAL re-accepted");
 
         //---------------------------------------------------------------------
         // Phase 4: same-polarity traffic with sub-cycle skew
@@ -496,14 +496,14 @@ module tb_reset_checker;
         @(negedge mbus_clk);
         rails(1'b0, 1'b0, 0);                  // reset window, rails agree
         repeat (3) @(posedge mbus_clk);
-        mb_wr(A_CTRL, KEY | 32'h0000_0003);    // EN=1 FI=1 -> m flips: (0,1)
+        mb_wr(A_CTRL, KEY | 32'h0000_0002);    // MODE=INJECT -> m flips: (0,1)
         wait_err(44, lat, ok);
         chk(ok, "T43 FI injection fires err with agreeing rails");
 
         mb_rd(A_EV, rd);
         chk(rd[2:0] == 3'b101, "T44 FI injection records DIV_A");
 
-        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // FI off
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // MODE=NORMAL (FI off)
         repeat (2) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
@@ -561,7 +561,7 @@ module tb_reset_checker;
         //---------------------------------------------------------------------
         // Phase 10: command in-flight parity
         //---------------------------------------------------------------------
-        mb_wr_badpar(A_CTRL, KEY | 32'h0000_0000);   // would clear EN
+        mb_wr_badpar(A_CTRL, KEY | 32'h0000_0004);   // would go OFF
         mb_rd(A_CTRL, rd);
         chk(rd[0] == 1'b1, "T56 bad-parity write blocked");
 
@@ -589,7 +589,7 @@ module tb_reset_checker;
         mb_rd_i(8'h01, A_ID, rd);
         chk(rd == 32'h0, "T60 wrong-instance read returns 0");
 
-        mb_wr_i(8'h01, A_CTRL, KEY | 32'h0000_0000);    // would clear EN
+        mb_wr_i(8'h01, A_CTRL, KEY | 32'h0000_0004);    // would go OFF
         mb_rd(A_CTRL, rd);
         chk(rd[0] == 1'b1, "T61 wrong-instance write ignored");
         mb_rd(A_REGPAR, rd);
@@ -607,7 +607,7 @@ module tb_reset_checker;
         wait_err(44, lat, ok);
         chk(ok, "T63 sustained DIV_A fires (heal setup)");
 
-        mb_wr(A_CTRL, KEY | 32'h0000_0000);    // EN=0: mask the live verdict
+        mb_wr(A_CTRL, KEY | 32'h0000_0004);    // MODE=OFF: mask the live verdict
         repeat (2) @(posedge mbus_clk);
         chk(rst_por_n_err == 1'b1,
             "T64 err holds with source masked (domain released)");
@@ -626,7 +626,7 @@ module tb_reset_checker;
         chk(rst_por_n_err == 1'b0,
             "T66 err auto-cleared by pair-XOR reset");
 
-        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // EN back on (fail-safe)
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // MODE=NORMAL (fail-safe on)
         mb_wr(A_EV, 32'h0000_0007);            // clear the diagnostic record
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_EV, rd);
@@ -772,11 +772,11 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
 
         // regfile local-sticky duplicate (lst heal-to-SET, all three lanes)
-        force dut.u_regfile.r_mb.lst_qn = dut.u_regfile.r_mb.lst_q;
+        force dut.u_reset_checker_regfile.r_mb.lst_qn = dut.u_reset_checker_regfile.r_mb.lst_q;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
         chk(rd[18:16] == 3'b111, "T83 REGPAR sticky duplicate heals to SET");
-        release dut.u_regfile.r_mb.lst_qn;
+        release dut.u_reset_checker_regfile.r_mb.lst_qn;
         repeat (1) @(posedge mbus_clk);
         mb_wr(A_REGPAR, 32'h0007_0000);
         repeat (2) @(posedge mbus_clk);
@@ -789,7 +789,7 @@ module tb_reset_checker;
         @(negedge mbus_clk);
         reset_p = 1'b1;                        // released, agreeing
         reset_m = 1'b1;
-        mb_wr(A_CTRL, KEY | 32'h0000_0003);    // dirty: FI on -> m flips low
+        mb_wr(A_CTRL, KEY | 32'h0000_0002);    // dirty: MODE=INJECT -> m flips low
         repeat (2) @(posedge mbus_clk);        // (counts far below 32)
         @(negedge mbus_clk);
         mbus_rstn = 1'b0;                      // re-assert the bus reset
@@ -797,7 +797,7 @@ module tb_reset_checker;
         mbus_rstn = 1'b1;
         repeat (3) @(negedge mbus_clk);
         mb_rd(A_CTRL, rd);
-        chk(rd[1:0] == 2'b01, "T84 CTRL fail-safe reload (EN=1 FI=0)");
+        chk(rd[3:0] == 4'b0001, "T84 CTRL fail-safe reload MODE=NORMAL");
         mb_rd(A_EV, rd);
         chk(rd == 32'h0, "T85 EV cleared by reset");
         mb_rd(A_REGPAR, rd);
@@ -835,9 +835,9 @@ module tb_reset_checker;
         repeat (1) @(posedge mbus_clk);
 
         // u_evimg duplicate rail -> REGPAR[5]
-        force dut.u_regfile.u_evimg.r.flt_q_n = 1'b0;
+        force dut.u_reset_checker_regfile.u_evimg.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);        // heal lands on posedge 1
-        release dut.u_regfile.u_evimg.r.flt_q_n;
+        release dut.u_reset_checker_regfile.u_evimg.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
         chk(rd[5] == 1'b1, "T90 evimg dup heal sets REGPAR[5]");
@@ -846,9 +846,9 @@ module tb_reset_checker;
         chk(rd[5] == 1'b0, "T91 evimg dup W1C clear (no rewrite)");
 
         // u_statimg duplicate rail -> REGPAR[6]
-        force dut.u_regfile.u_statimg.r.flt_q_n = 1'b0;
+        force dut.u_reset_checker_regfile.u_statimg.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);
-        release dut.u_regfile.u_statimg.r.flt_q_n;
+        release dut.u_reset_checker_regfile.u_statimg.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
         chk(rd[6] == 1'b1, "T92 statimg dup heal sets REGPAR[6]");
@@ -858,9 +858,9 @@ module tb_reset_checker;
 
         // u_ctrl duplicate rail -> REGPAR[4] (config-hold wrap, but the dup
         // heal corrupts no parity: W1C alone restores, no CTRL rewrite)
-        force dut.u_regfile.u_ctrl.r.flt_q_n = 1'b0;
+        force dut.u_reset_checker_regfile.u_ctrl.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);
-        release dut.u_regfile.u_ctrl.r.flt_q_n;
+        release dut.u_reset_checker_regfile.u_ctrl.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
         chk(rd[4] == 1'b1, "T94 ctrl dup heal sets REGPAR[4]");
@@ -876,7 +876,7 @@ module tb_reset_checker;
         // primary-input control); the sync FFs themselves stay untouched.
         // Functional mode must come back unchanged.
         //---------------------------------------------------------------------
-        mb_wr(A_CTRL, KEY | 32'h0000_0001);   // EN=1 FI=0 (m_g = reset_m)
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);   // MODE=NORMAL (FI off, m_g = reset_m)
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // known rail state (both low)
         reset_m = 1'b0;
@@ -900,6 +900,34 @@ module tb_reset_checker;
         chk(rst_sync == 1'b0, "T99 scan exit: release waits for the 2FF");
         repeat (4) @(posedge mbus_clk);
         chk(rst_sync == 1'b1, "T100 scan exit: rst_sync released after 2FF");
+        repeat (2) @(posedge mbus_clk);
+
+        //---------------------------------------------------------------------
+        // Phase 19: CTRL MODE one-hot coding - the (EN=0,FI=1) silent-inject
+        // state is structurally unrepresentable; illegal codes are rejected
+        // (REG_PROT, storage unchanged), legal codes decode per header
+        //---------------------------------------------------------------------
+        mb_wr(A_CTRL, KEY | 32'h0000_0003);    // illegal (old EN|FI bit code)
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0001, "T101 illegal MODE 0x3 rejected, storage unchanged");
+        mb_rd(A_REGPAR, rd);
+        chk(rd[18] == 1'b1, "T102 illegal MODE latches REG_PROT");
+        mb_wr(A_REGPAR, 32'h0004_0000);        // W1C bit18
+
+        mb_wr(A_CTRL, KEY | 32'h0000_000F);    // another illegal code
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0001, "T103 illegal MODE 0xF rejected");
+        mb_wr(A_REGPAR, 32'h0004_0000);
+
+        mb_wr(A_CTRL, KEY | 32'h0000_0004);    // OFF accepted
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0100, "T104 keyed MODE=OFF accepted");
+        mb_rd(A_STAT, rd);
+        chk(rd[9] == 1'b0 && rd[10] == 1'b0, "T105 OFF decodes EN=0 FI=0");
+
+        mb_wr(A_CTRL, KEY | 32'h0000_0001);    // back to NORMAL
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0001, "T106 back to NORMAL");
         repeat (2) @(posedge mbus_clk);
 
         if (nerrs == 0) begin

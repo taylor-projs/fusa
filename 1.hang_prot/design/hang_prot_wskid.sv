@@ -99,7 +99,7 @@
 // STYLE: GRLIB two-process - one packed record r (slots + pointers +
 //   buffers + fault), comb process (v = r; ...; rin = v), seq process
 //   (reset load / r <= rin). Per-slot storage is packed sub-arrays of the
-//   record so the TB keeps flat paths (u_wskid.r.st[0], ...). All decode
+//   record so the TB keeps flat paths (u_hang_prot_wskid.r.st[0], ...). All decode
 //   reads r (现态), all next-state writes go to v - NBA-equivalent
 //   last-write-wins order is the textual order of the rules below
 //   (write-conflict freedom: the allocation target is FREE, the fill
@@ -175,7 +175,7 @@ module hang_prot_wskid #(
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
     //   st[slot] / counters[slot] / buffers[slot][beat] are packed
-    //   sub-arrays - flat TB paths u_wskid.r.st[0] etc.
+    //   sub-arrays - flat TB paths u_hang_prot_wskid.r.st[0] etc.
     //--------------------------------------------------------------------------
     typedef struct packed {
         logic [1:0][3:0]                             st;         // slot state, one-hot

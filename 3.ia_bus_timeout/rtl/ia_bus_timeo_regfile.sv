@@ -101,9 +101,9 @@
 //  even parity + selftest_key injection + own fault sticky {flt,
 //  flt_w1c} - the check lives with the storage it protects, no external
 //  fault-source plumbing:
-//     a. mbus_clk image wrappers (u_r0..u_r8): the s2 stage of every
+//     a. mbus_clk image wrappers (u_r_iaerr0..u_r_fusrc): the s2 stage of every
 //        SW-readable register (exactly what SW reads), wr=1 follow
-//     b. aclk config wrappers (u_c4/u_c5/u_c6): SCMCNTRL.ENA /
+//     b. aclk config wrappers (u_c_ena/u_c_thresh0/u_c_thresh1): SCMCNTRL.ENA /
 //        SCMTHRESH0 / SCMTHRESH1 shadows written through the CDC
 //        handshake (req_edge decode); cfg_ena / cfg_req2accept_max /
 //        cfg_req2resp_max are their rdata outputs; their flt is
@@ -487,9 +487,9 @@ module ia_bus_timeo_regfile #(
     // (rewrite of unchanged values is idempotent), so the monitor's
     // keyed port always sees a coherent {ena, thr_a, thr_r} triple.
     //--------------------------------------------------------------------------
-    logic [ 3:0] ena_sh;      // rdata of u_c4  (-> cfg_ena)
-    logic [15:0] thr_a_sh;    // rdata of u_c5  (-> cfg_req2accept_max)
-    logic [15:0] thr_r_sh;    // rdata of u_c6  (-> cfg_req2resp_max)
+    logic [ 3:0] ena_sh;      // rdata of u_c_ena  (-> cfg_ena)
+    logic [15:0] thr_a_sh;    // rdata of u_c_thresh0  (-> cfg_req2accept_max)
+    logic [15:0] thr_r_sh;    // rdata of u_c_thresh1  (-> cfg_req2resp_max)
     logic       flt4_a, flt5_a, flt6_a;    // aclk stickies (synced below)
 
     // write decodes (aclk): SCMCNTRL needs key + ENA codeword (double
@@ -514,7 +514,7 @@ module ia_bus_timeo_regfile #(
     reg_wrap #(
         .W                (4                                    ),
         .RESET            (4'b1111                              )
-    ) u_c4 (                                   // SCMCNTRL.ENA shadow
+    ) u_c_ena (                                   // SCMCNTRL.ENA shadow
         .clk               (aclk                                 ),
         .rst               (rst                                  ),
         .wdata             (r_mb.wdata_q[3:0]                    ),
@@ -527,7 +527,7 @@ module ia_bus_timeo_regfile #(
     reg_wrap #(
         .W                (16                                   ),
         .RESET            (REQ2ACCEPT_RST                       )
-    ) u_c5 (                                   // SCMTHRESH0 shadow
+    ) u_c_thresh0 (                                   // SCMTHRESH0 shadow
         .clk               (aclk                                 ),
         .rst               (rst                                  ),
         .wdata             (r_mb.wdata_q[15:0]                   ),
@@ -540,7 +540,7 @@ module ia_bus_timeo_regfile #(
     reg_wrap #(
         .W                (16                                   ),
         .RESET            (REQ2RESP_RST                         )
-    ) u_c6 (                                   // SCMTHRESH1 shadow
+    ) u_c_thresh1 (                                   // SCMTHRESH1 shadow
         .clk               (aclk                                 ),
         .rst               (rst                                  ),
         .wdata             (r_mb.wdata_q[15:0]                   ),
@@ -660,7 +660,7 @@ module ia_bus_timeo_regfile #(
     //--------------------------------------------------------------------------
     // REGISTER PARITY (FuSa): every register is a reg_wrap instance in
     // its own clock domain - see header. mbus-domain image wrappers
-    // below; aclk config wrappers above (u_c4/u_c5/u_c6).
+    // below; aclk config wrappers above (u_c_ena/u_c_thresh0/u_c_thresh1).
     //--------------------------------------------------------------------------
     logic rst_mbus;
     assign rst_mbus = ~mbus_rstn;
@@ -681,7 +681,7 @@ module ia_bus_timeo_regfile #(
     //---- mbus-domain image wrappers (r2 = second sync stage + parity) --
     reg_wrap #(
         .W                (NUM_IA                               )
-    ) u_r0 (                                   // 0x00 SCMIAERR0STAT
+    ) u_r_iaerr0 (                                   // 0x00 SCMIAERR0STAT
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (r2a_st_s1                            ),
@@ -693,7 +693,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (NUM_IA                               )
-    ) u_r1 (                                   // 0x04 SCMIAERR1STAT
+    ) u_r_iaerr1 (                                   // 0x04 SCMIAERR1STAT
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (r2r_st_s1                            ),
@@ -705,7 +705,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (NUM_IA                               )
-    ) u_r2 (                                   // 0x08 SCMIASTAT (RO)
+    ) u_r_iastat (                                   // 0x08 SCMIASTAT (RO)
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (ia_act_s1                            ),
@@ -717,7 +717,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (OTD_BW                               )
-    ) u_r3 (                                   // 0x0C SCMOTD (RO)
+    ) u_r_otd (                                   // 0x0C SCMOTD (RO)
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (otd_s1                               ),
@@ -729,7 +729,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (4                                    )
-    ) u_r4 (                                   // 0x10 SCMCNTRL.ENA image
+    ) u_r_cntrl (                                   // 0x10 SCMCNTRL.ENA image
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (ena_s1                               ),
@@ -741,7 +741,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (16                                   )
-    ) u_r5 (                                   // 0x14 SCMTHRESH0 image
+    ) u_r_thresh0 (                                   // 0x14 SCMTHRESH0 image
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (thr_a_s1                             ),
@@ -753,7 +753,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (16                                   )
-    ) u_r6 (                                   // 0x18 SCMTHRESH1 image
+    ) u_r_thresh1 (                                   // 0x18 SCMTHRESH1 image
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (thr_r_s1                             ),
@@ -765,7 +765,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (4                                    )
-    ) u_r7 (                                   // 0x1C SCMIAFUSTAT rails
+    ) u_r_fustat (                                   // 0x1C SCMIAFUSTAT rails
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (rail_s1                              ),
@@ -777,7 +777,7 @@ module ia_bus_timeo_regfile #(
     );
     reg_wrap #(
         .W                (FU_SRC_W                             )
-    ) u_r8 (                                   // 0x20 SCMIAFUSRC image
+    ) u_r_fusrc (                                   // 0x20 SCMIAFUSRC image
         .clk               (mbus_clk                              ),
         .rst               (rst_mbus                              ),
         .wdata             (fusrc_s1                             ),

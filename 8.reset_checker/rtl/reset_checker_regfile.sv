@@ -20,20 +20,33 @@
 // (storage + even parity + selftest_key injection + own sticky flt with
 // inverted duplicate) - the check lives with the storage:
 //   PERR group bit (REGPAR[k+4]) / REGPAR bit:
-//     [4]  CTRL wrap {EN,FI}              [16] PERR_CMD command parity
+//     [4]  CTRL wrap (MODE[3:0])          [16] PERR_CMD command parity
 //     [5]  EV image wrap                  [17] PAR_SELFTEST latch
 //     [6]  STAT image wrap                [18] REG_PROT write protection
 //   Image wraps (5/6) follow wr=1: an injected parity error self-restores
 //   next cycle. The config wrap (4) holds: restore = rewrite the register
 //   (the documented last step of the self-test flow).
 //
+// CTRL MODE CODING (FuSa): the EN/FI configuration is a 4-bit ONE-HOT mode
+// field, not two independent bits - the dangerous (EN=0, FI=1) combination
+// (injection with the alarm masked = silent corruption) is structurally
+// unrepresentable. One-hot also self-checks: a single bit flip off any
+// legal code lands on an illegal code, so decode-level corruption is
+// detectable (storage-level is the wrap parity - complementary layers):
+//   4'b0001 NORMAL  EN=1 FI=0 (monitor on)      <- reset, fail-safe
+//   4'b0010 INJECT  EN=1 FI=1 (self-test)
+//   4'b0100 OFF     EN=0 FI=0 (masked, quiet)
+//   others  illegal: write rejected + REG_PROT; decode backstop maps any
+//   unreachable stored code to fail-safe (EN=1, FI=0 - never injects)
+//
 // WRITE PROTECTION: keyed registers (CTRL/REGST) need wdata[31:28]==
-// WKEY; a bad key, a write to RO (ID/STAT) or an unknown offset latches
-// REG_PROT and rejects the write entirely.
+// WKEY; a bad key, a write to RO (ID/STAT), an unknown offset or an
+// illegal MODE value latches REG_PROT and rejects the write entirely.
 //============================================================================
 module reset_checker_regfile #(
     parameter logic [3:0]  WKEY     = 4'h5,     // key in wdata[31:28]
-    parameter logic [1:0]  CTRL_RST = 2'b01,    // EN=1 FI=0 (fail-safe on)
+    parameter logic [3:0]  CTRL_RST = 4'b0001,  // MODE=NORMAL (EN=1 FI=0,
+                                                // fail-safe on; one-hot)
     parameter int          IDX      = 0         // mbus instance id
 )(
     // ---- mbus (mbus_clk domain) -------------------------------------------
@@ -75,13 +88,19 @@ module reset_checker_regfile #(
     // upstream apb2mbus bridge)
     //=========================================================================
     localparam logic [7:0] OFF_ID     = 8'h00;   // RO
-    localparam logic [7:0] OFF_CTRL   = 8'h04;   // keyed: [0]EN [1]FI
+    localparam logic [7:0] OFF_CTRL   = 8'h04;   // keyed: [3:0] MODE one-hot
     localparam logic [7:0] OFF_STAT   = 8'h08;   // RO live status
     localparam logic [7:0] OFF_EV     = 8'h0C;   // W1C [0]DA [1]DB [2]ERR
     localparam logic [7:0] OFF_REGPAR = 8'h10;   // W1C parity/protection status
     localparam logic [7:0] OFF_REGST  = 8'h14;   // keyed: parity self-test
 
     localparam logic [31:0] ID_VAL = 32'h5243_0001;   // "RC" v1
+
+    // CTRL MODE one-hot codes (see header): decode fail-safe for any
+    // unreachable stored code (SEU backstop) - never injects, monitor on
+    localparam logic [3:0] MODE_NORM = 4'b0001;   // EN=1 FI=0
+    localparam logic [3:0] MODE_INJ  = 4'b0010;   // EN=1 FI=1
+    localparam logic [3:0] MODE_OFF  = 4'b0100;   // EN=0 FI=0
 
     // STAT readback layout (== u_statimg word):
     //   [0]=viol [1]=div_a [2]=div_b [3]=cnt_full [8:4]=cnt [9]=EN [10]=FI
@@ -106,40 +125,60 @@ module reset_checker_regfile #(
     //=========================================================================
     // mbus command in-flight parity + selection + write classification
     //=========================================================================
-    logic sel;
+    logic  sel;
     assign sel = ce && (addr[15:8] == IDX[7:0]);
-    logic par_ok;
+
+    logic  par_ok;
+    logic  par_bad;
     assign par_ok = (^{addr, wr, wdata}) == par;
-    logic par_bad;
-    assign par_bad = ce && !par_ok;               // ALL commands checked
-    logic wr_ok;
+    // ! only selected module check parity.
+    // assign par_bad = ce && !par_ok;             // ALL commands checked
+    assign par_bad = sel && !par_ok;   
+
+    logic  wr_ok;
     assign wr_ok = sel && wr && par_ok;           // good-command write strobe
-    logic [7:0] off;
-    assign off = addr[7:0];
+    logic  [7:0] offset;
+    assign offset = addr[7:0];
 
-    logic key_ok;
-    assign key_ok = (wdata[31:28] == WKEY);
+    logic  key_ok;
+    assign key_ok = sel & (wdata[31:28] == WKEY); // ! only selected cmd check.
 
-    logic wr_ro;
-    assign wr_ro = wr_ok && ((off == OFF_ID) || (off == OFF_STAT));
-    logic wr_known;
-    assign wr_known = wr_ok && ((off == OFF_CTRL) || (off == OFF_EV)
-                                || (off == OFF_REGPAR) || (off == OFF_REGST));
-    logic wr_keyed;
-    assign wr_keyed = wr_ok && ((off == OFF_CTRL) || (off == OFF_REGST));
-    logic keyed_bad;
+    // read-only registers.
+    logic  wr_ro;
+    assign wr_ro = wr_ok && ((offset == OFF_ID) || (offset == OFF_STAT));
+    logic  wr_known;
+    assign wr_known = wr_ok && ((offset == OFF_CTRL  ) || (offset == OFF_EV   )
+                             || (offset == OFF_REGPAR) || (offset == OFF_REGST));
+    logic  wr_keyed;
+    assign wr_keyed = wr_ok && ((offset == OFF_CTRL  ) || (offset == OFF_REGST));
+
+    // key err when write op
+    logic  keyed_bad;
     assign keyed_bad = wr_keyed && !key_ok;
 
-    logic regprot_ev;
-    assign regprot_ev = wr_ro || (wr_ok && !wr_known && !wr_ro) || keyed_bad;
+    // illegal MODE value (keyed, good key): rejected + REG_PROT, exactly
+    // like a write-protection violation - the SW-caused coded-field fault
+    logic  mode_ok;
+    assign mode_ok  = (wdata[3:0] == MODE_NORM) || (wdata[3:0] == MODE_INJ)
+                   || (wdata[3:0] == MODE_OFF );
+    logic  mode_bad;
+    assign mode_bad = wr_ok && (offset == OFF_CTRL) && key_ok && !mode_ok;
 
-    logic regpar_w1c;
-    assign regpar_w1c = wr_ok && (off == OFF_REGPAR);
-    logic regst_wr;
-    assign regst_wr = wr_ok && (off == OFF_REGST) && key_ok;
-    logic regst_st;
-    assign regst_st = regst_wr && wdata[8] && (wdata[4:0] <= 5'd2);
-    logic parst_ev;
+    logic  regprot_ev; // error collection
+    // 1. write the read-only register.
+    // 2. write the write rejected register.
+    // 3. write the registers that key is not correct.
+    // 4. control register write the illegal mode.
+    assign regprot_ev = wr_ro || (wr_ok && !wr_known && !wr_ro) || keyed_bad || mode_bad;
+
+    logic  regpar_w1c;
+    assign regpar_w1c = wr_ok && (offset == OFF_REGPAR);
+
+    logic  regst_wr;
+    logic  regst_st;
+    logic  parst_ev;
+    assign regst_wr = wr_ok && (offset == OFF_REGST ) && key_ok;
+    assign regst_st = regst_wr && wdata[8] && (wdata[4:0] <= 5'd2); // reg parity fault inj.
     assign parst_ev = regst_wr && wdata[9];
 
     //=========================================================================
@@ -148,39 +187,40 @@ module reset_checker_regfile #(
     // mismatch (bitwise XNOR) - a vector "!=" would collapse to a scalar
     // compare and only ever heal bit 0.
     //=========================================================================
-    logic [2:0] lst_dup;
+    logic  [2:0] lst_dup;
     assign lst_dup = (r_mb.lst_qn ~^ r_mb.lst_q);
 
-    logic [2:0] lst_set;
+    logic  [2:0] lst_set;
+    logic  [2:0] lst_clr;
     assign lst_set = {regprot_ev, parst_ev, par_bad};   // {18,17,16} lanes
-    logic [2:0] lst_clr;
     assign lst_clr = {(regpar_w1c && wdata[18]),   // REG_PROT
                       (regpar_w1c && wdata[17]),   // PAR_SELFTEST
                       (regpar_w1c && wdata[16])};  // PERR_CMD
-    logic [2:0] lst_nxt;
+    logic  [2:0] lst_nxt;
     assign lst_nxt = (r_mb.lst_q | lst_set | lst_dup) & ~lst_clr;
 
     //=========================================================================
-    // config store strobe (keyed; a bad key rejects the whole write)
+    // config store strobe (keyed AND legal mode; a bad key or an illegal
+    // MODE value rejects the whole write)
     //=========================================================================
     logic  sto_ctrl;
-    assign sto_ctrl = wr_ok && (off == OFF_CTRL) && key_ok;
+    assign sto_ctrl = wr_ok && (offset == OFF_CTRL) && key_ok && mode_ok;
 
     //=========================================================================
     // reg_wrap instances (mbus domain). PERR group index = REGPAR bit 4+k.
     //=========================================================================
-    logic [2:0] perr_w;      // group flt vector
-    logic [1:0] ctrl_r;      // {FI, EN}
-    logic [2:0] evimg_r;
+    logic [ 2:0] perr_w   ;      // group flt vector
+    logic [ 3:0] ctrl_r   ;      // MODE one-hot storage
+    logic [ 2:0] evimg_r  ;
     logic [10:0] statimg_r;
 
     reg_wrap #(
-        .W     (2        ),
+        .W     (4        ),
         .RESET (CTRL_RST )
     ) u_ctrl (
         .clk          (mbus_clk                        ),
         .rst_n        (mbus_rstn                       ),
-        .wdata        (wdata[1:0]                      ),
+        .wdata        (wdata[3:0]                      ),
         .wr           (sto_ctrl                        ),
         .rdata        (ctrl_r                          ),
         .selftest_key (regst_st && (wdata[4:0] == 5'd0)),
@@ -209,7 +249,7 @@ module reset_checker_regfile #(
     ) u_statimg (
         .clk          (mbus_clk                          ),
         .rst_n        (mbus_rstn                         ),
-        .wdata        ({ctrl_r, sts_cnt, sts_cnt_full,
+        .wdata        ({cfg_fi, cfg_en, sts_cnt, sts_cnt_full,
                         sts_div_b, sts_div_a, sts_viol}  ),
         .wr           (1'b1                              ),
         .rdata        (statimg_r                         ),
@@ -221,12 +261,15 @@ module reset_checker_regfile #(
     //=========================================================================
     // outputs
     //=========================================================================
-    assign cfg_en = ctrl_r[0];
-    assign cfg_fi = ctrl_r[1];
+    // MODE decode: fail-safe for any unreachable stored code (SEU
+    // backstop) - OFF is the only code that disables the monitor, INJECT
+    // the only one that injects; an illegal code keeps EN on and FI off
+    assign cfg_en = (ctrl_r != MODE_OFF);
+    assign cfg_fi = (ctrl_r == MODE_INJ);
 
-    assign err_w1c   = wr_ok && (off == OFF_EV) && wdata[2];
-    assign ev_da_w1c = wr_ok && (off == OFF_EV) && wdata[0];
-    assign ev_db_w1c = wr_ok && (off == OFF_EV) && wdata[1];
+    assign ev_da_w1c = wr_ok && (offset == OFF_EV) && wdata[0];
+    assign ev_db_w1c = wr_ok && (offset == OFF_EV) && wdata[1];
+    assign err_w1c   = wr_ok && (offset == OFF_EV) && wdata[2];
 
     // integrity event pin: wrap faults + PERR_CMD + PAR_SELFTEST; REG_PROT is
     // a write-protection protocol event (SW-caused) and stays REGPAR-only
@@ -239,9 +282,9 @@ module reset_checker_regfile #(
     logic [31:0] rdata_mux;
     always_comb begin
         rdata_mux = 32'h0;
-        case (off)
+        case (offset)
             OFF_ID:     rdata_mux = ID_VAL;
-            OFF_CTRL:   rdata_mux = {30'b0, ctrl_r};
+            OFF_CTRL:   rdata_mux = {28'b0, ctrl_r};
             OFF_STAT:   rdata_mux = {21'b0, statimg_r};
             OFF_EV:     rdata_mux = {29'b0, evimg_r};
             OFF_REGPAR: rdata_mux = {13'b0, r_mb.lst_q, 9'b0, perr_w,
@@ -257,12 +300,9 @@ module reset_checker_regfile #(
     //=========================================================================
     always_comb begin : mb_comb
         mb_reg_t v_mb;
-
         v_mb = r_mb;
-
         v_mb.lst_q  =  lst_nxt;
         v_mb.lst_qn = ~lst_nxt;
-
         rin_mb = v_mb;
     end
 

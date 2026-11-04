@@ -118,7 +118,7 @@
 //     era survives on either side;
 //   - a REPLAY slot stuck on the dead main (main accepted the AW, died
 //     mid-burst: scenario 2b) is FORCE-CLEARED once wr_otd==0 (s_force ->
-//     u_wskid.force_clear): with main in reset its acceptance is
+//     u_hang_prot_wskid.force_clear): with main in reset its acceptance is
 //     forgotten, so the remaining real beats are discarded - replaying
 //     them into a revived main would be UNEXPECTED data (it has no AW
 //     context anymore). The entry's ledger is already retired via the
@@ -199,7 +199,7 @@
 // STYLE: GRLIB two-process - one packed record r (mode rails + ID FIFOs
 //   + pointers/counters with inverted dups + sticky fault), comb process
 //   (v = r; ...; rin = v), seq process (reset load / r <= rin). FIFO
-//   payloads are packed sub-arrays (flat TB paths u_recover.r.ar_rp[0] ...).
+//   payloads are packed sub-arrays (flat TB paths u_hang_prot_recover.r.ar_rp[0] ...).
 //   All conditions read r (现态), all next-state writes go to v - the
 //   original mode_ff / ar_fifo_ff / aw_fifo_ff / iflt_ff touched disjoint
 //   fields, so the merged comb preserves the NBA semantics exactly.
@@ -367,7 +367,7 @@ module hang_prot_recover #(
     logic m_b_hs;
     assign m_b_hs  = m_bvalid  && m_bready;
 
-    // skid status wires (driven by the u_wskid instance below; declared
+    // skid status wires (driven by the u_hang_prot_wskid instance below; declared
     // here because the mode logic reads them)
     logic sk_onehot;     // live: both slot states one-hot (status only)
     logic sk_integrity;  // live: one-hot && payload parity && counter dups
@@ -787,7 +787,7 @@ module hang_prot_recover #(
         .AXI_DATA_W  (AXI_DATA_W),
         .STRB_W      (STRB_W),
         .WSKID_BEATS (WSKID_BEATS)
-    ) u_wskid (
+    ) u_hang_prot_wskid (
         .clk         (clk),
         .rst         (rst),
         .mode        (r.mode_r),

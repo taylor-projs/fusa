@@ -115,7 +115,7 @@ module hang_prot_gen_wrap #(
     input  logic                 s_in_rst,
     // inverted rail of s_in_rst (v3.2 FuSa): ESM drives the pair
     // complementarily; a mismatch fails toward containment inside
-    // u_recover (entry forced, exit blocked) + sticky sk_fault.
+    // u_hang_prot_recover (entry forced, exit blocked) + sticky sk_fault.
     input  logic                 s_in_rst_n,
 
     // ---- AXI4 master side (from the master; unit = slave) ------------------
@@ -222,7 +222,7 @@ module hang_prot_gen_wrap #(
     // recovery control (aclk domain; recover_req generated below)
     logic [OTD_W-1:0]         rd_otd_mon, wr_otd_mon;
     logic sk_fault_i;
-    logic sk_fault_n_i;   // u_recover boundary-integrity rails
+    logic sk_fault_n_i;   // u_hang_prot_recover boundary-integrity rails
 
     //--------------------------------------------------------------------------
     // Register file (mbus_clk <-> ia_bus_aclk CDC inside)
@@ -235,7 +235,7 @@ module hang_prot_gen_wrap #(
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST),
         .IDX            (IDX)
-    ) u_regfile (
+    ) u_hang_prot_regfile (
         .mbus_clk            (mbus_clk),
         .mbus_rstn           (mbus_rstn),
         .ce                  (mbus_ce),
@@ -368,7 +368,7 @@ module hang_prot_gen_wrap #(
         .AXI_ADDR_W     (AXI_ADDR_W),
         .AXI_DATA_W     (AXI_DATA_W),
         .WSKID_BEATS    (WSKID_BEATS)
-    ) u_recover (
+    ) u_hang_prot_recover (
         .clk            (ia_bus_aclk),
         .rst            (rst),
 
@@ -475,7 +475,7 @@ module hang_prot_gen_wrap #(
         .OTD_W          (OTD_W),
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST)
-    ) u_mon (
+    ) u_hang_prot_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
 

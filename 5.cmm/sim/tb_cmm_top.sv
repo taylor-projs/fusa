@@ -280,7 +280,7 @@ module tb_cmm_top;
     // Force paths must be literal -> macro per channel index.
     `define CH_MATRIX(k) \
     begin \
-        force dut.g_ch[k].u_chk.r_dut.psc_cnt_n = 16'h0000; \
+        force dut.g_ch[k].u_cmm_clk_dut_mon.r_dut.psc_cnt_n = 16'h0000; \
         repeat (12) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         if (rd[4*k+3] !== 1'b1) \
@@ -290,11 +290,11 @@ module tb_cmm_top;
         mb_wr_sync(A_FORCE, KEY | 32'h4_0000); \
         repeat (4) @(posedge refclk0); \
         mb_wr_sync(A_FORCE, KEY); \
-        release dut.g_ch[k].u_chk.r_dut.psc_cnt_n; \
+        release dut.g_ch[k].u_cmm_clk_dut_mon.r_dut.psc_cnt_n; \
         repeat (2) @(posedge refclk0); \
         mb_wr_sync(A_FUSRC0, 32'h8 << (4*k)); \
         recover(rd); \
-        force dut.g_ch[k].u_chk.r_ref.shadow_qn = 12'h000; \
+        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.shadow_qn = 12'h000; \
         repeat (N_WIN + N_WIN/2) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         chk(rd[4*k] == 1'b1, $sformatf("COVk: shadow dup ch%0d -> FUSRC0 cnt", k)); \
@@ -302,21 +302,21 @@ module tb_cmm_top;
         mb_wr_sync(A_FORCE, KEY | 32'h10_0000); \
         repeat (4) @(posedge refclk0); \
         mb_wr_sync(A_FORCE, KEY); \
-        release dut.g_ch[k].u_chk.r_ref.shadow_qn; \
+        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.shadow_qn; \
         repeat (2) @(posedge refclk0); \
         recover(rd); \
-        force dut.g_ch[k].u_chk.r_ref.edge_cnt   = 12'hFFF; \
-        force dut.g_ch[k].u_chk.r_ref.edge_cnt_n = 12'h000; \
+        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt   = 12'hFFF; \
+        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000; \
         repeat (N_WIN + N_WIN/2) @(posedge refclk0); \
-        release dut.g_ch[k].u_chk.r_ref.edge_cnt; \
-        release dut.g_ch[k].u_chk.r_ref.edge_cnt_n; \
+        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt; \
+        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt_n; \
         repeat (2*N_WIN) @(posedge refclk0); \
         recover(rd); \
-        force dut.g_ch[k].u_chk.r_ref.noedge_cnt_n = 12'h000; \
+        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.noedge_cnt_n = 12'h000; \
         repeat (6) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         chk(rd[4*k] == 1'b1, $sformatf("COVk: noedge dup ch%0d -> FUSRC0 cnt", k)); \
-        release dut.g_ch[k].u_chk.r_ref.noedge_cnt_n; \
+        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.noedge_cnt_n; \
         repeat (2) @(posedge refclk0); \
         mb_wr_sync(A_FUSRC0, 32'h1 << (4*k)); \
         recover(rd); \
@@ -326,9 +326,9 @@ module tb_cmm_top;
     // -> dup_err -> flt heals to SET -> REGPAR[4+g] -> W1C
     `define WRAP_DUP(inst, grp) \
     begin \
-        force dut.u_regfile.inst.r.flt_q_n = 1'b0; \
+        force dut.u_cmm_regfile.inst.r.flt_q_n = 1'b0; \
         repeat (2) @(posedge mbus_clk); \
-        release dut.u_regfile.inst.r.flt_q_n; \
+        release dut.u_cmm_regfile.inst.r.flt_q_n; \
         mb_rd(A_REGPAR, rd); \
         chk(rd[grp] == 1'b1, $sformatf("COVk: regwrap dup self-heal -> REGPAR[%0d]", grp)); \
         mb_wr(A_REGPAR, 32'h1 << grp); \
@@ -359,9 +359,9 @@ module tb_cmm_top;
     begin \
         mb_wr_sync(A_FUSRC0, 32'h4 << (4*k)); \
         recover(rd); \
-        force dut.u_regfile.g_cwrap[k].u_cwrap.r.flt_q_n = 1'b0; \
+        force dut.u_cmm_regfile.g_cwrap[k].u_cwrap.r.flt_q_n = 1'b0; \
         repeat (2) @(posedge refclk0); \
-        release dut.u_regfile.g_cwrap[k].u_cwrap.r.flt_q_n; \
+        release dut.u_cmm_regfile.g_cwrap[k].u_cwrap.r.flt_q_n; \
         repeat (4) @(posedge mbus_clk); \
         mb_rd(A_FUSRC0, rd); \
         chk(rd[4*k+2] == 1'b1, $sformatf("COVk: cwrap%0d dup self-heal -> FUSRC0[%0d]", k, 4*k+2)); \
@@ -715,7 +715,7 @@ module tb_cmm_top;
         // stays clear. Guards the ecnt_flt_w clear timing (window_fire) and
         // the FU-before-FAIL severity ordering for counter integrity faults.
         // ------------------------------------------------------------------
-        force dut.g_ch[1].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);           // >> debounce 3 windows
         mb_rd(A_FUSRC0, rd);
         chk(rd[4] == 1'b1, "POISON: FUSRC0 ch1 cnt bit (4i+0=4)");
@@ -725,7 +725,7 @@ module tb_cmm_top;
             "POISON: fu rail only, no alarm rail");
         mb_rd(A_ERRSTAT, rd);
         chk(rd[1] == 1'b0, "POISON: no FAIL_FREQ (FU pre-empts, FSM left RUN)");
-        release dut.g_ch[1].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10);
         recover(rd);
@@ -981,37 +981,37 @@ module tb_cmm_top;
             chk(rd == 32'h0, $sformatf("COVi: dead ch%0d cleared", k));
         end
         // -- ecnt poison (dual-rail break) ch0/2/3/4 (ch1 done in P15b) --
-        force dut.g_ch[0].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[0] == 1'b1 && rd[16] == 1'b0, "COVi: poison ch0 cnt bit only");
         mb_rd(A_ERRSTAT, rd);
         chk(rd[0] == 1'b0, "COVi: poison ch0 no FAIL_FREQ");
-        release dut.g_ch[0].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h1);
         recover(rd);
-        force dut.g_ch[2].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[8] == 1'b1, "COVi: poison ch2 cnt bit");
-        release dut.g_ch[2].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h100);
         recover(rd);
-        force dut.g_ch[3].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[12] == 1'b1, "COVi: poison ch3 cnt bit");
-        release dut.g_ch[3].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h1000);
         recover(rd);
-        force dut.g_ch[4].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[16] == 1'b1, "COVi: poison ch4 cnt bit");
-        release dut.g_ch[4].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10000);
         recover(rd);
@@ -1059,22 +1059,22 @@ module tb_cmm_top;
         mb_wr_sync(A_ENLO, 32'h0);
         mb_rd(A_ENLO, rd);
         chk(rd == 32'h0, "COVk: ENLO=0 accepted (all nibbles 0x0 legal)");
-        force dut.u_regfile.r_mb.stale_cnt_n = 11'h700;   // ~700=0FF < LAST: dup only
+        force dut.u_cmm_regfile.r_mb.stale_cnt_n = 11'h700;   // ~700=0FF < LAST: dup only
         repeat (4) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.stale_cnt_n;
+        release dut.u_cmm_regfile.r_mb.stale_cnt_n;
         mb_rd(A_FUSTAT, rd);
         chk(rd[9] == 1'b1, "COVk: stale cnt dup -> REF_STALE");
         mb_wr_sync(A_FUSTAT, 32'h200);               // W1C bit9 (fwd: wait busy)
         // genuine stale timeout: consistent rails above STALE_LAST (1023)
         // -> s_fire_a & s_fire_b (also toggles stale_cnt[10] pair)
-        force dut.u_regfile.r_mb.stale_cnt   = 11'h400;
-        force dut.u_regfile.r_mb.stale_cnt_n = 11'h3FF;   // ~400: rails consistent
+        force dut.u_cmm_regfile.r_mb.stale_cnt   = 11'h400;
+        force dut.u_cmm_regfile.r_mb.stale_cnt_n = 11'h3FF;   // ~400: rails consistent
         repeat (2) @(posedge mbus_clk);
-        force dut.u_regfile.r_mb.stale_cnt   = 11'h000;
-        force dut.u_regfile.r_mb.stale_cnt_n = 11'h7FF;
+        force dut.u_cmm_regfile.r_mb.stale_cnt   = 11'h000;
+        force dut.u_cmm_regfile.r_mb.stale_cnt_n = 11'h7FF;
         repeat (1) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.stale_cnt;
-        release dut.u_regfile.r_mb.stale_cnt_n;
+        release dut.u_cmm_regfile.r_mb.stale_cnt;
+        release dut.u_cmm_regfile.r_mb.stale_cnt_n;
         mb_rd(A_FUSTAT, rd);
         chk(rd[9] == 1'b1, "COVk: genuine stale timeout -> REF_STALE");
         mb_wr_sync(A_FUSTAT, 32'h200);
@@ -1173,11 +1173,11 @@ module tb_cmm_top;
         `CH_MATRIX(3)
         `CH_MATRIX(4)
         // ch1 edge-counter poison (ch0/2/3/4 done in P15b/20i)
-        force dut.g_ch[1].u_chk.r_ref.edge_cnt_n = 12'h000;
+        force dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[4] == 1'b1, "COVk: poison ch1 cnt bit");
-        release dut.g_ch[1].u_chk.r_ref.edge_cnt_n;
+        release dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10);
         recover(rd);
@@ -1282,15 +1282,15 @@ module tb_cmm_top;
         repeat (6) @(posedge mbus_clk);
         mb_rd(A_GSTAT, rd);
         chk(rd[6] == 1'b1, "COVk: handshake busy stuck (force_hang)");
-        wdata_save = dut.u_regfile.r_mb.wdata_q;                 // in-flight payload
-        force dut.u_regfile.r_mb.wdata_q = 32'h1;                // payload parity break
+        wdata_save = dut.u_cmm_regfile.r_mb.wdata_q;                 // in-flight payload
+        force dut.u_cmm_regfile.r_mb.wdata_q = 32'h1;                // payload parity break
         repeat (2) @(posedge mbus_clk);
         // release KEEPS the forced value until the next procedural write
         // (VCS force/release semantics) -> restore the payload first, else
         // inflight_ev stays stuck and keeps re-setting lst_q[6]
-        force dut.u_regfile.r_mb.wdata_q = wdata_save;
+        force dut.u_cmm_regfile.r_mb.wdata_q = wdata_save;
         repeat (1) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.wdata_q;
+        release dut.u_cmm_regfile.r_mb.wdata_q;
         mb_rd(A_REGPAR, rd);
         chk(rd[15] == 1'b1, "COVk: inflight payload parity -> REGPAR[15]");
         mb_wr(A_REGPAR, 32'h8000);                          // W1C bit15
@@ -1298,22 +1298,22 @@ module tb_cmm_top;
         mb_rd(A_FUSTAT, rd);
         chk(rd[6] == 1'b1, "COVk: bad-key FORCE while busy -> REG_PROT");
         mb_wr(A_FUSTAT, 32'h40);
-        force dut.u_regfile.r_mb.hang_cnt_n = 7'h70;             // ~70=0F<LAST: dup only
+        force dut.u_cmm_regfile.r_mb.hang_cnt_n = 7'h70;             // ~70=0F<LAST: dup only
         repeat (2) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.hang_cnt_n;
+        release dut.u_cmm_regfile.r_mb.hang_cnt_n;
         mb_rd(A_FUSTAT, rd);
         chk(rd[8] == 1'b1, "COVk: hang cnt dup -> CFG_HANG");
         mb_wr(A_FUSTAT, 32'h100);                           // W1C bit8
         // genuine hang timeout: consistent rails above HANG_LAST (63) ->
         // h_fire_a & h_fire_b (also toggles the hang_cnt[6] pair)
-        force dut.u_regfile.r_mb.hang_cnt   = 7'h40;
-        force dut.u_regfile.r_mb.hang_cnt_n = 7'h3F;             // ~40: consistent
+        force dut.u_cmm_regfile.r_mb.hang_cnt   = 7'h40;
+        force dut.u_cmm_regfile.r_mb.hang_cnt_n = 7'h3F;             // ~40: consistent
         repeat (4) @(posedge mbus_clk);
-        force dut.u_regfile.r_mb.hang_cnt   = 7'h00;
-        force dut.u_regfile.r_mb.hang_cnt_n = 7'h7F;
+        force dut.u_cmm_regfile.r_mb.hang_cnt   = 7'h00;
+        force dut.u_cmm_regfile.r_mb.hang_cnt_n = 7'h7F;
         repeat (1) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.hang_cnt;
-        release dut.u_regfile.r_mb.hang_cnt_n;
+        release dut.u_cmm_regfile.r_mb.hang_cnt;
+        release dut.u_cmm_regfile.r_mb.hang_cnt_n;
         mb_rd(A_FUSTAT, rd);
         chk(rd[8] == 1'b1, "COVk: genuine hang timeout -> CFG_HANG");
         mb_wr(A_REGPAR, 32'h3_8000);                        // W1C 15/16/17
@@ -1325,23 +1325,23 @@ module tb_cmm_top;
         // (in-window FUSTAT W1Cs are forwarded writes -> dropped), letting
         // every lst_dup bit toggle 0->1
         mb_wr_sync(A_FUSTAT, 32'h3E0);                      // clear lst 6..9
-        force dut.u_regfile.r_mb.lst_qn = 7'b000_0000;           // all-rail heal
+        force dut.u_cmm_regfile.r_mb.lst_qn = 7'b000_0000;           // all-rail heal
         repeat (2) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.lst_qn;
+        release dut.u_cmm_regfile.r_mb.lst_qn;
         mb_rd(A_FUSTAT, rd);
         if (rd[9:6] !== 4'hF)
             $display("[%0t] DBG heal FUSTAT=%08h lst_q=%07b lst_qn=%07b",
-                     $time, rd, dut.u_regfile.r_mb.lst_q, dut.u_regfile.r_mb.lst_qn);
+                     $time, rd, dut.u_cmm_regfile.r_mb.lst_q, dut.u_cmm_regfile.r_mb.lst_qn);
         chk(rd[9:6] == 4'hF, "COVk: lst_qn corrupt -> heal all SET");
         mb_wr_sync(A_FUSTAT, 32'h3E0);                      // W1C lst 6..9
         mb_wr(A_REGPAR, 32'h3_8000);                        // W1C lst 4..6 (REGPAR 17..15)
         // idle payload-parity row (mismatch while !busy: no event)
-        wdata_save = dut.u_regfile.r_mb.wdata_q;
-        force dut.u_regfile.r_mb.wdata_q = 32'h1;
+        wdata_save = dut.u_cmm_regfile.r_mb.wdata_q;
+        force dut.u_cmm_regfile.r_mb.wdata_q = 32'h1;
         repeat (2) @(posedge mbus_clk);
-        force dut.u_regfile.r_mb.wdata_q = wdata_save;           // restore before release
+        force dut.u_cmm_regfile.r_mb.wdata_q = wdata_save;           // restore before release
         repeat (1) @(posedge mbus_clk);
-        release dut.u_regfile.r_mb.wdata_q;
+        release dut.u_cmm_regfile.r_mb.wdata_q;
         mb_rd(A_REGPAR, rd);
         chk(rd[15] == 1'b0, "COVk: idle payload mismatch -> no event");
         recover(rd);
@@ -1392,13 +1392,13 @@ module tb_cmm_top;
                 $display("[%0t] DBG deadk%0d ERRSTAT=%08h fail_q=%b dead_q=%b fsm=%b",
                          $time, k, rd, dut.r.fail_q, dut.r.dead_q, dut.r.fsm_state);
                 case (k)
-                    0: $display("   ch0 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[0].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[0].u_cwrap.r.data_q[35:24], dut.g_ch[0].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[0].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[0].u_cwrap.r.data_q[23:12]);
-                    1: $display("   ch1 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[1].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[1].u_cwrap.r.data_q[35:24], dut.g_ch[1].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[1].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[1].u_cwrap.r.data_q[23:12]);
-                    2: $display("   ch2 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[2].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[2].u_cwrap.r.data_q[35:24], dut.g_ch[2].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[2].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[2].u_cwrap.r.data_q[23:12]);
-                    3: $display("   ch3 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
+                    0: $display("   ch0 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[35:24], dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[23:12]);
+                    1: $display("   ch1 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[35:24], dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[23:12]);
+                    2: $display("   ch2 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[35:24], dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[23:12]);
+                    3: $display("   ch3 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
                     4: begin
-                        $display("   ch4 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[4].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[4].u_cwrap.r.data_q[35:24], dut.g_ch[4].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[4].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[4].u_cwrap.r.data_q[23:12]);
-                        $display("   (ch3 state) noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_chk.r_ref.noedge_cnt, dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_chk.r_ref.shadow_q, dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
+                        $display("   ch4 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[35:24], dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[23:12]);
+                        $display("   (ch3 state) noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
                     end
                 endcase
             end
@@ -1422,11 +1422,11 @@ module tb_cmm_top;
         // ch4 prescaler rollover: ch4 runs at 1 MHz so psc_cnt[15:12] never
         // wrap in normal sim time; force a consistent near-rollover pair and
         // let the free-running dut-domain counter wrap by itself
-        force dut.g_ch[4].u_chk.r_dut.psc_cnt   = 16'hFFF0;
-        force dut.g_ch[4].u_chk.r_dut.psc_cnt_n = 16'h000F;           // ~FFF0
+        force dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt   = 16'hFFF0;
+        force dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt_n = 16'h000F;           // ~FFF0
         repeat (40) @(posedge clk_dut[4]);
-        release dut.g_ch[4].u_chk.r_dut.psc_cnt;
-        release dut.g_ch[4].u_chk.r_dut.psc_cnt_n;
+        release dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt;
+        release dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd == 32'h0, "COVk: no psc dup after ch4 rollover");
@@ -1451,7 +1451,7 @@ module tb_cmm_top;
         chk(rd == 32'h0, "COVk: ENLO all-disabled readback");
         mb_rd(A_ERRSTAT, rd);
         $display("DBG296 ERRSTAT=%h enlo_r=%h enhi_r=%h", rd,
-                 dut.u_regfile.enlo_r, dut.u_regfile.enhi_r);
+                 dut.u_cmm_regfile.enlo_r, dut.u_cmm_regfile.enhi_r);
         chk(rd == 32'h0, "COVk: no alarms while all channels disabled");
         mb_wr_sync(A_ENLO, 32'h000F_FFFF);              // re-enable all 5
         repeat (4) @(posedge refclk0);
@@ -1466,13 +1466,13 @@ module tb_cmm_top;
         // qualified by busy). Also functionally checks the busy gating.
         begin
             logic tmp_par;
-            tmp_par = dut.u_regfile.r_mb.wpar_q;
-            force dut.u_regfile.r_mb.wpar_q = ~tmp_par;
+            tmp_par = dut.u_cmm_regfile.r_mb.wpar_q;
+            force dut.u_cmm_regfile.r_mb.wpar_q = ~tmp_par;
             repeat (3) @(posedge mbus_clk);
             mb_rd(A_REGPAR, rd);
             chk(rd[15] == 1'b0, "COVk: idle payload mismatch gated by busy");
-            force dut.u_regfile.r_mb.wpar_q = tmp_par;
-            release dut.u_regfile.r_mb.wpar_q;
+            force dut.u_cmm_regfile.r_mb.wpar_q = tmp_par;
+            release dut.u_cmm_regfile.r_mb.wpar_q;
         end
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);

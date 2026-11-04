@@ -195,13 +195,13 @@ module hang_prot_core #(
     logic rstn_i;
     assign rstn_i = ~rst;
     logic rst_q2, rst_q3;
-    sync_2dff #(.WIDTH(1)) u_rst_sync (
+    sync_2dff #(.WIDTH(1)) u_sync_2dff (
         .clk  (clk   ),
         .rstn (rstn_i),
         .d    (1'b1  ),
         .q    (rst_q2)
     );
-    sync_dff #(.WIDTH(1)) u_rst_dly (
+    sync_dff #(.WIDTH(1)) u_sync_dff (
         .clk  (clk   ),
         .rstn (rstn_i),
         .d    (rst_q2),

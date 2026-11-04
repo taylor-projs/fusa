@@ -138,7 +138,7 @@
 // STYLE: GRLIB two-process - one packed record r (mode rails + ID FIFOs
 //   + pointers/counters with inverted dups + sticky fault), comb process
 //   (v = r; ...; rin = v), seq process (reset load / r <= rin). FIFO
-//   payloads are packed sub-arrays (flat TB paths u_bdry.r.ar_rp[0] ...).
+//   payloads are packed sub-arrays (flat TB paths u_hang_prot_bdry_in.r.ar_rp[0] ...).
 //   All conditions read r (现态), all next-state writes go to v - the
 //   textual order preserves the original NBA last-write-wins semantics.
 //============================================================================
@@ -257,7 +257,7 @@ module hang_prot_bdry_in #(
         ptr_inc = (p == OTD_MAX-1) ? '0 : (p + 1'b1);
     endfunction
 
-    // skid status wires (driven by the u_wskid instance below; declared
+    // skid status wires (driven by the u_hang_prot_wskid instance below; declared
     // here because the mode/quiesce logic reads them)
     logic sk_onehot;      // live: both slot states one-hot
     logic sk_integrity;   // live: one-hot && payload parity && counter dups
@@ -649,7 +649,7 @@ module hang_prot_bdry_in #(
         .AXI_DATA_W  (AXI_DATA_W),
         .STRB_W      (STRB_W),
         .WSKID_BEATS (WSKID_BEATS)
-    ) u_wskid (
+    ) u_hang_prot_wskid (
         .clk         (clk),
         .rst         (rst),
         .mode        (r.blk_r),

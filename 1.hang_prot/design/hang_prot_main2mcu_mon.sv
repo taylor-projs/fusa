@@ -165,7 +165,7 @@ module hang_prot_main2mcu_mon #(
 
     // recovery control (aclk domain)
     logic [OTD_W-1:0]         rd_otd_mon, wr_otd_mon;
-    logic sk_fault_i;                 // u_bdry boundary-integrity rails
+    logic sk_fault_i;                 // u_hang_prot_bdry_in boundary-integrity rails
     logic sk_fault_n_i;
 
     //--------------------------------------------------------------------------
@@ -179,7 +179,7 @@ module hang_prot_main2mcu_mon #(
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST),
         .IDX            (IDX)
-    ) u_regfile (
+    ) u_hang_prot_regfile (
         .mbus_clk            (mbus_clk),
         .mbus_rstn           (mbus_rstn),
         .ce                  (mbus_ce),
@@ -304,7 +304,7 @@ module hang_prot_main2mcu_mon #(
         .AXI_DATA_W     (AXI_DATA_W),
         .STRB_W         (AXI_DATA_W/8),
         .WSKID_BEATS    (WSKID_BEATS)
-    ) u_bdry (
+    ) u_hang_prot_bdry_in (
         .clk            (ia_bus_aclk),
         .rst            (rst),
 
@@ -388,7 +388,7 @@ module hang_prot_main2mcu_mon #(
         .OTD_W          (OTD_W),
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST)
-    ) u_mon (
+    ) u_hang_prot_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
 

@@ -267,9 +267,9 @@ module reset_checker #(
 
     reset_checker_regfile #(
         .WKEY     (WKEY    ),
-        .CTRL_RST (2'b01   ),      // EN=1 FI=0 (fail-safe: enabled at POR)
+        .CTRL_RST (4'b0001 ),      // MODE=NORMAL (EN=1 FI=0, fail-safe on)
         .IDX      (IDX     )
-    ) u_regfile (
+    ) u_reset_checker_regfile (
         .mbus_clk        (mbus_clk       ),
         .mbus_rstn       (mbus_rstn      ),
         .ce              (ce             ),
@@ -308,20 +308,18 @@ module reset_checker #(
     always_comb begin : comb_viol
         viol_reg_t v;
         v  = r;
-
         // persistence counter: released by the pair-sync reset itself
         // (rstn_pair_g=1 <=> diverging); free-runs to all-ones, saturates
         if (!sat_a && !sat_b) begin
             v.cnt   =   r.cnt + 5'd1;
             v.cnt_n = ~(r.cnt + 5'd1);
         end
-
         // post-expire pair fault: set by the filtered verdict / SEU
         // heal-to-SET; W1C clears early (CPU priority), and the pair-sync
         // async reset wipes it the instant the rails re-agree (live pin)
         v.err_q  = (r.err_q | filt_fire | err_dup) & ~err_w1c;
         v.err_qn = ~v.err_q;
-
+        // v assign to rin.
         rin   = v;
     end
 

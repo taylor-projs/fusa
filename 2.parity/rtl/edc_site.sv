@@ -51,7 +51,7 @@ module edc_site #(
    nuclei300_edc_gen #(
       .DW   (DW  ),
       .EDCW (EDCW)
-   ) u_edc_gen (
+   ) u_nuclei300_edc_gen (
       .i_dat (i_payload),
       .edc   (c_edc    )
    );
@@ -70,7 +70,7 @@ module edc_site #(
    nuclei300_edc_chk_fault_ej #(
       .DW   (DW  ),
       .EDCW (EDCW)
-   ) u_edc_chk (
+   ) u_nuclei300_edc_chk_fault_ej (
       .i_dat          (i_payload  ),
       .edc            (i_edc      ),
       .einj_pos       (inj_pos_g  ),

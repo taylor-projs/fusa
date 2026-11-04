@@ -123,10 +123,10 @@ module tb_edc_top;
          if (dut.g_mport[0].u_ip.ce !== 1'b1 || dut.g_sport[0].u_ip.ce !== 1'b1)
             or_bad = 1;   // ce 必须广播到所有实例
          if (dut.mb_addr[15:8] == 8'd0) begin
-            if (dut.g_sport[0].u_ip.u_regfile.sel !== 1'b0) or_bad = 1;
+            if (dut.g_sport[0].u_ip.u_edc_regfile.sel !== 1'b0) or_bad = 1;
             if (dut.g_sport[0].u_ip.rdata !== 32'b0)         or_bad = 1;
          end else if (dut.mb_addr[15:8] == 8'd1) begin
-            if (dut.g_mport[0].u_ip.u_regfile.sel !== 1'b0)  or_bad = 1;
+            if (dut.g_mport[0].u_ip.u_edc_regfile.sel !== 1'b0)  or_bad = 1;
             if (dut.g_mport[0].u_ip.rdata !== 32'b0)         or_bad = 1;
          end
       end
@@ -1291,7 +1291,7 @@ module tb_edc_top;
 
       // -------- T18: user 边带翻转 + 全零载荷拍 (GEN 站点内层 chk 覆盖) --------
       // GEN 模式功能上忽略随路 user 输入 (EDC 自算), 驱动它们翻转仅打
-      // u_ip/u_gen/u_chk 端口与内层 edc_i/edc/edc_ej/t_edc 覆盖点; 全零拍
+      // u_ip/u_edc_gen/u_edc_chk 端口与内层 edc_i/edc/edc_ej/t_edc 覆盖点; 全零拍
       // (载荷与 user 同 0) 使 GEN 站点内层 chk syndrome=0 -> o_err 打 0 侧
       // (常态非零载荷下该 chk 的 o_err 恒 1, 属结构性单端).
       begin : t18
@@ -1647,15 +1647,15 @@ module tb_edc_top;
       // 置位即 firing 证明; 再一次 0xAC 全位 W1C 收尾.
       begin : t22
          // ---- inst0 (mport): 7 mbus wrap + 6 m_clk wrap + perr13/14 + par_lq
-         force dut.g_mport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_err2.r.flt_q_n      = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.u_fault2.r.flt_q_n    = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.r.perr14_q_n          = 1'b0;
-         force dut.g_mport[0].u_ip.u_regfile.r.par_lq_n            = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_force.r.flt_q_n = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_err2.r.flt_q_n      = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.u_fault2.r.flt_q_n    = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.r.perr14_q_n          = 1'b0;
+         force dut.g_mport[0].u_ip.u_edc_regfile.r.par_lq_n            = 1'b0;
          force dut.g_mport[0].u_ip.u_inj_en.r.flt_q_n              = 1'b0;
          force dut.g_mport[0].u_ip.u_inj_force.r.flt_q_n           = 1'b0;
          force dut.g_mport[0].u_ip.u_irqen.r.flt_q_n               = 1'b0;
@@ -1665,15 +1665,15 @@ module tb_edc_top;
          force dut.g_mport[0].u_ip.r.perr13_q_n                    = 1'b0;
          repeat (2) @(negedge mbus_clk);  // mbus 域 wrap 跨 2 posedge
          repeat (2) @(negedge m_clk);     // m_clk 域 wrap 跨 2 posedge
-         release dut.g_mport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_err2.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.u_fault2.r.flt_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.r.perr14_q_n;
-         release dut.g_mport[0].u_ip.u_regfile.r.par_lq_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_en.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_force.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_irqen.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_cfg_pos.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_clr_mask.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_err2.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.u_fault2.r.flt_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.r.perr14_q_n;
+         release dut.g_mport[0].u_ip.u_edc_regfile.r.par_lq_n;
          release dut.g_mport[0].u_ip.u_inj_en.r.flt_q_n;
          release dut.g_mport[0].u_ip.u_inj_force.r.flt_q_n;
          release dut.g_mport[0].u_ip.u_irqen.r.flt_q_n;
@@ -1692,15 +1692,15 @@ module tb_edc_top;
          check(rdata === 32'h0000_0002, "T22: mport all W1C clean");
 
          // ---- inst1 (sport): 7 mbus wrap + 6 s_clk wrap + perr13/14 + par_lq
-         force dut.g_sport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_err2.r.flt_q_n      = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.u_fault2.r.flt_q_n    = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.r.perr14_q_n          = 1'b0;
-         force dut.g_sport[0].u_ip.u_regfile.r.par_lq_n            = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_en.r.flt_q_n    = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_force.r.flt_q_n = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_irqen.r.flt_q_n = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_pos.r.flt_q_n   = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_clr_mask.r.flt_q_n  = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_err2.r.flt_q_n      = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.u_fault2.r.flt_q_n    = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.r.perr14_q_n          = 1'b0;
+         force dut.g_sport[0].u_ip.u_edc_regfile.r.par_lq_n            = 1'b0;
          force dut.g_sport[0].u_ip.u_inj_en.r.flt_q_n              = 1'b0;
          force dut.g_sport[0].u_ip.u_inj_force.r.flt_q_n           = 1'b0;
          force dut.g_sport[0].u_ip.u_irqen.r.flt_q_n               = 1'b0;
@@ -1710,15 +1710,15 @@ module tb_edc_top;
          force dut.g_sport[0].u_ip.r.perr13_q_n                    = 1'b0;
          repeat (2) @(negedge mbus_clk);
          repeat (2) @(negedge s_clk);     // s_clk 域 wrap 跨 2 posedge
-         release dut.g_sport[0].u_ip.u_regfile.u_cfg_en.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_cfg_force.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_cfg_irqen.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_cfg_pos.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_clr_mask.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_err2.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.u_fault2.r.flt_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.r.perr14_q_n;
-         release dut.g_sport[0].u_ip.u_regfile.r.par_lq_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_en.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_force.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_irqen.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_cfg_pos.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_clr_mask.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_err2.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.u_fault2.r.flt_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.r.perr14_q_n;
+         release dut.g_sport[0].u_ip.u_edc_regfile.r.par_lq_n;
          release dut.g_sport[0].u_ip.u_inj_en.r.flt_q_n;
          release dut.g_sport[0].u_ip.u_inj_force.r.flt_q_n;
          release dut.g_sport[0].u_ip.u_irqen.r.flt_q_n;

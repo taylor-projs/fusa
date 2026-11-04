@@ -46,10 +46,10 @@
 //   P19 OTD saturation + full-range timeout counters: thr=0xFFFF, park
 //       OTD_MAX=8 reads (3 read classes) / 8 writes, 9th request stalls
 //       (ar_room/aw_allow), counter climb to 65534 + wrap-clear on drain
-//   P20 core monitor integrity FI (u_mon): ENA 2-hot SEU, counter rail
+//   P20 core monitor integrity FI (u_hang_prot_core): ENA 2-hot SEU, counter rail
 //       deposits (idle + during real stalls), otd/dlv rails, status-rail
 //       self-heal-to-SET, reg_wrap dup_err sticky
-//   P21 wskid integrity FI (u_recover.u_wskid): slot one-hot, AW payload
+//   P21 wskid integrity FI (u_hang_prot_recover.u_hang_prot_wskid): slot one-hot, AW payload
 //       parity (READY), W beat parity (REPLAY), fill_cnt duplicate rail
 //   P22 recover AW-FIFO FI (pointer rail idle / entry parity occupied) +
 //       park-kill dummy-length sweep (len 0/3/7/8/255, all 3 classes)
@@ -65,7 +65,7 @@
 //   P27 response-encoding sweep: DECERR (2'b11) windows on R and B pass
 //       through untouched; phantom junk-rid R bursts sunk at empty ledger
 //   P28 mbus address high-bit sweeps + reg_wrap dup-rail deposits
-//       (u_r1..u_r8, u_c4..u_c6 flt_q_n) -> heal-to-SET -> W1C
+//       (u_r_iaerr1..u_r_fusrc, u_c_ena..u_c_thresh1 flt_q_n) -> heal-to-SET -> W1C
 //   P29 rd_r2a_cf: 8 parked reads + a hand-driven 9th AR stalled on
 //       ar_room=0; rd_cnt_a_n deposit fires the comparator mid-climb
 //   P30 long-AW wedge x2 (len=255 latches awlen_q[7:3]; 8-beat W cap stalls
@@ -157,7 +157,7 @@ module tb_hang_prot_gen_wrap;
     logic recover_active, recover_done, recover_active_n, recover_done_n;
     // s-domain reset-hold rail pair (ESM level, v3.2): contract says DRIVE
     // the pair complementarily; left floating the inputs are Z and the
-    // rail-mismatch logic inside u_recover evaluates X
+    // rail-mismatch logic inside u_hang_prot_recover evaluates X
     logic s_in_rst, s_in_rst_n;
     logic [31:0] rd_val;
 
@@ -509,10 +509,10 @@ module tb_hang_prot_gen_wrap;
         if ($test$plusargs("hpdbg")) begin
             $monitor("[%0t] mode=%b rreq=%b err=%b room=%b rotd=%0d wotd=%0d occ=%0d/%0d/%0d marv=%b marr=%b sarv=%b sarr=%b srv=%b srr=%b mrv=%b mrr=%b srid=%h",
                      $time,
-                     u_dut.u_recover.r.mode_r, u_dut.recover_req, err_event,
-                     u_dut.u_recover.ar_room, u_dut.rd_otd_mon, u_dut.wr_otd_mon,
-                     u_dut.u_recover.r.ar_occ[0], u_dut.u_recover.r.ar_occ[1],
-                     u_dut.u_recover.r.ar_occ[2],
+                     u_dut.u_hang_prot_recover.r.mode_r, u_dut.recover_req, err_event,
+                     u_dut.u_hang_prot_recover.ar_room, u_dut.rd_otd_mon, u_dut.wr_otd_mon,
+                     u_dut.u_hang_prot_recover.r.ar_occ[0], u_dut.u_hang_prot_recover.r.ar_occ[1],
+                     u_dut.u_hang_prot_recover.r.ar_occ[2],
                      m_arvalid, m_arready, s_arvalid, s_arready,
                      s_rvalid, s_rready, m_rvalid, m_rready, s_rid);
         end
@@ -530,7 +530,7 @@ module tb_hang_prot_gen_wrap;
                 dbg_n <= dbg_n + 1;
                 $display("[%0t] CNT ena=%b thrR=%0d cntR=%0d r2rto=%b toclr=%b cfgwr=%b key=%h err=%b",
                          $time, u_dut.ena_rd, u_dut.thr_rd_r2r,
-                         u_dut.u_mon.g_m[0].r.rd_cnt_r, u_dut.u_mon.g_m[0].rd_r2r_to,
+                         u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r, u_dut.u_hang_prot_core.g_m[0].rd_r2r_to,
                          u_dut.to_clear, u_dut.cfg_wr, u_dut.cfg_key, err_event);
             end
         end
@@ -540,31 +540,31 @@ module tb_hang_prot_gen_wrap;
     // req_edge decode that applies it
     always @(posedge mbus_clk) begin : hpdbg_mbus
         if ($test$plusargs("hpdbg")) begin
-            if (u_dut.u_regfile.wr_fire)
+            if (u_dut.u_hang_prot_regfile.wr_fire)
                 $display("[%0t] MBUS WRFIRE wsel=%0d wdata=%h", $time,
-                         u_dut.u_regfile.wsel, u_dut.u_regfile.wdata);
-            if (u_dut.u_regfile.wr_drop)
+                         u_dut.u_hang_prot_regfile.wsel, u_dut.u_hang_prot_regfile.wdata);
+            if (u_dut.u_hang_prot_regfile.wr_drop)
                 $display("[%0t] MBUS WRDROP wsel=%0d wdata=%h", $time,
-                         u_dut.u_regfile.wsel, u_dut.u_regfile.wdata);
+                         u_dut.u_hang_prot_regfile.wsel, u_dut.u_hang_prot_regfile.wdata);
         end
     end
     logic [3:0] ena_q_prev;
     always @(posedge aclk) begin : hpdbg_aclk
         if ($test$plusargs("hpdbg")) begin
-            if (u_dut.u_regfile.req_edge)
+            if (u_dut.u_hang_prot_regfile.req_edge)
                 $display("[%0t] ACLK REQEDGE wsel_q=%0d wdata_q=%h ack_t=%b", $time,
-                         u_dut.u_regfile.r_mb.wsel_q, u_dut.u_regfile.r_mb.wdata_q,
-                         u_dut.u_regfile.r_a.ack_t);
+                         u_dut.u_hang_prot_regfile.r_mb.wsel_q, u_dut.u_hang_prot_regfile.r_mb.wdata_q,
+                         u_dut.u_hang_prot_regfile.r_a.ack_t);
             if (u_dut.cfg_wr)
                 $display("[%0t] ACFG cfg_wr ena=%h thrA=%0d thrR=%0d", $time,
                          u_dut.cfg_ena, u_dut.cfg_req2accept_max,
                          u_dut.cfg_req2resp_max);
-            if (u_dut.u_mon.r.ena_q !== ena_q_prev) begin
+            if (u_dut.u_hang_prot_core.r.ena_q !== ena_q_prev) begin
                 $display("[%0t] ENATRACE ena_q %h -> %h  wr_ok=%b cfg_ok=%b cfg_ena=%h rst_s=%b",
-                         $time, ena_q_prev, u_dut.u_mon.r.ena_q,
-                         u_dut.u_mon.ena_wr_ok, u_dut.u_mon.cfg_ok,
-                         u_dut.cfg_ena, u_dut.u_mon.rst_s);
-                ena_q_prev <= u_dut.u_mon.r.ena_q;
+                         $time, ena_q_prev, u_dut.u_hang_prot_core.r.ena_q,
+                         u_dut.u_hang_prot_core.ena_wr_ok, u_dut.u_hang_prot_core.cfg_ok,
+                         u_dut.cfg_ena, u_dut.u_hang_prot_core.rst_s);
+                ena_q_prev <= u_dut.u_hang_prot_core.r.ena_q;
             end
         end
     end
@@ -791,8 +791,8 @@ module tb_hang_prot_gen_wrap;
     // task-call counting would miss the inline P14/P15/P17 bursts.
     //------------------------------------------------------------------------
     logic [3:0] st0, st1;
-    assign st0 = u_dut.u_recover.u_wskid.r.st[0];
-    assign st1 = u_dut.u_recover.u_wskid.r.st[1];
+    assign st0 = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[0];
+    assign st1 = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1];
     wire [OTD_W-1:0] rd_otd_i = u_dut.rd_otd_mon;
     wire [OTD_W-1:0] wr_otd_i = u_dut.wr_otd_mon;
 
@@ -1070,7 +1070,7 @@ module tb_hang_prot_gen_wrap;
 
 `ifndef IVERILOG
     // s_force (wskid force_clear) cycle counter - P14/P15 self-check
-    always @(posedge aclk) if (u_dut.u_recover.s_force) cov_sforce = cov_sforce + 1;
+    always @(posedge aclk) if (u_dut.u_hang_prot_recover.s_force) cov_sforce = cov_sforce + 1;
 
     // +hpbdum: trace the dummy-B ledger + wskid slots through P14/P15
     integer hpbdum_n = 0;
@@ -1079,12 +1079,12 @@ module tb_hang_prot_gen_wrap;
         else if ($test$plusargs("hpbdum") && hpbdum_n < 600) begin
             hpbdum_n = hpbdum_n + 1;
             $display("BDUM %0t mode=%b sforce=%b wrotd=%0d aww=%0d owed=%0d awb=%0d st0=%0d st1=%0d bv=%b br=%b bid=%h wl_hs=%b hf=%b",
-                $time, u_dut.u_recover.r.mode_r, u_dut.u_recover.s_force,
+                $time, u_dut.u_hang_prot_recover.r.mode_r, u_dut.u_hang_prot_recover.s_force,
                 u_dut.wr_otd_mon,
-                u_dut.u_recover.r.aw_wr, u_dut.u_recover.r.bdum_owed, u_dut.u_recover.r.aw_bp,
-                u_dut.u_recover.u_wskid.r.st[0], u_dut.u_recover.u_wskid.r.st[1],
+                u_dut.u_hang_prot_recover.r.aw_wr, u_dut.u_hang_prot_recover.r.bdum_owed, u_dut.u_hang_prot_recover.r.aw_bp,
+                u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[0], u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1],
                 m_bvalid, m_bready, m_bid,
-                u_dut.u_recover.m_wl_hs, u_dut.u_recover.u_wskid.has_fill);
+                u_dut.u_hang_prot_recover.m_wl_hs, u_dut.u_hang_prot_recover.u_hang_prot_wskid.has_fill);
         end
     end
 `endif
@@ -1320,8 +1320,8 @@ module tb_hang_prot_gen_wrap;
         // ---- P12: per-wrapper parity-injection sweep -------------------------
         // SCMCNTRL keyed write, wdata[20]=1 selects REGST injection and
         // wdata[19:16] = victim wrapper. Nibbles 0..8 hit mbus image wraps
-        // u_r0..u_r8; 4..6 additionally hit the aclk config shadows
-        // u_c4/u_c5/u_c6 (same write, aclk side). Image wraps self-restore
+        // u_r_iaerr0..u_r_fusrc; 4..6 additionally hit the aclk config shadows
+        // u_c_ena/u_c_thresh0/u_c_thresh1 (same write, aclk side). Image wraps self-restore
         // (wr=1 reloads good parity next cycle); config shadows keep the
         // bad parity until the config register is rewritten -> restore
         // BEFORE the W1C or the sticky re-sets.
@@ -1631,27 +1631,27 @@ module tb_hang_prot_gen_wrap;
         $display("\n--- P17: SEU fault-injection pack ---");
         // (a) ENA heal: 1-flip off F -> 3 ones -> heals to F; 1-flip off 0...
         //     (do the 0001 arm second: it heals to 0000 = monitor OFF)
-        force u_dut.u_mon.r.ena_q = 4'b0111;
+        force u_dut.u_hang_prot_core.r.ena_q = 4'b0111;
         repeat (3) @(posedge aclk);         // heal-to-F arm executes
-        release u_dut.u_mon.r.ena_q;
+        release u_dut.u_hang_prot_core.r.ena_q;
         repeat (2) @(posedge aclk);         // real heal lands
-        force u_dut.u_mon.r.ena_q = 4'b0001;
+        force u_dut.u_hang_prot_core.r.ena_q = 4'b0001;
         repeat (3) @(posedge aclk);         // heal-to-0 arm executes
-        release u_dut.u_mon.r.ena_q;
+        release u_dut.u_hang_prot_core.r.ena_q;
         repeat (2) @(posedge aclk);
         mb_wr_wait(8'h10, 32'h0000_00AF);   // re-enable monitor (healed OFF)
         if (!fu_fault) begin $display("ERR: P17a fu_fault not set by ENA SEU"); errors++; end
         // (b) threshold duplicate rails
-        force u_dut.u_mon.r.thr_a_qn = u_dut.u_mon.r.thr_a_q;    // break complement
+        force u_dut.u_hang_prot_core.r.thr_a_qn = u_dut.u_hang_prot_core.r.thr_a_q;    // break complement
         repeat (3) @(posedge aclk);                          // thr_a_fault live
-        force u_dut.u_mon.r.thr_a_qn = ~u_dut.u_mon.r.thr_a_q;   // true complement
+        force u_dut.u_hang_prot_core.r.thr_a_qn = ~u_dut.u_hang_prot_core.r.thr_a_q;   // true complement
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.r.thr_a_qn;
-        force u_dut.u_mon.r.thr_r_qn = u_dut.u_mon.r.thr_r_q;
+        release u_dut.u_hang_prot_core.r.thr_a_qn;
+        force u_dut.u_hang_prot_core.r.thr_r_qn = u_dut.u_hang_prot_core.r.thr_r_q;
         repeat (3) @(posedge aclk);
-        force u_dut.u_mon.r.thr_r_qn = ~u_dut.u_mon.r.thr_r_q;
+        force u_dut.u_hang_prot_core.r.thr_r_qn = ~u_dut.u_hang_prot_core.r.thr_r_q;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.r.thr_r_qn;
+        release u_dut.u_hang_prot_core.r.thr_r_qn;
         repeat (2) @(posedge aclk);
         mb_rd(8'h20, rd_val);               // SEL8 = fu_src
         if (rd_val[2:0] !== 3'b111) begin $display("ERR: P17b fu_src=%h (exp 7: ENA+THRA+THRR)", rd_val); errors++; end
@@ -1682,12 +1682,12 @@ module tb_hang_prot_gen_wrap;
         // (d) wskid slot one-hot violation (same deposit as tb_a P10)
         done_snap  = cov_recover_done;
         enter_snap = cov_recover_enter;
-        force u_dut.u_recover.u_wskid.r.st[0] = 4'b0011;   // non-onehot
+        force u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[0] = 4'b0011;   // non-onehot
         repeat (5) @(posedge aclk);
         if (cov_recover_enter <= enter_snap) begin $display("ERR: P17d no forced recover entry"); errors++; end
-        force u_dut.u_recover.u_wskid.r.st[0] = 4'b0001;   // heal to SK_FREE...
+        force u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[0] = 4'b0001;   // heal to SK_FREE...
         @(posedge aclk);                                 // ...so sk_onehot...
-        release u_dut.u_recover.u_wskid.r.st[0];           // ...re-evaluates
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[0];           // ...re-evaluates
         wdt2 = 0;
         while (cov_recover_done <= done_snap && wdt2 < WDT_LIMIT) begin @(negedge aclk); wdt2++; end
         if (cov_recover_done <= done_snap) begin $display("ERR: P17d no auto-exit"); errors++; end
@@ -1698,13 +1698,13 @@ module tb_hang_prot_gen_wrap;
         //      while live, iflt sticky
         done_snap  = cov_recover_done;
         enter_snap = cov_recover_enter;
-        force u_dut.u_recover.r.ar_wr_n[0] = u_dut.u_recover.r.ar_wr[0];
+        force u_dut.u_hang_prot_recover.r.ar_wr_n[0] = u_dut.u_hang_prot_recover.r.ar_wr[0];
         repeat (5) @(posedge aclk);
         if (cov_recover_enter <= enter_snap) begin $display("ERR: P17e1 no forced recover entry"); errors++; end
         if (!recover_active) begin $display("ERR: P17e1 exit despite live dup mismatch"); errors++; end
-        force u_dut.u_recover.r.ar_wr_n[0] = ~u_dut.u_recover.r.ar_wr[0];
+        force u_dut.u_hang_prot_recover.r.ar_wr_n[0] = ~u_dut.u_hang_prot_recover.r.ar_wr[0];
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.ar_wr_n[0];
+        release u_dut.u_hang_prot_recover.r.ar_wr_n[0];
         wdt2 = 0;
         while (cov_recover_done <= done_snap && wdt2 < WDT_LIMIT) begin @(negedge aclk); wdt2++; end
         if (cov_recover_done <= done_snap) begin $display("ERR: P17e1 no auto-exit"); errors++; end
@@ -1732,19 +1732,19 @@ module tb_hang_prot_gen_wrap;
         while (!recover_active && wdt2 < WDT_LIMIT) begin @(negedge aclk); wdt2++; end
         if (!recover_active) begin $display("ERR: P17e2 no recover entry (r2r)"); errors++; end
         // corrupt head-entry parity of class 0 (rready=0 -> no pop, head fixed)
-        fi_snap8 = u_dut.u_recover.r.ar_par[0];
+        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[0];
         fi_mask  = '0;
-        fi_mask[u_dut.u_recover.r.ar_rp[0]] = 1'b1;
-        force u_dut.u_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        fi_mask[u_dut.u_hang_prot_recover.r.ar_rp[0]] = 1'b1;
+        force u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.ar_par[0];
+        release u_dut.u_hang_prot_recover.r.ar_par[0];
         repeat (5) @(posedge aclk);         // ar_ent_err live -> exit blocked
         // heal the entry (toggle the same bit back; the ring is parked, so
         // the field is static between the two deposits)
-        fi_snap8 = u_dut.u_recover.r.ar_par[0];
-        force u_dut.u_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[0];
+        force u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.ar_par[0];
+        release u_dut.u_hang_prot_recover.r.ar_par[0];
         repeat (2) @(posedge aclk);
         // retire the parked read through the dummy engine
         m_rready = 1;
@@ -1950,10 +1950,10 @@ module tb_hang_prot_gen_wrap;
         @(negedge mbus_clk);
         // snapshot-then-force: `force X = ~X; release X;` is a no-op in VCS
         // (the forced RHS re-evaluates off the just-forced value)
-        fi_snap = u_dut.u_regfile.r_mb.wpar_q;
-        force   u_dut.u_regfile.r_mb.wpar_q = ~fi_snap;
+        fi_snap = u_dut.u_hang_prot_regfile.r_mb.wpar_q;
+        force   u_dut.u_hang_prot_regfile.r_mb.wpar_q = ~fi_snap;
         @(posedge mbus_clk);             // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_regfile.r_mb.wpar_q;
+        release u_dut.u_hang_prot_regfile.r_mb.wpar_q;
         repeat (8) @(negedge mbus_clk);         // handshake drains
         mb_rd(16'h0024, rd_val);
         if (rd_val[13] !== 1'b1) begin
@@ -1969,11 +1969,11 @@ module tb_hang_prot_gen_wrap;
         end
         // par_lq duplicate rail: one SEU sets ALL THREE latches (fail-visible)
 `ifdef IVERILOG
-        u_dut.u_regfile.r_mb.par_lq_n[0] = 1'b0;
+        u_dut.u_hang_prot_regfile.r_mb.par_lq_n[0] = 1'b0;
 `else
-        force   u_dut.u_regfile.r_mb.par_lq_n[0] = 1'b0;
+        force   u_dut.u_hang_prot_regfile.r_mb.par_lq_n[0] = 1'b0;
         @(posedge mbus_clk);             // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_regfile.r_mb.par_lq_n[0];
+        release u_dut.u_hang_prot_regfile.r_mb.par_lq_n[0];
 `endif
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
@@ -2112,7 +2112,7 @@ module tb_hang_prot_gen_wrap;
         $display("P19: OTD saturation + full-range climb clean");
 
         // ====================================================================
-        // P20: core monitor integrity FI (u_mon)
+        // P20: core monitor integrity FI (u_hang_prot_core)
         //   (a) ENA codeword SEU (2-hot: ambiguous -> holds + reports)
         //   (b) counter rail deposits (self-heal next cycle): rd/wr_cnt_a_f,
         //       rd_cnt_r_f, wr_cnt_r_f + the ungated comparator disagree
@@ -2123,11 +2123,11 @@ module tb_hang_prot_gen_wrap;
         $display("\n--- P20: core monitor integrity FI ---");
         // (a) ENA SEU ----------------------------------------------------------
 `ifdef IVERILOG
-        u_dut.u_mon.r.ena_q = 4'b0011;
+        u_dut.u_hang_prot_core.r.ena_q = 4'b0011;
 `else
-        force   u_dut.u_mon.r.ena_q = 4'b0011;
+        force   u_dut.u_hang_prot_core.r.ena_q = 4'b0011;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.r.ena_q;   // ambiguous code holds (no heal)
+        release u_dut.u_hang_prot_core.r.ena_q;   // ambiguous code holds (no heal)
 `endif
         repeat (12) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
@@ -2153,41 +2153,41 @@ module tb_hang_prot_gen_wrap;
 
         // (b) idle counter-rail deposits ---------------------------------------
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_cnt_a_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n;
 `endif
         wait_recover_entry();                  // rd_cnt_a_f forces r2a fire
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_cnt_r_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_cnt_r_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_cnt_r_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n;
 `endif
         wait_recover_entry();                  // rd_cnt_r_f forces r2r fire
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_cnt_a_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_cnt_a_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_cnt_a_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n;
 `endif
         wait_recover_entry();
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_cnt_r_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_cnt_r_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_cnt_r_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n;
 `endif
         wait_recover_entry();
         wait_auto_exit();
@@ -2202,20 +2202,20 @@ module tb_hang_prot_gen_wrap;
         repeat (6) @(posedge aclk);            // cnt_r climbing (thr 20)
         @(negedge aclk);                       // deposit mid-cycle: a force
 `ifdef IVERILOG                               //   released at a posedge is
-        u_dut.u_mon.g_m[0].r.rd_cnt_r_n = 16'h0; // healed by the flop's
+        u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n = 16'h0; // healed by the flop's
 `else                                         //   own NBA in the SAME
-        force   u_dut.u_mon.g_m[0].r.rd_cnt_r_n = 16'h0;  // timestep (0
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n = 16'h0;  // timestep (0
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_cnt_r_n;  //   duration, never
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r_n;  //   duration, never
 `endif                                        //   sampled)
         wait_recover_entry();                  // cf + f force the r2r fire
         @(negedge aclk);                       // same mid-cycle deposit rule
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_otd_n = '0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_otd_n = '0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_otd_n = '0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_otd_n = '0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_otd_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_otd_n;
 `endif
         repeat (5) @(posedge aclk);            // rd_otd_f live
         @(negedge aclk);
@@ -2240,11 +2240,11 @@ module tb_hang_prot_gen_wrap;
                 repeat (12) @(posedge aclk);   // wr_cnt_a rail settles
                 @(negedge aclk);               // mid-cycle deposit (see c1)
 `ifdef IVERILOG
-                u_dut.u_mon.g_m[0].r.wr_cnt_a_n = 16'h0;
+                u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n = 16'h0;
 `else
-                force   u_dut.u_mon.g_m[0].r.wr_cnt_a_n = 16'h0;
+                force   u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n = 16'h0;
                 @(posedge aclk);         // FI hold: seq latches the forced value (Rule 3)
-                release u_dut.u_mon.g_m[0].r.wr_cnt_a_n;
+                release u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_a_n;
 `endif
                 wait_recover_entry();          // cf + f force the r2a fire
                 repeat (20) @(posedge aclk);
@@ -2270,24 +2270,24 @@ module tb_hang_prot_gen_wrap;
         repeat (12) @(posedge aclk);           // wr_cnt_r rail settles
         @(negedge aclk);                       // mid-cycle deposit (see c1)
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_cnt_r_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_cnt_r_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_cnt_r_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_cnt_r_n;
 `endif
         wait_recover_entry();                  // cf + f force the r2r fire
         @(negedge aclk);                       // mid-cycle deposit (see c1)
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_otd_n = '0;
-        u_dut.u_mon.g_m[0].r.wr_dlv_n = '0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_otd_n = '0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_dlv_n = '0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_otd_n = '0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_otd_n = '0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_otd_n;
-        force   u_dut.u_mon.g_m[0].r.wr_dlv_n = '0;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_otd_n;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_dlv_n = '0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_dlv_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_dlv_n;
 `endif
         repeat (5) @(posedge aclk);            // otd/dlv rails live
         @(negedge aclk);
@@ -2300,41 +2300,41 @@ module tb_hang_prot_gen_wrap;
 
         // (d) status rails: SEU-cleared sticky self-heals to SET --------------
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_a_st_n = 1'b0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_a_st_n = 1'b0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_a_st_n = 1'b0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_a_st_n = 1'b0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_a_st_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_a_st_n;
 `endif
         wait_recover_entry();                  // st_rd_a re-sets -> err_event
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_a_st_n = 1'b0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_a_st_n = 1'b0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_a_st_n = 1'b0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_a_st_n = 1'b0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_a_st_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_a_st_n;
 `endif
         wait_recover_entry();                  // st_wr_a
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_r_st_n = 1'b0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_r_st_n = 1'b0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_r_st_n = 1'b0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_r_st_n = 1'b0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_r_st_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_r_st_n;
 `endif
         wait_recover_entry();                  // st_rd_r
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.wr_r_st_n = 1'b0;
+        u_dut.u_hang_prot_core.g_m[0].r.wr_r_st_n = 1'b0;
 `else
-        force   u_dut.u_mon.g_m[0].r.wr_r_st_n = 1'b0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.wr_r_st_n = 1'b0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.wr_r_st_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.wr_r_st_n;
 `endif
         wait_recover_entry();                  // st_wr_r
         wait_auto_exit();
@@ -2349,11 +2349,11 @@ module tb_hang_prot_gen_wrap;
 
         // (e) reg_wrap sticky-rail FI (dup_err self-heals to SET) -------------
 `ifdef IVERILOG
-        u_dut.u_regfile.u_r0.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_iaerr0.r.flt_q_n = 1'b0;
 `else
-        force   u_dut.u_regfile.u_r0.r.flt_q_n = 1'b0;
+        force   u_dut.u_hang_prot_regfile.u_r_iaerr0.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);             // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_regfile.u_r0.r.flt_q_n;
+        release u_dut.u_hang_prot_regfile.u_r_iaerr0.r.flt_q_n;
 `endif
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
@@ -2372,7 +2372,7 @@ module tb_hang_prot_gen_wrap;
         $display("P20: core monitor integrity FI clean");
 
         // ====================================================================
-        // P21: wskid integrity FI (u_recover.u_wskid): slot one-hot, AW
+        // P21: wskid integrity FI (u_hang_prot_recover.u_hang_prot_wskid): slot one-hot, AW
         //      payload parity (READY), W beat parity (REPLAY), counter
         //      duplicate rails. sk_fault is rst-only sticky (P17): each
         //      transient is healed in place, the sticky reporting checked
@@ -2381,11 +2381,11 @@ module tb_hang_prot_gen_wrap;
         $display("\n--- P21: wskid integrity FI ---");
         // (a) slot-state one-hot: deposit a non-onehot st[1] (idle ring) -----
 `ifdef IVERILOG
-        u_dut.u_recover.u_wskid.r.st[1] = 4'b0011;
+        u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1] = 4'b0011;
 `else
-        force   u_dut.u_recover.u_wskid.r.st[1] = 4'b0011;
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1] = 4'b0011;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.st[1];  // holds (idle ring)
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1];  // holds (idle ring)
 `endif
         wait_recover_entry();                  // !sk_onehot -> entry
         repeat (50) @(posedge aclk);
@@ -2394,11 +2394,11 @@ module tb_hang_prot_gen_wrap;
             errors++;
         end                                  // (all_free=0 blocks the exit)
 `ifdef IVERILOG
-        u_dut.u_recover.u_wskid.r.st[1] = 4'b0001;
+        u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1] = 4'b0001;
 `else
-        force   u_dut.u_recover.u_wskid.r.st[1] = 4'b0001;  // heal
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1] = 4'b0001;  // heal
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.st[1];
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.st[1];
 `endif
         wait_auto_exit();
         w1c_all();
@@ -2417,32 +2417,32 @@ module tb_hang_prot_gen_wrap;
         repeat (4) @(posedge aclk);            // st0==READY, B never comes
         // snapshot-then-force: `force X = ~X; release X;` is a no-op in VCS
         // (the forced RHS re-evaluates off the just-forced value)
-        fi_snap  = u_dut.u_recover.u_wskid.r.apar[0];
-        force    u_dut.u_recover.u_wskid.r.apar[0] = ~fi_snap;
-        fi_snap2 = u_dut.u_recover.u_wskid.r.apar[1];
-        force    u_dut.u_recover.u_wskid.r.apar[1] = ~fi_snap2;
+        fi_snap  = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0];
+        force    u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0] = ~fi_snap;
+        fi_snap2 = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1];
+        force    u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1] = ~fi_snap2;
         @(negedge aclk);
         // sample mid-hold: the FI-hold posedge below also fires the recover
         // entry, whose slot drain drops the READY gate (apar_err's enable) -
         // after that posedge the fault can never be observed here
-        if (!u_dut.u_recover.u_wskid.apar_err) begin
+        if (!u_dut.u_hang_prot_recover.u_hang_prot_wskid.apar_err) begin
             $display("[%0t] ERR: P21b apar_err never asserted after deposit",
                      $time);
             errors++;
         end
         @(posedge aclk);                 // FI hold: seq latches both forced
-        release u_dut.u_recover.u_wskid.r.apar[0];  //   values (Rule 3); the
-        release u_dut.u_recover.u_wskid.r.apar[1];  //   corruptions persist
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0];  //   values (Rule 3); the
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1];  //   corruptions persist
         repeat (5) @(posedge aclk);            // apar_err live on the READY
         wait_recover_entry();                  //   slot
-        fi_snap = u_dut.u_recover.u_wskid.r.apar[0];
-        force   u_dut.u_recover.u_wskid.r.apar[0] = ~fi_snap;
+        fi_snap = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0];
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0] = ~fi_snap;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.apar[0]; // heal both (no new AW
-        fi_snap = u_dut.u_recover.u_wskid.r.apar[1]; //  stored yet)
-        force   u_dut.u_recover.u_wskid.r.apar[1] = ~fi_snap;
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[0]; // heal both (no new AW
+        fi_snap = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1]; //  stored yet)
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1] = ~fi_snap;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.apar[1];
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.apar[1];
         @(negedge aclk);                       // no posedge race on drain
         m_bready = 1;                          // dummy B retires the park
         m_b_wait(b0 + 1);
@@ -2466,15 +2466,15 @@ module tb_hang_prot_gen_wrap;
                 // in VCS (the forced RHS re-evaluates off the just-forced
                 // value)
                 if (st0 === 4'b1000) begin              // slot0 is REPLAYing
-                    fi_snap = u_dut.u_recover.u_wskid.r.wpar[0][7];
-                    force   u_dut.u_recover.u_wskid.r.wpar[0][7] = ~fi_snap;
+                    fi_snap = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[0][7];
+                    force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[0][7] = ~fi_snap;
                     @(posedge aclk);     // FI hold: seq latches the forced value (Rule 3)
-                    release u_dut.u_recover.u_wskid.r.wpar[0][7];
+                    release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[0][7];
                 end else begin                          // slot1 is REPLAYing
-                    fi_snap = u_dut.u_recover.u_wskid.r.wpar[1][7];
-                    force   u_dut.u_recover.u_wskid.r.wpar[1][7] = ~fi_snap;
+                    fi_snap = u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[1][7];
+                    force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[1][7] = ~fi_snap;
                     @(posedge aclk);     // FI hold: seq latches the forced value (Rule 3)
-                    release u_dut.u_recover.u_wskid.r.wpar[1][7];
+                    release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.wpar[1][7];
                 end
             end
         join
@@ -2483,7 +2483,7 @@ module tb_hang_prot_gen_wrap;
             seen = 0;                          //   unnoticed once: entry via
             for (w = 0; w < 12; w = w + 1) begin              //   timeout, not FI)
                 @(negedge aclk);
-                if (u_dut.u_recover.u_wskid.wpar_err) seen = 1;
+                if (u_dut.u_hang_prot_recover.u_hang_prot_wskid.wpar_err) seen = 1;
             end
             if (!seen) begin
                 $display("[%0t] ERR: P21c wpar_err never pulsed after deposit",
@@ -2502,23 +2502,23 @@ module tb_hang_prot_gen_wrap;
         //     8-beat fill leaves 7) - a fixed-literal '0/'1 pair would leave
         //     the complement broken (7 != ~15) and wedge the exit.
 `ifdef IVERILOG
-        u_dut.u_recover.u_wskid.r.fill_cnt_n[0] =
-            u_dut.u_recover.u_wskid.r.fill_cnt[0];
+        u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0] =
+            u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt[0];
 `else
-        force   u_dut.u_recover.u_wskid.r.fill_cnt_n[0] =
-            u_dut.u_recover.u_wskid.r.fill_cnt[0];        // break (live value)
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0] =
+            u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt[0];        // break (live value)
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.fill_cnt_n[0];
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0];
 `endif
         wait_recover_entry();                  // cnt_dup_err -> entry
 `ifdef IVERILOG
-        u_dut.u_recover.u_wskid.r.fill_cnt_n[0] =
-            ~u_dut.u_recover.u_wskid.r.fill_cnt[0];
+        u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0] =
+            ~u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt[0];
 `else
-        force   u_dut.u_recover.u_wskid.r.fill_cnt_n[0] =
-            ~u_dut.u_recover.u_wskid.r.fill_cnt[0];       // TRUE complement
+        force   u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0] =
+            ~u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt[0];       // TRUE complement
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.u_wskid.r.fill_cnt_n[0];
+        release u_dut.u_hang_prot_recover.u_hang_prot_wskid.r.fill_cnt_n[0];
 `endif
         wait_auto_exit();
         w1c_all();
@@ -2533,12 +2533,12 @@ module tb_hang_prot_gen_wrap;
         // ====================================================================
         $display("\n--- P22: recover AW-FIFO FI + dummy-length sweep ---");
 `ifdef IVERILOG
-        u_dut.u_recover.r.aw_bp_n = u_dut.u_recover.r.aw_bp;
+        u_dut.u_hang_prot_recover.r.aw_bp_n = u_dut.u_hang_prot_recover.r.aw_bp;
 `else
-        force   u_dut.u_recover.r.aw_bp_n =
-            u_dut.u_recover.r.aw_bp;                       // break (deposit)
+        force   u_dut.u_hang_prot_recover.r.aw_bp_n =
+            u_dut.u_hang_prot_recover.r.aw_bp;                       // break (deposit)
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.aw_bp_n;
+        release u_dut.u_hang_prot_recover.r.aw_bp_n;
 `endif
         wait_recover_entry();
         repeat (50) @(posedge aclk);
@@ -2548,12 +2548,12 @@ module tb_hang_prot_gen_wrap;
             errors++;
         end
 `ifdef IVERILOG
-        u_dut.u_recover.r.aw_bp_n = ~u_dut.u_recover.r.aw_bp;
+        u_dut.u_hang_prot_recover.r.aw_bp_n = ~u_dut.u_hang_prot_recover.r.aw_bp;
 `else
-        force   u_dut.u_recover.r.aw_bp_n =
-            ~u_dut.u_recover.r.aw_bp;                      // heal
+        force   u_dut.u_hang_prot_recover.r.aw_bp_n =
+            ~u_dut.u_hang_prot_recover.r.aw_bp;                      // heal
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.aw_bp_n;
+        release u_dut.u_hang_prot_recover.r.aw_bp_n;
 `endif
         wait_auto_exit();
         if (!skid_fault) begin
@@ -2569,14 +2569,14 @@ module tb_hang_prot_gen_wrap;
         repeat (10) @(posedge aclk);
         // snapshot-then-force: `force X = ~X; release X;` is a no-op in VCS
         // (the forced RHS re-evaluates off the just-forced value)
-        fi_snap8 = u_dut.u_recover.r.aw_par;
+        fi_snap8 = u_dut.u_hang_prot_recover.r.aw_par;
         fi_mask  = '0;
-        fi_mask[u_dut.u_recover.r.aw_bp] = 1'b1;
-        force   u_dut.u_recover.r.aw_par = fi_snap8 ^ fi_mask;
+        fi_mask[u_dut.u_hang_prot_recover.r.aw_bp] = 1'b1;
+        force   u_dut.u_hang_prot_recover.r.aw_par = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.aw_par;
+        release u_dut.u_hang_prot_recover.r.aw_par;
         @(negedge aclk);
-        if (!u_dut.u_recover.aw_ent_err) begin
+        if (!u_dut.u_hang_prot_recover.aw_ent_err) begin
             $display("[%0t] ERR: P22a2 aw_ent_err never asserted after deposit",
                      $time);
             errors++;
@@ -2587,12 +2587,12 @@ module tb_hang_prot_gen_wrap;
             $display("[%0t] ERR: P22a2 exit despite live aw_ent_err", $time);
             errors++;
         end
-        fi_snap8 = u_dut.u_recover.r.aw_par;
+        fi_snap8 = u_dut.u_hang_prot_recover.r.aw_par;
         fi_mask  = '0;
-        fi_mask[u_dut.u_recover.r.aw_bp] = 1'b1;
-        force   u_dut.u_recover.r.aw_par = fi_snap8 ^ fi_mask;
+        fi_mask[u_dut.u_hang_prot_recover.r.aw_bp] = 1'b1;
+        force   u_dut.u_hang_prot_recover.r.aw_par = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.aw_par;
+        release u_dut.u_hang_prot_recover.r.aw_par;
         repeat (5) @(posedge aclk);            // healed
         @(negedge aclk);
         m_bready = 1;                          // dummy B retires the entry
@@ -3043,7 +3043,7 @@ module tb_hang_prot_gen_wrap;
         //   (a) alias (addr[7:6]) and wrong-instance (addr[14:9]) accesses -
         //       dropped by the decode (no checks), they only toggle the
         //       pins / comparator inputs
-        //   (b) every image/shadow flt_q_n (P20 covered u_r0) -> dup_err
+        //   (b) every image/shadow flt_q_n (P20 covered u_r_iaerr0) -> dup_err
         //       pulse -> heal-to-SET; SCMREGPARSTAT W1C clears (both ways).
         //       par_lq_n[2:1] are NOT deposited: par_l_dup_f's RHS
         //       (par_lq_n != ~par_lq) is a 1-bit scalar zero-extended
@@ -3059,51 +3059,51 @@ module tb_hang_prot_gen_wrap;
         mb_wr(16'h0180, 32'h0000_0003);      // wrong-instance write (dropped)
         mb_rd(16'h0000, rd_val);             // pins back low
 `ifdef IVERILOG
-        u_dut.u_regfile.u_r1.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r2.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r3.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r4.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r5.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r6.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r7.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_r8.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_c4.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_c5.r.flt_q_n = 1'b0;
-        u_dut.u_regfile.u_c6.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_iaerr1.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_iastat.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_otd.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_cntrl.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_thresh0.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_thresh1.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_fustat.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_c_thresh0.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_c_thresh1.r.flt_q_n = 1'b0;
 `else
-        force   u_dut.u_regfile.u_r1.r.flt_q_n = 1'b0;
+        force   u_dut.u_hang_prot_regfile.u_r_iaerr1.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_regfile.u_r1.r.flt_q_n;
-        force   u_dut.u_regfile.u_r2.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_iaerr1.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_iastat.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r2.r.flt_q_n;
-        force   u_dut.u_regfile.u_r3.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_iastat.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_otd.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r3.r.flt_q_n;
-        force   u_dut.u_regfile.u_r4.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_otd.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_cntrl.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r4.r.flt_q_n;
-        force   u_dut.u_regfile.u_r5.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_cntrl.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_thresh0.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r5.r.flt_q_n;
-        force   u_dut.u_regfile.u_r6.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_thresh0.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_thresh1.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r6.r.flt_q_n;
-        force   u_dut.u_regfile.u_r7.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_thresh1.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_fustat.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r7.r.flt_q_n;
-        force   u_dut.u_regfile.u_r8.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_fustat.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
-        release u_dut.u_regfile.u_r8.r.flt_q_n;
-        force   u_dut.u_regfile.u_c4.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n = 1'b0;
         @(posedge aclk);             // FI hold (aclk-domain shadows, Rule 3)
-        release u_dut.u_regfile.u_c4.r.flt_q_n;
-        force   u_dut.u_regfile.u_c5.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_c_thresh0.r.flt_q_n = 1'b0;
         @(posedge aclk);             // FI hold (Rule 3)
-        release u_dut.u_regfile.u_c5.r.flt_q_n;
-        force   u_dut.u_regfile.u_c6.r.flt_q_n = 1'b0;
+        release u_dut.u_hang_prot_regfile.u_c_thresh0.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_c_thresh1.r.flt_q_n = 1'b0;
         @(posedge aclk);             // FI hold (Rule 3)
-        release u_dut.u_regfile.u_c6.r.flt_q_n;
+        release u_dut.u_hang_prot_regfile.u_c_thresh1.r.flt_q_n;
 `endif
         repeat (8) @(negedge mbus_clk);
         mb_wr_wait(16'h0024, 32'h0000_7FF1); // W1C: r0..r8 + c4..c6 + par_lq
@@ -3139,11 +3139,11 @@ module tb_hang_prot_gen_wrap;
         repeat (8) @(posedge aclk);          // rd_cnt_a climbing (thr 128)
         @(negedge aclk);                     // mid-cycle deposit (P20 style)
 `ifdef IVERILOG
-        u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+        u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n = 16'h0;
 `else
-        force   u_dut.u_mon.g_m[0].r.rd_cnt_a_n = 16'h0;
+        force   u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n = 16'h0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_mon.g_m[0].r.rd_cnt_a_n;
+        release u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_a_n;
 `endif
         wait_recover_entry();                // cf + f force the r2a fire
         @(negedge aclk);
@@ -3257,11 +3257,11 @@ module tb_hang_prot_gen_wrap;
         end
         w1c_all();
 `ifdef IVERILOG
-        u_dut.u_recover.r.mode_r_n = 1'b0;     // rail flip (mode_r=0)
+        u_dut.u_hang_prot_recover.r.mode_r_n = 1'b0;     // rail flip (mode_r=0)
 `else
-        force   u_dut.u_recover.r.mode_r_n = 1'b0;
+        force   u_dut.u_hang_prot_recover.r.mode_r_n = 1'b0;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_recover.r.mode_r_n;
+        release u_dut.u_hang_prot_recover.r.mode_r_n;
 `endif
         wait_recover_entry();
         wait_auto_exit();

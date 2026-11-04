@@ -102,7 +102,7 @@ module ia_bus_timeo_top #(
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST),
         .IDX            (IDX)
-    ) u_regfile (
+    ) u_ia_bus_timeo_regfile (
         .mbus_clk            (mbus_clk),
         .mbus_rstn           (mbus_rstn),
         .ce                  (mbus_ce),
@@ -154,7 +154,7 @@ module ia_bus_timeo_top #(
         .OTD_W          (OTD_W),
         .REQ2ACCEPT_RST (REQ2ACCEPT_RST),
         .REQ2RESP_RST   (REQ2RESP_RST)
-    ) u_mon (
+    ) u_ia_bus_timeo_core (
         .clk                 (ia_bus_aclk),
         .rst                 (rst),
 

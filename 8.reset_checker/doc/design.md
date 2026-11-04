@@ -128,7 +128,7 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 - **keyed**：CTRL / REGST 需 wdata[31:28] = WKEY（4'h5），无键写整体
   拒绝并锁 REG_PROT。
 - **写保护**（锁 REG_PROT，写整体拒绝）：写 RO（ID/STAT）、写未知偏
-  移、keyed 寄存器无键写。
+  移、keyed 寄存器无键写、CTRL 非法 MODE 值。
 - **W1C 通用语义**：清除当拍 CPU 优先；**活源仍在则下一拍重置**——
   W1C 永远无法掩蔽物理上仍存在的故障源（EV.ERR 的活源 = 分歧仍在且
   计满；REGPAR wrap 位的活源 = 存储 parity 仍坏）。
@@ -138,7 +138,7 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 | 偏移 | 寄存器 | 属性 | 复位值 |
 |---|---|---|---|
 | 0x00 | ID | RO | 0x5243_0001 |
-| 0x04 | CTRL | keyed RW | 0x1（EN=1 fail-safe，FI=0） |
+| 0x04 | CTRL | keyed RW | 0x1（MODE=NORMAL one-hot，fail-safe 在岗） |
 | 0x08 | STAT | RO（实时镜像） | 跟随实时态，空闲 0x200 |
 | 0x0C | EV | W1C | 0x0 |
 | 0x10 | REGPAR | RO/W1C | 0x2（bit1 fault_n=1） |
@@ -150,14 +150,21 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 
 ### 5.4 CTRL（0x04，keyed RW）
 
-| 位 | 字段 | 复位 | 说明 |
-|---|---|---|---|
-| 0 | EN | 1 | 告警门控：只掩 filt_fire 判定与 DA/DB 事件；计数器仍由轨 XOR 释放/清零（EN 不关滤波器） |
-| 1 | FI | 0 | 注入：1 = m 轨副本异或翻转（m_g = reset_m ^ FI），任意轨电平下制造分歧——检查链路潜伏故障自检；应在复位保持窗（轨双低）脉冲，系统零代价 |
+EN/FI 配置为 **4bit one-hot MODE 字段**（非两个独立 bit）：独立 bit 下
+`(EN=0, FI=1)`（注错进行、告警被掩 = 静默破坏）是合法态——one-hot 编码
+从结构上让它**不可表达**；且单 bit 翻转必落非法码（译码级防错，与
+reg_wrap 的存储级 parity 互补）。
 
-存储为**配置保持型** reg_wrap（u_ctrl，wr 仅来自带键 CTRL 写）：parity
-错只坏检查位、data 永不坏；注入后恢复 = 带键重写本寄存器（流程与顺序
-约束见 5.9）。上电 EN=1：fail-safe，监视默认在岗。
+| MODE[3:0] | 译码 | 说明 |
+|---|---|---|
+| 4'b0001 NORMAL | EN=1 FI=0 | 监视在岗（**复位值**，fail-safe） |
+| 4'b0010 INJECT | EN=1 FI=1 | m 轨副本异或翻转（m_g = reset_m ^ FI），任意轨电平下制造分歧——检查链路潜伏故障自检；应在复位保持窗（轨双低）脉冲，系统零代价 |
+| 4'b0100 OFF | EN=0 FI=0 | 掩判定与 DA/DB 事件（计数器仍由轨 XOR 释放/清零，滤波器不关） |
+| 其它（非法） | — | **写整体拒绝 + 锁 REG_PROT**（与写保护同类，SW 造成的编码字段违规）；存储不可达，译码后备 = fail-safe NORMAL（EN=1 FI=0，绝不注错） |
+
+存储为**配置保持型** reg_wrap（u_ctrl，wr 仅来自带键且合法 MODE 的 CTRL
+写）：parity 错只坏检查位、data 永不坏；注入后恢复 = 带键重写 NORMAL
+（流程与顺序约束见 5.9）。上电 NORMAL：fail-safe，监视默认在岗。
 
 ### 5.5 STAT（0x08，RO 实时镜像）
 
@@ -168,8 +175,8 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 | 2 | div_b | 仅 m 轨拉低（非对称部分复位） |
 | 3 | cnt_full | 滤波计数饱和（cnt == 5'h1F，裸指示，不受 EN 门控） |
 | 8:4 | cnt | 分歧持续计数；两轨恢复一致即经 rstn_pair_s 异步清零（短毛刺不累积） |
-| 9 | EN | CTRL.EN 镜像 |
-| 10 | FI | CTRL.FI 镜像 |
+| 9 | EN | MODE 译码镜像（NORMAL/INJECT=1，OFF=0） |
+| 10 | FI | MODE 译码镜像（仅 INJECT=1） |
 
 读出为 u_statimg 镜像 wrap（wr≡1 每拍跟随，滞后一拍视图），带奇偶保
 护；写 → REG_PROT。
@@ -197,7 +204,7 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 | 6 | STAT image | u_statimg.flt | ✓ | 同上 |
 | 16 | PERR_CMD | 命令奇偶锁存 | ✓ | 任何命令在途奇偶错（写阻塞 + 读 0） |
 | 17 | PAR_SELFTEST | 自检锁存 | ✓ | REGST[9] 无源注入锁存 |
-| 18 | REG_PROT | 写保护锁存 | ✓ | 写 RO / 未知偏移 / 无键 keyed 写 |
+| 18 | REG_PROT | 写保护锁存 | ✓ | 写 RO / 未知偏移 / 无键 keyed 写 / 非法 MODE 值 |
 
 wrap flt（[6:4]）与本地 sticky（[18:16]）均带反相冗余：SEU 清零自愈
 回置位（heal-to-SET）。其余位保留，读 0。
@@ -237,7 +244,7 @@ INJ 与 PASS 可同拍复合。
 | rst_sync.SYNC_LVL_NUM（例化单元） | 2 | 复位同步器级数（≥2：一级亚稳吸收 + 一级解析），本设计三处例化均为 2 |
 | rst_sync.DEF_VAL（例化单元） | 1'b0 | 断言期间输出值（低有效复位；释放值 = ~DEF_VAL） |
 
-## 7. 验证（tb_reset_checker，101 checks）
+## 7. 验证（tb_reset_checker，107 checks）
 
 | 相位 | 覆盖 |
 |---|---|
@@ -259,6 +266,7 @@ INJ 与 PASS 可同拍复合。
 | P16 复位重断言 | FI 于释放轨（m_g=1^1 组合）；mbus_rstn 重断言 → CTRL fail-safe 重载、EV/REGPAR 清、ID 可读 |
 | P17 冗余自愈扩展 | 早期 cnt dup（未饱和先触发）；u_ctrl/u_evimg/u_statimg wrap 反相轨 force → dup_err 自愈置位 REGPAR[4]/[5]/[6] → W1C 清（parity 未坏，无需重写） |
 | P18 DFT scan | scan_mode：同步器 Q 输出 mux（0=2FF q，1=原始 rstn）；m 强制随 p（reset_m 无视、分歧恒 0）；viol 域复位 = 原始 reset_p（计数器即刻可控）；退出 scan 后 2FF 语义完整恢复 |
+| P19 MODE 编码 | 非法 MODE（0x3/0xF）写拒绝 + REG_PROT + 存储不变；OFF/NORMAL 译码与 STAT 镜像 |
 
 运行（VM）：`cd ~/work/rst_checker/sim && ./run_vcs.sh`（`cov` 模式出覆
 盖率；Verdi 用 `./run_verdi.sh`）。覆盖率（`tgl_struct_excl.el` 结构排

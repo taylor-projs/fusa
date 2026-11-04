@@ -258,7 +258,7 @@ module cmm_top #(
                 .PSC   (DUT_PSC[4*i +: 4]),
                 .CNT_W (CNT_W            ),
                 .N_DEB (N_DEB            )
-            ) u_chk (
+            ) u_cmm_clk_dut_mon (
                 .clk_ref     (clk_ref                        ),
                 .rst_ref_n   (rst_ref_n                      ),
                 .clk_dut     (clk_dut[i]                     ),
@@ -461,7 +461,7 @@ module cmm_top #(
         .HANG_TO       (HANG_TO      ),
         .WIN_ALIVE_MAX (WIN_ALIVE_MAX),
         .IDX           (IDX          )
-    ) u_regfile (
+    ) u_cmm_regfile (
         .mbus_clk        (mbus_clk       ),
         .mbus_rstn       (mbus_rstn      ),
         .ce              (mbus_ce        ),
