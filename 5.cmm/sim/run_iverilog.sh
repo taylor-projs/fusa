@@ -13,7 +13,7 @@ iverilog -g2012 -DIVERILOG -o "$OUT" -s tb_cmm_top \
     ../../common_modules/sync_dff.sv \
     ../../common_modules/sync_2dff.sv \
     ../../common_modules/reg_wrap.sv \
-    ../rtl/cmm_clk_dut_mon.sv \
+    ../rtl/cmm_core.sv \
     ../rtl/cmm_regfile.sv \
     ../rtl/cmm_top.sv \
     tb_cmm_top.sv

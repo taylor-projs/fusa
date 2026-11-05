@@ -34,17 +34,24 @@ register parity, fault injection and config-path hang monitoring.
 rtl/
   (reg_wrap.sv 移至 fusa 根 common_modules/, 经 filelist 引用:
    register cell: storage + even parity + selftest injection
-  cmm_clk_dut_mon.sv   one measurement channel (dut-domain prescaler 2FF->ref,
-                      + sticky flt + W1C; 下同) cmm_clk_dut_mon.sv   one measurement channel
-                      dual-rail counters, injection points)
+  cmm_core.sv         ONE instance monitors ALL N_DUT dut clocks against the
+                      ONE shared reference window: channels are vectorized
+                      slices of one record (clk_ref domain) + one generate
+                      loop of per-domain prescalers (each clk_dut is its own
+                      clock domain). Per-channel [WIN_LO, WIN_HI] min/max
+                      bounds, dual-rail counters, dead detect, injection.
+                      (2026-11 rewrite: 取代旧的 per-channel cmm_clk_dut_mon
+                      N 例化方案 — 不再例化 N 个通道模块)
   cmm_regfile.sv      mbus leaf + register wraps (both domains) + CDC toggle
                       handshake + hang/stale/drop monitors + read mux
   cmm_top.sv          ref clock select, reset sync, shared window generator
-                      (dual-rail), lifecycle FSM, N x clk_dut_chk, EN majority
-                      decode, sticky vectors, aggregation, ESM rails, nERR
+                      (dual-rail), lifecycle FSM, verdict latches / sticky
+                      vectors, aggregation, ESM rails, nERR
 sim/
-  tb_cmm_top.sv       self-checking TB (84 checks, N_DUT=5 instance)
+  tb_cmm_top.sv       self-checking TB (319 checks, N_DUT=5 instance)
+  run_vcs.sh          VCS build+run (+cov: coverage & urg report)
   run_iverilog.sh     iverilog -g2012 build+run (WSL)
+  excl/               urg structural exclusion set (see excl/README.md)
 doc/
   cmm_sil2_design.md  this document
   cmm_timing_sw_guide.md  parameters, expire values, timing budgets, error

@@ -11,7 +11,7 @@ class (single channel first, then multi-channel).
 
 ## 1. Parameters (elaboration-time)
 
-All sizing knobs sit on `cmm_top`; the channel slice (`cmm_clk_dut_mon`) and
+All sizing knobs sit on `cmm_top`; the measurement core (`cmm_core`) and
 the register file (`cmm_regfile`) receive them by pass-through.
 Runtime-programmable values (window bounds, NDEAD, EN, REFSEL, …) live in
 registers — see §6.0; the parameters below fix ranges, defaults and
@@ -20,19 +20,19 @@ architecture at elaboration.
 | Parameter | Module(s) | Default | Unit | Meaning / sizing rule |
 |-----------|-----------|---------|------|------------------------|
 | `N_DUT` | top, regfile | 16 | — | channels under test (1..16). Drives register packing (FUSRC0/1 nibbles, `DUT_PSC` width) and ID[7:0]. |
-| `CNT_W` | top (localparam), regfile, chk | 12 | bits | width of edge/shadow/no-edge counters and of the WIN_LO/HI/DEAD register fields. Fixed at 12 to keep the 16ch × 12-bit channel-register packing; constrains E·1.05 < 4096 (§4). |
+| `CNT_W` | top (localparam), regfile, core | 12 | bits | width of edge/shadow/no-edge counters and of the WIN_LO/HI/DEAD register fields. Fixed at 12 to keep the 16ch × 12-bit channel-register packing; constrains E·1.05 < 4096 (§4). |
 | `N_WIN` | top | 32768 | ref cycles | reference window length = expire value of `win_cnt`; the detection time quantum. window = N_WIN/f_ref (1.365 ms @ 24 MHz). |
 | `WIN_LO_RST` / `WIN_HI_RST` | top, regfile | 1621 / 1792 | edges | reset values of the per-channel band registers (CHi_LO/HI); sized for dut = 20 MHz @ PSC=3 (E = 1706.7, ±5%). Production values programmed per §4. |
 | `NDEAD_RST` | top, regfile | 4095 | ref cycles | reset value of CHi_DEAD (no-edge timeout). Deliberately loose (max) — SW programs ≈ 2× the slowest legal edge interval (§4). |
-| `N_DEB` | top, chk | 3 | windows | FAIL_FREQ debounce: consecutive bad windows before `fail_lvl`. Trades detection time (N_DEB windows) against transient tolerance (N_DEB−1 bad windows absorbed). 2-bit counter → max 3. |
+| `N_DEB` | top, core | 3 | windows | FAIL_FREQ debounce: consecutive bad windows before `fail_lvl`. Trades detection time (N_DEB windows) against transient tolerance (N_DEB−1 bad windows absorbed). 2-bit counter → max 3. |
 | `DUT_PSC` | top | {N_DUT{4'd3}} | 4 bits/ch | per-channel prescaler tap, packed `[4i+:4]` → PSC of channel i; square wave = clk_dut / 2^(PSC+1). Rule: smallest PSC with f_dut/2^(PSC+1) ≤ f_ref/4, then check E·1.05 < 2^CNT_W (§4). |
 | `WKEY` | top, regfile | 4'h5 | — | keyed-write key in `wdata[31:28]` for GCTRL/FORCE/REGST/CH space; wrong key → write rejected + REG_PROT. |
 | `HANG_TO` | top, regfile | 1024 | mbus cycles | config CDC req/ack watchdog expire → CFG_HANG. Must be ≫ worst-case handshake latency (~6 ref cycles); 1024 @ 48 MHz ≈ 21 µs. |
 | `WIN_ALIVE_MAX` | top, regfile | 131072 | mbus cycles | window-alive watchdog expire → REF_STALE. Must exceed one window in mbus cycles; 131072 @ 48 MHz ≈ 2.7 ms ≈ 2 windows @ 24 MHz ref. |
 | `IDX` | top, regfile | 0 | — | mbus instance id; the leaf responds when `addr[15:8] == IDX`. |
 
-Per-instance parameters of `cmm_clk_dut_mon` are driven from the top, not
-free: `PSC ← DUT_PSC[4i+:4]`, `CNT_W ← 12`, `N_DEB ← N_DEB`.
+Per-channel constants inside `cmm_core` are driven from the top, not
+free: `PSC(i) ← DUT_PSC[4i+:4]`, `CNT_W ← 12`, `N_DEB ← N_DEB`.
 
 Elaboration-time review checklist (all must hold):
 

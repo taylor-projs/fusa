@@ -5,12 +5,14 @@
 // Monitors N_DUT clocks under test against one of two selectable reference
 // clocks (refclk0/refclk1, REFSEL via GCTRL). Measurement: per-channel
 // prescaled-DUT edges counted per reference window, window compare with
-// debounce (FAIL_FREQ) + no-edge timeout (DEAD) - see cmm_clk_dut_mon.
+// debounce (FAIL_FREQ) + no-edge timeout (DEAD) - see cmm_core.
 //
 //   +-----------+      clk_ref       +------------------------------+
 //   | refclk0 --+->-- clk_ref ------>| window gen (dual-rail)       |
 //   | refclk1 --+   (clk mux, note)  | FSM ARM/RUN/ERR (one-hot)    |
-//   +-----------+                    | N x cmm_clk_dut_mon            |
+//   +-----------+                    | cmm_core: ONE instance, all  |
+//                                    |   N_DUT clocks (per-ch edge  |
+//                                    |   count + min/max + dups)    |
 //                                    | sticky status (dup pairs)    |
 //   clk_dut[N-1:0] ----------------->| aggregation + nERR + ESM     |
 //                                    +------------------------------+
@@ -247,41 +249,42 @@ module cmm_top #(
     );
 
     //=========================================================================
-    // measurement channels
+    // measurement core: ONE instance monitors ALL N_DUT clocks under the
+    // shared ref-clock window; per-channel min/max (WIN_LO/WIN_HI) bounds.
+    // (每通道预分频仍在各自 dut 时钟域, 向量 2FF 同步进 clk_ref - 见
+    //  cmm_core; 不再按通道例化模块。)
     //=========================================================================
     logic [N_DUT-1:0] fail_lvl, dead_lvl;
     logic [N_DUT-1:0] fu_cnt_lvl, fu_cmp_lvl, fu_psc_lvl;
 
-    generate
-        for (genvar i = 0; i < N_DUT; i = i + 1) begin : g_ch
-            cmm_clk_dut_mon #(
-                .PSC   (DUT_PSC[4*i +: 4]),
-                .CNT_W (CNT_W            ),
-                .N_DEB (N_DEB            )
-            ) u_cmm_clk_dut_mon (
-                .clk_ref     (clk_ref                        ),
-                .rst_ref_n   (rst_ref_n                      ),
-                .clk_dut     (clk_dut[i]                     ),
-                .cfg_winlo   (cfg_winlo[i*CNT_W +: CNT_W]    ),
-                .cfg_winhi   (cfg_winhi[i*CNT_W +: CNT_W]    ),
-                .cfg_ndead   (cfg_ndead[i*CNT_W +: CNT_W]    ),
-                .cfg_force   (cfg_force[i]                   ),
-                .inj_cnt     (inj_s2[2] && (dbs_s2 == i[3:0])),
-                .inj_cmp     (inj_s2[1] && (dbs_s2 == i[3:0])),
-                .inj_psc     (inj_s2[0] && (dbs_s2 == i[3:0])),
-                .window_end  (window_end                     ),
-                .window_fire (r.window_fire                  ),
-                .fail_lvl    (fail_lvl[i]                    ),
-                .dead_lvl    (dead_lvl[i]                    ),
-                .fu_cnt_lvl  (fu_cnt_lvl[i]                  ),
-                .fu_cmp_lvl  (fu_cmp_lvl[i]                  ),
-                .fu_psc_lvl  (fu_psc_lvl[i]                  ),
-                .dbg_shadow  (dbg_shadow[i*CNT_W +: CNT_W]   ),
-                .dbg_noedge  (dbg_noedge[i*CNT_W +: CNT_W]   ),
-                .dbg_edgecnt (dbg_edgecnt[i*CNT_W +: CNT_W]  )
-            );
-        end
-    endgenerate
+    cmm_core #(
+        .N_DUT  (N_DUT        ),
+        .DUT_PSC(DUT_PSC      ),
+        .CNT_W  (CNT_W        ),
+        .N_DEB  (N_DEB        )
+    ) u_cmm_core (
+        .clk_ref     (clk_ref     ),
+        .rst_ref_n   (rst_ref_n   ),
+        .clk_dut     (clk_dut     ),
+        .cfg_winlo   (cfg_winlo   ),
+        .cfg_winhi   (cfg_winhi   ),
+        .cfg_ndead   (cfg_ndead   ),
+        .cfg_force   (cfg_force   ),
+        .inj_cnt     (inj_s2[2]   ),
+        .inj_cmp     (inj_s2[1]   ),
+        .inj_psc     (inj_s2[0]   ),
+        .dbgsel      (dbs_s2      ),
+        .window_end  (window_end  ),
+        .window_fire (r.window_fire),
+        .fail_lvl    (fail_lvl    ),
+        .dead_lvl    (dead_lvl    ),
+        .fu_cnt_lvl  (fu_cnt_lvl  ),
+        .fu_cmp_lvl  (fu_cmp_lvl  ),
+        .fu_psc_lvl  (fu_psc_lvl  ),
+        .dbg_shadow  (dbg_shadow  ),
+        .dbg_noedge  (dbg_noedge  ),
+        .dbg_edgecnt (dbg_edgecnt )
+    );
 
     //=========================================================================
     // sticky status next-state (inverted duplicates, heal-to-SET; W1C from

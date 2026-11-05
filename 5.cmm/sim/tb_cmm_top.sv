@@ -280,7 +280,7 @@ module tb_cmm_top;
     // Force paths must be literal -> macro per channel index.
     `define CH_MATRIX(k) \
     begin \
-        force dut.g_ch[k].u_cmm_clk_dut_mon.r_dut.psc_cnt_n = 16'h0000; \
+        force dut.u_cmm_core.g_psc[k].r_dut.psc_cnt_n = 16'h0000; \
         repeat (12) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         if (rd[4*k+3] !== 1'b1) \
@@ -290,11 +290,11 @@ module tb_cmm_top;
         mb_wr_sync(A_FORCE, KEY | 32'h4_0000); \
         repeat (4) @(posedge refclk0); \
         mb_wr_sync(A_FORCE, KEY); \
-        release dut.g_ch[k].u_cmm_clk_dut_mon.r_dut.psc_cnt_n; \
+        release dut.u_cmm_core.g_psc[k].r_dut.psc_cnt_n; \
         repeat (2) @(posedge refclk0); \
         mb_wr_sync(A_FUSRC0, 32'h8 << (4*k)); \
         recover(rd); \
-        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.shadow_qn = 12'h000; \
+        force dut.u_cmm_core.r_ref.shadow_qn[k] = 12'h000; \
         repeat (N_WIN + N_WIN/2) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         chk(rd[4*k] == 1'b1, $sformatf("COVk: shadow dup ch%0d -> FUSRC0 cnt", k)); \
@@ -302,21 +302,21 @@ module tb_cmm_top;
         mb_wr_sync(A_FORCE, KEY | 32'h10_0000); \
         repeat (4) @(posedge refclk0); \
         mb_wr_sync(A_FORCE, KEY); \
-        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.shadow_qn; \
+        release dut.u_cmm_core.r_ref.shadow_qn[k]; \
         repeat (2) @(posedge refclk0); \
         recover(rd); \
-        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt   = 12'hFFF; \
-        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000; \
+        force dut.u_cmm_core.r_ref.edge_cnt[k]   = 12'hFFF; \
+        force dut.u_cmm_core.r_ref.edge_cnt_n[k] = 12'h000; \
         repeat (N_WIN + N_WIN/2) @(posedge refclk0); \
-        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt; \
-        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.edge_cnt_n; \
+        release dut.u_cmm_core.r_ref.edge_cnt[k]; \
+        release dut.u_cmm_core.r_ref.edge_cnt_n[k]; \
         repeat (2*N_WIN) @(posedge refclk0); \
         recover(rd); \
-        force dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.noedge_cnt_n = 12'h000; \
+        force dut.u_cmm_core.r_ref.noedge_cnt_n[k] = 12'h000; \
         repeat (6) @(posedge refclk0); \
         mb_rd(A_FUSRC0, rd); \
         chk(rd[4*k] == 1'b1, $sformatf("COVk: noedge dup ch%0d -> FUSRC0 cnt", k)); \
-        release dut.g_ch[k].u_cmm_clk_dut_mon.r_ref.noedge_cnt_n; \
+        release dut.u_cmm_core.r_ref.noedge_cnt_n[k]; \
         repeat (2) @(posedge refclk0); \
         mb_wr_sync(A_FUSRC0, 32'h1 << (4*k)); \
         recover(rd); \
@@ -715,7 +715,7 @@ module tb_cmm_top;
         // stays clear. Guards the ecnt_flt_w clear timing (window_fire) and
         // the FU-before-FAIL severity ordering for counter integrity faults.
         // ------------------------------------------------------------------
-        force dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[1] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);           // >> debounce 3 windows
         mb_rd(A_FUSRC0, rd);
         chk(rd[4] == 1'b1, "POISON: FUSRC0 ch1 cnt bit (4i+0=4)");
@@ -725,7 +725,7 @@ module tb_cmm_top;
             "POISON: fu rail only, no alarm rail");
         mb_rd(A_ERRSTAT, rd);
         chk(rd[1] == 1'b0, "POISON: no FAIL_FREQ (FU pre-empts, FSM left RUN)");
-        release dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[1];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10);
         recover(rd);
@@ -981,37 +981,37 @@ module tb_cmm_top;
             chk(rd == 32'h0, $sformatf("COVi: dead ch%0d cleared", k));
         end
         // -- ecnt poison (dual-rail break) ch0/2/3/4 (ch1 done in P15b) --
-        force dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[0] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[0] == 1'b1 && rd[16] == 1'b0, "COVi: poison ch0 cnt bit only");
         mb_rd(A_ERRSTAT, rd);
         chk(rd[0] == 1'b0, "COVi: poison ch0 no FAIL_FREQ");
-        release dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[0];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h1);
         recover(rd);
-        force dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[2] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[8] == 1'b1, "COVi: poison ch2 cnt bit");
-        release dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[2];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h100);
         recover(rd);
-        force dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[3] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[12] == 1'b1, "COVi: poison ch3 cnt bit");
-        release dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[3];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h1000);
         recover(rd);
-        force dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[4] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[16] == 1'b1, "COVi: poison ch4 cnt bit");
-        release dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[4];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10000);
         recover(rd);
@@ -1173,11 +1173,11 @@ module tb_cmm_top;
         `CH_MATRIX(3)
         `CH_MATRIX(4)
         // ch1 edge-counter poison (ch0/2/3/4 done in P15b/20i)
-        force dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n = 12'h000;
+        force dut.u_cmm_core.r_ref.edge_cnt_n[1] = 12'h000;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[4] == 1'b1, "COVk: poison ch1 cnt bit");
-        release dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.edge_cnt_n;
+        release dut.u_cmm_core.r_ref.edge_cnt_n[1];
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_FUSRC0, 32'h10);
         recover(rd);
@@ -1392,13 +1392,13 @@ module tb_cmm_top;
                 $display("[%0t] DBG deadk%0d ERRSTAT=%08h fail_q=%b dead_q=%b fsm=%b",
                          $time, k, rd, dut.r.fail_q, dut.r.dead_q, dut.r.fsm_state);
                 case (k)
-                    0: $display("   ch0 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[35:24], dut.g_ch[0].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[23:12]);
-                    1: $display("   ch1 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[35:24], dut.g_ch[1].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[23:12]);
-                    2: $display("   ch2 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[35:24], dut.g_ch[2].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[23:12]);
-                    3: $display("   ch3 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
+                    0: $display("   ch0 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[0], dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[0], dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[0].u_cwrap.r.data_q[23:12]);
+                    1: $display("   ch1 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[1], dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[1], dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[1].u_cwrap.r.data_q[23:12]);
+                    2: $display("   ch2 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[2], dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[2], dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[2].u_cwrap.r.data_q[23:12]);
+                    3: $display("   ch3 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[3], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[3], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
                     4: begin
-                        $display("   ch4 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[35:24], dut.g_ch[4].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[23:12]);
-                        $display("   (ch3 state) noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.noedge_cnt, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.g_ch[3].u_cmm_clk_dut_mon.r_ref.shadow_q, dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
+                        $display("   ch4 noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[4], dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[4], dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[4].u_cwrap.r.data_q[23:12]);
+                        $display("   (ch3 state) noedge=%0d ndead=%0d sh=%0d lo=%0d hi=%0d", dut.u_cmm_core.r_ref.noedge_cnt[3], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[35:24], dut.u_cmm_core.r_ref.shadow_q[3], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[11:0], dut.u_cmm_regfile.g_cwrap[3].u_cwrap.r.data_q[23:12]);
                     end
                 endcase
             end
@@ -1422,11 +1422,11 @@ module tb_cmm_top;
         // ch4 prescaler rollover: ch4 runs at 1 MHz so psc_cnt[15:12] never
         // wrap in normal sim time; force a consistent near-rollover pair and
         // let the free-running dut-domain counter wrap by itself
-        force dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt   = 16'hFFF0;
-        force dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt_n = 16'h000F;           // ~FFF0
+        force dut.u_cmm_core.g_psc[4].r_dut.psc_cnt   = 16'hFFF0;
+        force dut.u_cmm_core.g_psc[4].r_dut.psc_cnt_n = 16'h000F;           // ~FFF0
         repeat (40) @(posedge clk_dut[4]);
-        release dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt;
-        release dut.g_ch[4].u_cmm_clk_dut_mon.r_dut.psc_cnt_n;
+        release dut.u_cmm_core.g_psc[4].r_dut.psc_cnt;
+        release dut.u_cmm_core.g_psc[4].r_dut.psc_cnt_n;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd == 32'h0, "COVk: no psc dup after ch4 rollover");
