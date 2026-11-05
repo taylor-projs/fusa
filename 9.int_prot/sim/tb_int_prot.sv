@@ -7,7 +7,7 @@
 //
 //   DUT: NUM_INT=4, SYNC_MODE=4'b1100 (ch2/3 走 3 级同步链, ch0/1 单级),
 //        TIMEOUT=16, POSEDGE_DETECT_ONLY=1
-//   另挂一个裸 int_prot (POSEDGE_DETECT_ONLY=0) 验证全沿检测分支.
+//   另挂一个裸 int_prot_core (POSEDGE_DETECT_ONLY=0) 验证全沿检测分支.
 //
 //   寄存器: 0x00 CFG_EN / 0x04 CFG_INJ_EN(key[7:4]=A) / 0x08 CFG_INJ_SPI /
 //           0x0C CFG_INJ_CHK / 0x10 STA_ERR / 0x14 STA_PAR / 0x18 CFG_REGST /
@@ -107,7 +107,7 @@ module tb_int_prot;
    logic [NUM_INT-1:0] mon2_inj_spi = '0;
    logic [NUM_INT-1:0] mon2_inj_chk = '0;
 
-   int_prot #(
+   int_prot_core #(
       .NUM_INT             (  NUM_INT),
       .SYNC_MODE           (SYNC_MODE),
       .SYNC_STAGE          (        3),

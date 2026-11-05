@@ -24,7 +24,7 @@ $RTL/nuclei300_edc_gen.sv
 $RTL/edc_site.sv
 $RTL/edc_gen.sv
 $RTL/edc_chk.sv
-$RTL/edc_reg_wrap.sv
+$ROOT/../common_modules/reg_wrap.sv
 $RTL/edc_regfile.sv
 $RTL/edc_core.sv
 $ROOT/../common_modules/sync_dff.sv

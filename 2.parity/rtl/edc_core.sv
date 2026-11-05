@@ -51,7 +51,7 @@
 //   irq              = |(err_st & irqen)   (冗余通知级, 单轨)
 //
 // 寄存器奇偶保护 (参照 hang_prot reg_wrap): mbus 域 cfg/sta 镜像与 AXI 域
-// 影子/sticky 都是 edc_reg_wrap 实例 (存储+偶校验+自愈粘滞+注错自测);
+// 影子/sticky 都是 reg_wrap 实例 (存储+偶校验+自愈粘滞+注错自测);
 // 跨域命令负载另有整体奇偶 par_pay 在途检查 (PERR13). 状态/控制:
 //   STA_REGPAR 0xA4 (W1C) 逐源清除, CFG_REGST 0xA8 (带 key) 注错自测.
 //   详见 edc_regfile / design_spec §8.6.
@@ -257,7 +257,7 @@ module edc_core #(
    );
 
    // =========================================================================
-   // AXI 时钟域: 命令接收 + 配置影子 (edc_reg_wrap) + gen/chk
+   // AXI 时钟域: 命令接收 + 配置影子 (reg_wrap) + gen/chk
    // =========================================================================
    //--------------------------------------------------------------------------
    // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
@@ -322,7 +322,7 @@ module edc_core #(
    logic cmd_pulse;
    assign cmd_pulse = r.cmd_sync[1] ^ r.cmd_last;
 
-   // 影子 / sticky 均为 edc_reg_wrap 实例 (存储+偶校验+自愈粘滞).
+   // 影子 / sticky 均为 reg_wrap 实例 (存储+偶校验+自愈粘滞).
    // inj_en_q 为每站点 4bit 编码使能: 1111=开, 其余 (含 0000) = 关;
    // 单 bit 翻转 -> 非法码 -> 注错失效 + fault 轨解除屏蔽 (fail-safe)
    logic [NSITES*4-1:0]    inj_en_q;
@@ -446,7 +446,7 @@ module edc_core #(
                          flt_if, flt_ie};
 
    // =========================================================================
-   // AXI 域 edc_reg_wrap 实例: cfg 影子 (cmd_pulse 载入) + sticky (跟随)
+   // AXI 域 reg_wrap 实例: cfg 影子 (cmd_pulse 载入) + sticky (跟随)
    // 注错脉冲 / W1C 清除都经命令一次性负载下发, 与 mbus 域同步清除
    // =========================================================================
    logic st_pls;
@@ -454,11 +454,11 @@ module edc_core #(
    logic w1c_pls;
    assign w1c_pls = cmd_pulse;
 
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES*4)
    ) u_inj_en (
       .clk          (axi_clk                          ),
-      .rstn         (axi_rstn                         ),
+      .rst_n        (axi_rstn                         ),
       .wdata        (r.cmd_en_s2                      ),
       .wr           (cmd_pulse                        ),
       .rdata        (inj_en_q                         ),
@@ -466,11 +466,11 @@ module edc_core #(
       .flt          (flt_ie                           ),
       .flt_w1c      (w1c_pls && r.cmd_w1c_s2[7]       )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_inj_force (
       .clk          (axi_clk                          ),
-      .rstn         (axi_rstn                         ),
+      .rst_n        (axi_rstn                         ),
       .wdata        (r.cmd_force_s2                   ),
       .wr           (cmd_pulse                        ),
       .rdata        (inj_force_q                      ),
@@ -478,11 +478,11 @@ module edc_core #(
       .flt          (flt_if                           ),
       .flt_w1c      (w1c_pls && r.cmd_w1c_s2[8]       )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_irqen (
       .clk          (axi_clk                          ),
-      .rstn         (axi_rstn                         ),
+      .rst_n        (axi_rstn                         ),
       .wdata        (r.cmd_irqen_s2                   ),
       .wr           (cmd_pulse                        ),
       .rdata        (irqen_q                          ),
@@ -490,11 +490,11 @@ module edc_core #(
       .flt          (flt_iq                           ),
       .flt_w1c      (w1c_pls && r.cmd_w1c_s2[9]       )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES*64)
    ) u_inj_pos (
       .clk          (axi_clk                           ),
-      .rstn         (axi_rstn                          ),
+      .rst_n        (axi_rstn                          ),
       .wdata        (r.cmd_pos_s2                      ),
       .wr           (cmd_pulse                         ),
       .rdata        (inj_pos_q                         ),
@@ -503,11 +503,11 @@ module edc_core #(
       .flt_w1c      (w1c_pls && r.cmd_w1c_s2[10]       )
    );
    // sticky err/fault: 跟随型 (wr=1), 注错后下一拍自恢复
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_err_st (
       .clk          (axi_clk                           ),
-      .rstn         (axi_rstn                          ),
+      .rst_n        (axi_rstn                          ),
       .wdata        (err_nxt                           ),
       .wr           (1'b1                              ),
       .rdata        (err_st                            ),
@@ -515,11 +515,11 @@ module edc_core #(
       .flt          (flt_es                            ),
       .flt_w1c      (w1c_pls && r.cmd_w1c_s2[11]       )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_fault_st (
       .clk          (axi_clk                           ),
-      .rstn         (axi_rstn                          ),
+      .rst_n        (axi_rstn                          ),
       .wdata        (fault_nxt                         ),
       .wr           (1'b1                              ),
       .rdata        (fault_st                          ),

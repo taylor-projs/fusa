@@ -51,7 +51,7 @@
 //       非 CDC 同步不占用同步单元), 同步链与单级寄存器复位值
 //       保持原设计的互补空闲电平: spi 侧 0 / chk 侧 1.
 // ============================================================================
-module int_prot #(
+module int_prot_core #(
    parameter integer NUM_INT              = 20,
    parameter [NUM_INT-1:0] INT_INV        = {NUM_INT{1'b0}},
    parameter [NUM_INT-1:0] INT_CHK_INV    = {NUM_INT{1'b0}},

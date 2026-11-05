@@ -16,7 +16,7 @@ $srcs = @(
    "$rtl\edc_site.sv",
    "$rtl\edc_gen.sv",
    "$rtl\edc_chk.sv",
-   "$rtl\edc_reg_wrap.sv",
+   "$root\..\common_modules\reg_wrap.sv",
    "$rtl\edc_regfile.sv",
    "$rtl\edc_gen_chk_top.sv",
    "$apb2mbus_rtl\sync_dff.sv",

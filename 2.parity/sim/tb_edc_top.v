@@ -1640,7 +1640,7 @@ module tb_edc_top;
       end
 
       // -------- T22: 双轨一致性 (dup_err) 故障注入扫描 ----------------
-      // 每个 edc_reg_wrap 的 flt_q_n 反轨强制 0 (flt_q=0 时应为 1) ->
+      // 每个 reg_wrap 的 flt_q_n 反轨强制 0 (flt_q=0 时应为 1) ->
       // dup_err 检出, 自愈方向为置位 (flt<-1) -> PERRk. perr13_q_n /
       // perr14_q_n / par_lq_n 同理. 层次化 packed 成员 release 不 deposit,
       // 必须跨 >=1 个属主时钟 posedge 再 release (军规). 读回 0xAC 全位

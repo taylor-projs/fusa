@@ -57,7 +57,7 @@
 //   0xFC ID          RO   32'h5AFE_1000 | IDX
 //
 // 寄存器奇偶保护 (与 2.parity edc_regfile 同构):
-//   每个数据寄存器都是本域 int_prot_reg_wrap 实例 = 存储 + 偶校验 +
+//   每个数据寄存器都是本域 reg_wrap 实例 = 存储 + 偶校验 +
 //   自测注错 + 自带粘滞 {flt, flt_w1c}:
 //     PERR 组号 (STA_PAR bit = 2 + 组号, 共 6 组):
 //       0  CFG_EN        1  CFG_INJ_EN   2  CFG_INJ_SPI
@@ -257,12 +257,12 @@ module int_prot_regfile #(
    assign cmd_w  = par_cmd_bad ? 1'b1 : 1'b0;               // PERR5 粘滞本体
    assign cmd_wr = par_cmd_bad || (perr_w1c && wdata[7]);
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (          32),
       .RESET(32'h0000_000F)
    ) u_w_en (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                            en_w),
       .wr          (                            en_wr),
       .rdata       (                             en_r),
@@ -271,12 +271,12 @@ module int_prot_regfile #(
       .flt_w1c     (             perr_w1c && wdata[2])
    );
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (  32),
       .RESET(32'h0)
    ) u_w_ien (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                           ien_w),
       .wr          (                          ien_wr),
       .rdata       (                           ien_r),
@@ -285,12 +285,12 @@ module int_prot_regfile #(
       .flt_w1c     (             perr_w1c && wdata[3])
    );
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (  32),
       .RESET(32'h0)
    ) u_w_ispi (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                          ispi_w),
       .wr          (                         ispi_wr),
       .rdata       (                          ispi_r),
@@ -299,12 +299,12 @@ module int_prot_regfile #(
       .flt_w1c     (             perr_w1c && wdata[4])
    );
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (  32),
       .RESET(32'h0)
    ) u_w_ichk (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                          ichk_w),
       .wr          (                         ichk_wr),
       .rdata       (                          ichk_r),
@@ -313,12 +313,12 @@ module int_prot_regfile #(
       .flt_w1c     (             perr_w1c && wdata[5])
    );
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (  32),
       .RESET(32'h0)
    ) u_w_sta (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                       sta_err_w),
       .wr          (                      sta_err_wr),
       .rdata       (                       sta_err_r),
@@ -327,12 +327,12 @@ module int_prot_regfile #(
       .flt_w1c     (             perr_w1c && wdata[6])
    );
 
-   int_prot_reg_wrap #(
+   reg_wrap #(
       .W    (   1),
       .RESET(1'b0)
    ) u_w_cmd (
       .clk         (                             clk),
-      .rstn        (                            rstn),
+      .rst_n       (                            rstn),
       .wdata       (                           cmd_w),
       .wr          (                          cmd_wr),
       .rdata       (                           cmd_r),

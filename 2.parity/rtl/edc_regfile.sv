@@ -29,7 +29,7 @@
 //   0xFC ID             RO 32'hEDC0_1000 | IDX
 //
 // 寄存器奇偶保护 (FuSa, 参照 hang_prot reg_wrap 设计):
-//   每个数据寄存器都是本域的 edc_reg_wrap 实例 = 存储 + 偶校验 +
+//   每个数据寄存器都是本域的 reg_wrap 实例 = 存储 + 偶校验 +
 //   自测注错 + 自带粘滞 {flt, flt_w1c}, 检查与被保护的存储同域:
 //     PERR 组号 (STA_REGPAR bit = 4 + 组号, 共 15 组):
 //       0  CFG_INJ_EN (mbus, 18*4b 整组)
@@ -156,7 +156,7 @@ module edc_regfile #(
    logic wr_ok;
    assign wr_ok = sel && wr && par_ok;
 
-   // ---------------- cfg 寄存器 (edc_reg_wrap 实例) ----------------
+   // ---------------- cfg 寄存器 (reg_wrap 实例) ----------------
    logic [NSITES*4-1:0]  cfg_en_r;
    logic [NSITES-1:0]    cfg_force_r, cfg_irqen_r;
    logic [NSITES*64-1:0] cfg_pos_r;
@@ -241,7 +241,7 @@ module edc_regfile #(
    assign cmd_t        = r.cmd_t_r;
 
    // ---------------- sta 回读 (AXI 电平 -> mbus) ----------------
-   // s1 为普通同步级 (1 拍瞬态窗口, 未保护, 记录字段), s2 即 edc_reg_wrap 存储
+   // s1 为普通同步级 (1 拍瞬态窗口, 未保护, 记录字段), s2 即 reg_wrap 存储
    logic [NSITES-1:0] err_s2, fault_s2;
 
    // ---------------- 自测锁存 ("有 fault 无源") ----------------
@@ -360,13 +360,13 @@ module edc_regfile #(
    assign irq          =   r.irq_s2;
 
    // =========================================================================
-   // edc_reg_wrap 实例 (mbus 域): cfg + clr_mask + sta 镜像
+   // reg_wrap 实例 (mbus 域): cfg + clr_mask + sta 镜像
    // =========================================================================
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES*4)
    ) u_cfg_en (
       .clk          (mbus_clk                    ),
-      .rstn         (mbus_rstn                   ),
+      .rst_n        (mbus_rstn                   ),
       .wdata        (en_nxt                      ),
       .wr           (wr_ok && en_range           ),
       .rdata        (cfg_en_r                    ),
@@ -374,11 +374,11 @@ module edc_regfile #(
       .flt          (flt_ce                      ),
       .flt_w1c      (parwrc && wdata[4]          )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_cfg_force (
       .clk          (mbus_clk                       ),
-      .rstn         (mbus_rstn                      ),
+      .rst_n        (mbus_rstn                      ),
       .wdata        (wdata[NSITES-1:0]              ),
       .wr           (wr_ok && addr[7:0] == 8'h0C     ),
       .rdata        (cfg_force_r                    ),
@@ -386,11 +386,11 @@ module edc_regfile #(
       .flt          (flt_cf                         ),
       .flt_w1c      (parwrc && wdata[5]             )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_cfg_irqen (
       .clk          (mbus_clk                       ),
-      .rstn         (mbus_rstn                      ),
+      .rst_n        (mbus_rstn                      ),
       .wdata        (wdata[NSITES-1:0]              ),
       .wr           (wr_ok && addr[7:0] == 8'hA8     ),
       .rdata        (cfg_irqen_r                    ),
@@ -398,11 +398,11 @@ module edc_regfile #(
       .flt          (flt_ci                         ),
       .flt_w1c      (parwrc && wdata[6]             )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES*64)
    ) u_cfg_pos (
       .clk          (mbus_clk                    ),
-      .rstn         (mbus_rstn                   ),
+      .rst_n        (mbus_rstn                   ),
       .wdata        (pos_nxt                     ),
       .wr           (wr_ok && pos_range          ),
       .rdata        (cfg_pos_r                   ),
@@ -410,11 +410,11 @@ module edc_regfile #(
       .flt          (flt_cp                      ),
       .flt_w1c      (parwrc && wdata[7]          )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_clr_mask (
       .clk          (mbus_clk                    ),
-      .rstn         (mbus_rstn                   ),
+      .rst_n        (mbus_rstn                   ),
       .wdata        (clr_nxt                     ),
       .wr           (w1c_wr || ack_rel           ),
       .rdata        (clr_mask_r                  ),
@@ -423,11 +423,11 @@ module edc_regfile #(
       .flt_w1c      (parwrc && wdata[8]          )
    );
    // sta 镜像: 跟随型 (wr=1), 注错后下一拍自恢复
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_err2 (
       .clk          (mbus_clk                    ),
-      .rstn         (mbus_rstn                   ),
+      .rst_n        (mbus_rstn                   ),
       .wdata        (r.err_s1                    ),
       .wr           (1'b1                        ),
       .rdata        (err_s2                      ),
@@ -435,11 +435,11 @@ module edc_regfile #(
       .flt          (flt_es2                     ),
       .flt_w1c      (parwrc && wdata[9]          )
    );
-   edc_reg_wrap #(
+   reg_wrap #(
       .W (NSITES)
    ) u_fault2 (
       .clk          (mbus_clk                    ),
-      .rstn         (mbus_rstn                   ),
+      .rst_n        (mbus_rstn                   ),
       .wdata        (r.fault_s1                  ),
       .wr           (1'b1                        ),
       .rdata        (fault_s2                    ),

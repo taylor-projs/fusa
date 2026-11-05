@@ -60,7 +60,7 @@ chk 断裂（单侧事件同理反向）；两根同时断裂但"看起来配对
 | rtl/int_prot.sv | int_prot | 监视器本体（原设计转换，协议不变；计数器 Q/Q_n 自检） |
 | common_modules/sync_2dff.sv | sync_2dff | 2/3 级同步器标准单元（RST_VAL/STAGES 参数；fusa 单一源 common_modules/，同步一律例化此单元） |
 | rtl/int_prot_regfile.sv | int_prot_regfile | mbus 寄存器文件 + 4bit SEC + 奇偶保护 + 注错 |
-| rtl/int_prot_reg_wrap.sv | int_prot_reg_wrap | 单寄存器奇偶保护单元（同 2.parity） |
+| $ROOT/../common_modules/reg_wrap.sv | reg_wrap | 单寄存器奇偶保护单元（同 2.parity） |
 | rtl/int_prot_top.sv | int_prot_top | 集成顶层 |
 | sim/tb_int_prot.sv | tb_int_prot | T1–T16 自检测试台 |
 | doc/int_prot_orig.v | int_prot_fixed_hier | Horizon 原件留档（不编译） |
@@ -111,7 +111,7 @@ PERR 组：0=CFG_EN，1=CFG_INJ_EN，2=CFG_INJ_SPI，3=CFG_INJ_CHK，
 
 ## 5. 奇偶保护（与 2.parity 同构）
 
-- 每个数据寄存器 = `int_prot_reg_wrap`：存储+偶校验同沿载入、
+- 每个数据寄存器 = `reg_wrap`：存储+偶校验同沿载入、
   自测注错只污染校验位（数据永不污染）、粘滞 flt 带反相副本
   （SEU 清正本 → dup 失配 → 自愈回 SET）；
 - PAR_SELFTEST 自测锁存同样双副本自愈；

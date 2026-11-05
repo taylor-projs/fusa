@@ -11,7 +11,7 @@ $out  = Join-Path $sim "obj"
 New-Item -ItemType Directory -Force $out | Out-Null
 
 $srcs = @(
-   "$rtl\edc_reg_wrap.sv",
+   "$root\..\common_modules\reg_wrap.sv",
    "$rtl\edc_regfile.sv",
    "$tmp\edc_regfile_leons.sv",
    "$sim\tb_equiv_regfile.v"

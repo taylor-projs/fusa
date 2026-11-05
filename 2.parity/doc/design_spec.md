@@ -84,7 +84,7 @@
 | `rtl/edc_gen.sv` | AW / W / AR 请求通道（13 站点），MODE 可配，EDC 随 user 位 |
 | `rtl/edc_chk.sv` | B / R 响应通道（5 站点），MODE 可配，EDC 随 user 位 |
 | `rtl/edc_regfile.sv` | 24MHz mbus 寄存器文件（cfg + sta + RW1C + 命令 toggle），纯 mbus 域 |
-| `rtl/edc_reg_wrap.sv` | 寄存器奇偶保护单元（存储 + 偶校验 + 自测注错 + 自愈粘滞） |
+|`$ROOT/../common_modules/reg_wrap.sv` | 寄存器奇偶保护单元（存储 + 偶校验 + 自测注错 + 自愈粘滞） |
 | `rtl/edc_core.sv` | 单端口 IP：封装 edc_regfile + CDC + edc_gen + edc_chk + ESM（SIDE 参数） |
 | `rtl/apb2mbus.sv` | APB3 → mbus 桥（含 APB ↔ 24MHz 异步握手） |
 | `rtl/edc_top.sv` | 集成顶层（NM 个 master 口 + NS 个 slave 口，ESM 汇聚） |
@@ -361,7 +361,7 @@ irq         = |(err_st & irqen)
 自测注错 + 自愈粘滞的保护单元，检查与被保护的存储同域**。
 
 ```
-edc_reg_wrap (每寄存器, mbus 域或 AXI 域):
+reg_wrap (每寄存器, mbus 域或 AXI 域):
    data_q / par_q 同沿载入  -> 任一单 bit 翻转 => (^data_q != par_q)
    flt_q / flt_q_n 反相副本  -> SEU 清除自愈回 SET (永不无声丢失)
    selftest_key 脉冲         -> 只翻校验位, data_q 永不污染 (自测注错)
@@ -501,7 +501,7 @@ branch    :  73.1% ( 269/ 368)
 expr      :  65.4% (  794/1214)
 ```
 
-（含 edc_reg_wrap / 编码使能 / 奇偶保护 / 命令在途奇偶 PERR14 后的
+（含 reg_wrap / 编码使能 / 奇偶保护 / 命令在途奇偶 PERR14 后的
 数字；`edc_site` 复用为双模
 站点，tb 加入 NIC fabric relay 后分支/表达式分母随之变大。）
 
@@ -588,7 +588,7 @@ nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`
    串起，从而验证“SI gen → MI chk、MI gen → SI chk”的完整闭环。
 
 6. **寄存器奇偶保护 + 双轨 ESM + 编码使能**（本轮，参照 hang_prot
-   reg_wrap）：cfg/sta 镜像与 AXI 影子/sticky 全部换成 edc_reg_wrap
+   reg_wrap）：cfg/sta 镜像与 AXI 影子/sticky 全部换成 reg_wrap
    （存储+偶校验+自愈粘滞+自测注错）；新增 STA_REGPAR (0xAC) / CFG_REGST
    (0xB0，key=0xA)、在途负载奇偶 PERR13；esm_err/esm_fault/
    reg_par_fault 改双轨输出（顶层真轨 OR / 反轨 AND）；注错使能改
