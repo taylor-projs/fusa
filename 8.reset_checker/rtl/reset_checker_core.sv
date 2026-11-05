@@ -1,11 +1,12 @@
 `timescale 1ns/1ps
 //============================================================================
-// reset_checker - POR reset duplicated-rail monitor ("rst_monitor")
+// reset_checker_core - POR reset duplicated-rail monitor ENGINE
+// ("rst_monitor" check core; instantiated once by reset_checker_top)
 //
 // The POR reset is distributed as a differential pair on the wire; the
 // receiver regenerates TWO SAME-POLARITY logic copies from the two rails:
 // reset_p / reset_m (both active-low, both assert together at reset -
-// 同向复制). This monitor checks the two copies AGREE; a DIVERGENCE means
+// 同向复制). This core checks the two copies AGREE; a DIVERGENCE means
 // one rail is broken (stuck/short/open/inversion) and part of the chip
 // sees a different reset than the rest - fail-visible immediately.
 //
@@ -53,38 +54,20 @@
 // cf. the cmm watchdog idiom); the err duplicate heals to SET (an SEU
 // bit-flip re-arms the alarm).
 //
-// fault inject (CTRL.FI) XORs the m rail copy (m_g = reset_m ^ FI):
-// flips it against p in ANY rail state - latent-fault self-test of the
-// checker itself; pulse it while the system reset is still asserted
-// (then it costs nothing system-wise).
+// fault inject (CTRL.FI, cfg_fi from the regfile) XORs the m rail copy
+// (m_g = reset_m ^ cfg_fi): flips it against p in ANY rail state -
+// latent-fault self-test of the checker itself; pulse it while the
+// system reset is still asserted (then it costs nothing system-wise).
 //
-// CONFIG: mbus leaf (ce/wr/addr/wdata/par, protocol per apb2mbus) in
-// reset_checker_regfile - registers CTRL/STAT/EV/REGPAR/REGST, every
-// SW-visible register a reg_wrap (parity + selftest), keyed writes, W1C.
-//
-// SINGLE-DOMAIN NOTE: monitor engine AND regfile run in mbus_clk - the
-// safety-island always-on clock (its liveness is owned by the CMM layer;
-// this module owns the reset RAIL PAIR). No CDC handshake needed.
-//
-// Outputs: rst_por_n_err (+ inverted rail, house dual-rail convention) to
-// ESM; rchk_par_fault(+_n) register-parity/integrity event; rst_sync =
-// reset-synchronizer output of the p rail (async assert / 2FF release) for
-// downstream reset entry cells. The monitor's own reset (mbus_rstn) must
-// NOT be tapped behind this monitor.
+// SINGLE-DOMAIN NOTE: the engine runs in mbus_clk - the safety-island
+// always-on clock (its liveness is owned by the CMM layer; this core
+// owns the reset RAIL PAIR). No CDC handshake needed.
 //============================================================================
-module reset_checker #(
-    parameter logic [3:0] WKEY = 4'h5,         // key in wdata[31:28]
-    parameter int         IDX  = 0             // mbus instance id
-)(
-    // ---- mbus (mbus_clk domain; also the engine's sampling clock) ---------
+module reset_checker_core (
+    // ---- engine sampling clock (mbus_clk; counter + event domains) --------
     input  logic                  mbus_clk,
+    // bus reset: event-domain async reset (viol 域复位走 rstn_pair_g)
     input  logic                  mbus_rstn,
-    input  logic                  ce,
-    input  logic                  wr,
-    input  logic [15:0]           addr,
-    input  logic [31:0]           wdata,
-    input  logic                  par,
-    output logic [31:0]           rdata,
 
     // duplicated reset rails under test (async, same-polarity, active-low:
     // both low = reset asserted, both high = released, p != m = fault)
@@ -100,13 +83,30 @@ module reset_checker #(
     // definition in scan.
     input  logic                  scan_mode,
 
+    // config (from the regfile, mbus_clk domain)
+    input  logic                  cfg_en,        // CTRL.EN: verdict gate
+    input  logic                  cfg_fi,        // CTRL.FI: m-rail XOR inject
+
+    // W1C pulses (from the regfile, mbus_clk domain)
+    input  logic                  err_w1c,
+    input  logic                  ev_da_w1c,
+    input  logic                  ev_db_w1c,
+
     // safety outputs
     output logic                  rst_por_n_err,   // pair fault (active-high)
     output logic                  rst_por_n_err_n, // inverted rail (dual rail)
-    output logic                  rchk_par_fault,  // register parity / integrity
-    output logic                  rchk_par_fault_n,
     // functional output: synchronized p rail for downstream reset entry
-    output logic                  rst_sync
+    output logic                  rst_sync,
+
+    // status images (to the regfile, mbus_clk domain)
+    output logic                  sts_viol,        // live divergence
+    output logic                  sts_div_a,       // p-only class
+    output logic                  sts_div_b,       // m-only class
+    output logic                  sts_cnt_full,    // counter saturated
+    output logic [4:0]            sts_cnt,         // persistence counter
+    output logic                  sts_ev_da,       // DIV_A event sticky
+    output logic                  sts_ev_db,       // DIV_B event sticky
+    output logic                  sts_ev_err       // verdict sticky
 );
 
     // counter saturation value = all-ones (spec: count to full, then stop)
@@ -116,8 +116,6 @@ module reset_checker #(
     // FI gating: CTRL.FI XORs the m-rail copy - flips it against p in ANY
     // rail state (latent-fault proof of the divergence detector).
     //=========================================================================
-    logic cfg_en;
-    logic cfg_fi;
     logic p_g;
     logic m_g;
     assign p_g = reset_p;
@@ -259,48 +257,20 @@ module reset_checker #(
     assign ev_err_dup = (r_evn.ev_errn ~^ r_evn.ev_err);
 
     //=========================================================================
-    // regfile instance: config in, W1C pulses out, status images in
-    //=========================================================================
-    logic err_w1c;
-    logic ev_da_w1c;
-    logic ev_db_w1c;
-
-    reset_checker_regfile #(
-        .WKEY     (WKEY    ),
-        .CTRL_RST (4'b0001 ),      // MODE=NORMAL (EN=1 FI=0, fail-safe on)
-        .IDX      (IDX     )
-    ) u_reset_checker_regfile (
-        .mbus_clk        (mbus_clk       ),
-        .mbus_rstn       (mbus_rstn      ),
-        .ce              (ce             ),
-        .wr              (wr             ),
-        .addr            (addr           ),
-        .wdata           (wdata          ),
-        .par             (par            ),
-        .rdata           (rdata          ),
-        .cfg_en          (cfg_en         ),
-        .cfg_fi          (cfg_fi         ),
-        .err_w1c         (err_w1c        ),
-        .ev_da_w1c       (ev_da_w1c      ),
-        .ev_db_w1c       (ev_db_w1c      ),
-        .sts_ev_da       (r_evn.ev_da    ),
-        .sts_ev_db       (r_evn.ev_db    ),
-        .sts_ev_err      (r_evn.ev_err   ),
-        .sts_viol        (viol           ),
-        .sts_div_a       (div_a          ),
-        .sts_div_b       (div_b          ),
-        .sts_cnt_full    (sat_a          ),
-        .sts_cnt         (r.cnt          ),
-        .rchk_par_fault  (rchk_par_fault ),
-        .rchk_par_fault_n(rchk_par_fault_n)
-    );
-
-    //=========================================================================
     // outputs
     //=========================================================================
     assign rst_por_n_err   =  r.err_q;
     assign rst_por_n_err_n = ~r.err_q;
     assign rst_sync        =  p_s;
+
+    assign sts_viol     = viol;
+    assign sts_div_a    = div_a;
+    assign sts_div_b    = div_b;
+    assign sts_cnt_full = sat_a;
+    assign sts_cnt      = r.cnt;
+    assign sts_ev_da    = r_evn.ev_da;
+    assign sts_ev_db    = r_evn.ev_db;
+    assign sts_ev_err   = r_evn.ev_err;
 
     //=========================================================================
     // 组合进程: 下一拍值 (默认保持)
@@ -319,7 +289,6 @@ module reset_checker #(
         // async reset wipes it the instant the rails re-agree (live pin)
         v.err_q  = (r.err_q | filt_fire | err_dup) & ~err_w1c;
         v.err_qn = ~v.err_q;
-        // v assign to rin.
         rin   = v;
     end
 

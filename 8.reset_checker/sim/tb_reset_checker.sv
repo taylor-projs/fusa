@@ -87,7 +87,7 @@ module tb_reset_checker;
     //=========================================================================
     // DUT
     //=========================================================================
-    reset_checker #(
+    reset_checker_top #(
         .WKEY     (4'h5),
         .IDX      (0    )
     ) dut (
@@ -612,9 +612,9 @@ module tb_reset_checker;
         chk(rst_por_n_err == 1'b1,
             "T64 err holds with source masked (domain released)");
 
-        force dut.r.err_q = 1'b0;              // SEU clears the sticky
+        force dut.u_reset_checker_core.r.err_q = 1'b0;              // SEU clears the sticky
         repeat (2) @(posedge mbus_clk);
-        release dut.r.err_q;                   // duplicate mismatch heals
+        release dut.u_reset_checker_core.r.err_q;                   // duplicate mismatch heals
         repeat (1) @(posedge mbus_clk);
         chk(rst_por_n_err == 1'b1,
             "T65 err duplicate corruption self-heals to SET");
@@ -699,10 +699,10 @@ module tb_reset_checker;
         reset_p = 1'b0;
         reset_m = 1'b1;                        // divergence, counting
         repeat (3) @(posedge mbus_clk);
-        force dut.r.cnt_n = dut.r.cnt;         // inverted duplicate corrupted
+        force dut.u_reset_checker_core.r.cnt_n = dut.u_reset_checker_core.r.cnt;         // inverted duplicate corrupted
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
         chk(rst_por_n_err == 1'b1, "T76 cnt duplicate corruption fires");
-        release dut.r.cnt_n;
+        release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // re-agree: auto-clear
         reset_m = 1'b0;
@@ -716,13 +716,13 @@ module tb_reset_checker;
         reset_p = 1'b0;
         reset_m = 1'b1;
         repeat (3) @(posedge mbus_clk);
-        force dut.r.cnt = 5'h1F;               // a-track all-ones alone
+        force dut.u_reset_checker_core.r.cnt = 5'h1F;               // a-track all-ones alone
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
         chk(rst_por_n_err == 1'b1, "T78 sat_a-only filter arm fires");
-        force dut.r.err_qn = 1'b1;             // transient (1,1) pair state
+        force dut.u_reset_checker_core.r.err_qn = 1'b1;             // transient (1,1) pair state
         repeat (1) @(posedge mbus_clk);
-        release dut.r.err_qn;
-        release dut.r.cnt;
+        release dut.u_reset_checker_core.r.err_qn;
+        release dut.u_reset_checker_core.r.cnt;
         @(negedge mbus_clk);
         reset_p = 1'b0;
         reset_m = 1'b0;
@@ -735,10 +735,10 @@ module tb_reset_checker;
         reset_p = 1'b1;
         reset_m = 1'b0;                        // DIV_B divergence
         repeat (3) @(posedge mbus_clk);
-        force dut.r.cnt_n = 5'h00;             // ~cnt_n all-ones alone
+        force dut.u_reset_checker_core.r.cnt_n = 5'h00;             // ~cnt_n all-ones alone
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
         chk(rst_por_n_err == 1'b1, "T79 sat_b-only filter arm fires");
-        release dut.r.cnt_n;
+        release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b1;
         reset_m = 1'b1;
@@ -748,25 +748,25 @@ module tb_reset_checker;
 
         // event sticky duplicates: W1C to clean, then corrupt the inverted
         // copy - the XNOR compare re-arms the record (heal-to-SET)
-        force dut.r_evn.ev_dan = dut.r_evn.ev_da;
+        force dut.u_reset_checker_core.r_evn.ev_dan = dut.u_reset_checker_core.r_evn.ev_da;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_EV, rd);
         chk(rd[0] == 1'b1, "T80 ev_da duplicate corruption heals to SET");
-        release dut.r_evn.ev_dan;
+        release dut.u_reset_checker_core.r_evn.ev_dan;
         repeat (1) @(posedge mbus_clk);
 
-        force dut.r_evn.ev_dbn = dut.r_evn.ev_db;
+        force dut.u_reset_checker_core.r_evn.ev_dbn = dut.u_reset_checker_core.r_evn.ev_db;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_EV, rd);
         chk(rd[1] == 1'b1, "T81 ev_db duplicate corruption heals to SET");
-        release dut.r_evn.ev_dbn;
+        release dut.u_reset_checker_core.r_evn.ev_dbn;
         repeat (1) @(posedge mbus_clk);
 
-        force dut.r_evn.ev_errn = dut.r_evn.ev_err;
+        force dut.u_reset_checker_core.r_evn.ev_errn = dut.u_reset_checker_core.r_evn.ev_err;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_EV, rd);
         chk(rd[2] == 1'b1, "T82 ev_err duplicate corruption heals to SET");
-        release dut.r_evn.ev_errn;
+        release dut.u_reset_checker_core.r_evn.ev_errn;
         repeat (1) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
@@ -823,10 +823,10 @@ module tb_reset_checker;
         reset_p = 1'b0;
         reset_m = 1'b1;                        // fresh divergence
         repeat (3) @(posedge mbus_clk);        // past the pair 2FF only
-        force dut.r.cnt_n = dut.r.cnt;         // dup while counter still low
+        force dut.u_reset_checker_core.r.cnt_n = dut.u_reset_checker_core.r.cnt;         // dup while counter still low
         repeat (3) @(posedge mbus_clk);
         chk(rst_por_n_err == 1'b1, "T89 early cnt dup fires (no sat yet)");
-        release dut.r.cnt_n;
+        release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // re-agree: auto-clear
         reset_m = 1'b0;
@@ -887,14 +887,14 @@ module tb_reset_checker;
         reset_m = 1'b0;                        // divergent drive - ignored in scan
         repeat (2) @(posedge mbus_clk);
         #1;                                    // past the posedge NBA (no race)
-        chk(dut.r.cnt == 5'd2, "T97 scan: viol-domain reset = raw reset_p (no 2FF), counter runs");
-        chk(dut.viol == 1'b0, "T97b scan: m forced to p, reset_m ignored (no divergence)");
+        chk(dut.u_reset_checker_core.r.cnt == 5'd2, "T97 scan: viol-domain reset = raw reset_p (no 2FF), counter runs");
+        chk(dut.u_reset_checker_core.viol == 1'b0, "T97b scan: m forced to p, reset_m ignored (no divergence)");
         @(negedge mbus_clk);
         scan_mode = 1'b0;                      // functional again
         reset_p  = 1'b0;                       // re-agree: instant async wipe
         reset_m  = 1'b0;
         #1;                                    // let the async-wipe NBA settle
-        chk(dut.r.cnt == 5'd0, "T98 scan exit: functional async wipe restored");
+        chk(dut.u_reset_checker_core.r.cnt == 5'd0, "T98 scan exit: functional async wipe restored");
         rails(1, 1, 0);                        // release both rails
         #1;
         chk(rst_sync == 1'b0, "T99 scan exit: release waits for the 2FF");

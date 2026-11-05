@@ -17,7 +17,8 @@ rst_sync 的 `rstn_pair_s`（一致异步即时清零、分歧 2FF 释放、恢�
 
 ```
 rtl/
-  reset_checker.sv          顶层：监控引擎（rst_sync/XOR/饱和计数/err+自愈）+ regfile 实例
+  reset_checker_core.sv     check 核心：rst_sync/XOR/饱和计数/err+自愈/事件粘滞
+  reset_checker_top.sv      顶层：core 例化 + regfile 实例 + mbus/输出端口
   reset_checker_regfile.sv  mbus 叶子：CTRL/STAT/EV/REGPAR/REGST + 写保护 + 奇偶组
   (rst_sync.sv / sync_2dff.sv / reg_wrap.sv 移至 fusa 根 common_modules/,
    经 filelist 引用; regfile 仍例化 reg_wrap/rst_sync)
@@ -25,7 +26,7 @@ rtl/
 doc/
   design.md                 设计说明（功能/业内对照/结构/寄存器/验证矩阵/集成约束）
 sim/
-  tb_reset_checker.sv       自检 TB（95 checks）
+  tb_reset_checker.sv       自检 TB（107 checks）
   run_vcs.sh                VCS 编译+仿真（clean|cov），FSDB 含 "+all"
   run_verdi.sh              Verdi 看波形（-dbdir simv.daidir -ssf *.fsdb）
 ```

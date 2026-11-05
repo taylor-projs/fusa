@@ -53,7 +53,8 @@ vcs -full64 -sverilog -timescale=1ns/1ps \
     ../../common_modules/rst_sync.sv \
     ../../common_modules/reg_wrap.sv \
     ../rtl/reset_checker_regfile.sv \
-    ../rtl/reset_checker.sv \
+    ../rtl/reset_checker_core.sv \
+    ../rtl/reset_checker_top.sv \
     tb_reset_checker.sv \
     -o simv -l vcs_compile.log
 
