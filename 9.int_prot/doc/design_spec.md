@@ -58,7 +58,7 @@ chk 断裂（单侧事件同理反向）；两根同时断裂但"看起来配对
 | 文件 | 模块 | 说明 |
 | --- | --- | --- |
 | rtl/int_prot.sv | int_prot | 监视器本体（原设计转换，协议不变；计数器 Q/Q_n 自检） |
-| rtl/sync_2dff.sv | sync_2dff | 2/3 级同步器标准单元（RST_VAL/STAGES 参数；同步一律例化此单元） |
+| common_modules/sync_2dff.sv | sync_2dff | 2/3 级同步器标准单元（RST_VAL/STAGES 参数；fusa 单一源 common_modules/，同步一律例化此单元） |
 | rtl/int_prot_regfile.sv | int_prot_regfile | mbus 寄存器文件 + 4bit SEC + 奇偶保护 + 注错 |
 | rtl/int_prot_reg_wrap.sv | int_prot_reg_wrap | 单寄存器奇偶保护单元（同 2.parity） |
 | rtl/int_prot_top.sv | int_prot_top | 集成顶层 |

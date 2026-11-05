@@ -1,6 +1,6 @@
 # ia_timeo_gen_regfile 寄存器说明
 
-**模块**：`ia_bus_timeo_regfile`（[ia_bus_timeo_regfile.sv](../rtl/ia_bus_timeo_regfile.sv)）+ 每寄存器 `reg_wrap` 实例（[reg_wrap.sv](../rtl/reg_wrap.sv)）**参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM 寄存器模型
+**模块**：`ia_bus_timeo_regfile`（[ia_bus_timeo_regfile.sv](../rtl/ia_bus_timeo_regfile.sv)）+ 每寄存器 `reg_wrap` 实例（[reg_wrap.sv](../../common_modules/reg_wrap.sv)）**参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM 寄存器模型
 **文档版本**：v1.1（2026-10-29）——配置接口由 APB3 更换为 mbus leaf（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道）
 
 ---
@@ -173,7 +173,7 @@ ack_t ◄──toggle── 回 ack              │
 
 ## 5. 寄存器奇偶功能安全监测（FuSa）
 
-每个寄存器在自己所在的时钟域里是一个独立的 `reg_wrap` 实例（[reg_wrap.sv](../rtl/reg_wrap.sv)）：存储 + 偶校验 + `selftest_key` 奇偶注入 + 自身故障 sticky（`flt` / `flt_w1c`）。独立双轨事件上报 ESM（`reg_par_fault` / `reg_par_fault_n`，mbus_clk 域电平），与总线超时（err_event）和监控核完整性（fu_fault）分开——寄存器损坏是独立的失效模式。
+每个寄存器在自己所在的时钟域里是一个独立的 `reg_wrap` 实例（[reg_wrap.sv](../../common_modules/reg_wrap.sv)）：存储 + 偶校验 + `selftest_key` 奇偶注入 + 自身故障 sticky（`flt` / `flt_w1c`）。独立双轨事件上报 ESM（`reg_par_fault` / `reg_par_fault_n`，mbus_clk 域电平），与总线超时（err_event）和监控核完整性（fu_fault）分开——寄存器损坏是独立的失效模式。
 
 `reg_wrap` 端口结构：`wdata`/`wr`/`rdata`（纯 RW 存储，W1C/set 语义由父级编码在 wdata 上）、`selftest_key`（本域内注入）、`flt`（sticky 电平输出 → 聚合/ESM）、`flt_w1c`（W1C 清除，CPU 优先）。**检查与存储同域同体**——不再有外部故障源端口，跨域只同步 `flt` 结果。
 

@@ -18,7 +18,7 @@ mkdir -p "$OUT"
 
 # filelist
 cat > "$OUT/filelist.f" <<EOF
-$RTL/sync_2dff.sv
+$ROOT/../common_modules/sync_2dff.sv
 $RTL/int_prot_reg_wrap.sv
 $RTL/int_prot.sv
 $RTL/int_prot_regfile.sv

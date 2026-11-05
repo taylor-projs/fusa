@@ -156,7 +156,7 @@
 //              incoherently (observability only - re-read resolves; TI
 //              periodic SW readback is not single-shot, so this is safe).
 //   All synchronizer chains instantiate the standard sync cell wraps
-//   (6.apb2mbus/rtl/sync_2dff.sv / sync_dff.sv - FuSa-wide CDC rule);
+//   (fusa 单一源 common_modules/sync_2dff.sv / sync_dff.sv - FuSa-wide CDC rule);
 //   the aclk domain reset is active-high, adapted at the cell rstn port.
 //
 // RESET:
@@ -504,7 +504,7 @@ module hang_prot_regfile #(
         .RESET            (4'b1111                              )
     ) u_c_ena (                                   // SCMCNTRL.ENA shadow
         .clk               (aclk                                 ),
-        .rst               (rst                                  ),
+        .rst_n             (rstn_a                               ),
         .wdata             (r_mb.wdata_q[3:0]                    ),
         .wr                (cfg4_wr                              ),
         .rdata             (ena_sh                               ),
@@ -517,7 +517,7 @@ module hang_prot_regfile #(
         .RESET            (REQ2ACCEPT_RST                       )
     ) u_c_thresh0 (                                   // SCMTHRESH0 shadow
         .clk               (aclk                                 ),
-        .rst               (rst                                  ),
+        .rst_n             (rstn_a                               ),
         .wdata             (r_mb.wdata_q[15:0]                   ),
         .wr                (cfg5_wr                              ),
         .rdata             (thr_a_sh                             ),
@@ -530,7 +530,7 @@ module hang_prot_regfile #(
         .RESET            (REQ2RESP_RST                         )
     ) u_c_thresh1 (                                   // SCMTHRESH1 shadow
         .clk               (aclk                                 ),
-        .rst               (rst                                  ),
+        .rst_n             (rstn_a                               ),
         .wdata             (r_mb.wdata_q[15:0]                   ),
         .wr                (cfg6_wr                              ),
         .rdata             (thr_r_sh                             ),
@@ -601,9 +601,9 @@ module hang_prot_regfile #(
     // REGISTER PARITY (FuSa): every register is a reg_wrap instance in
     // its own clock domain - see header. mbus-domain image wrappers
     // below; aclk config wrappers above (u_c_ena/u_c_thresh0/u_c_thresh1).
+    // (reg_wrap/sync cells: fusa 单一源 common_modules/, 统一异步低有效
+    //  rst_n - aclk 域高有效复位经 rstn_a = ~rst 适配。)
     //--------------------------------------------------------------------------
-    logic rst_mbus;
-    assign rst_mbus = ~mbus_rstn;
 
     logic r0_flt, r1_flt, r2_flt, r3_flt, r4_flt, r5_flt,
           r6_flt, r7_flt, r8_flt;
@@ -652,7 +652,7 @@ module hang_prot_regfile #(
         .W                (NUM_IA                               )
     ) u_r_iaerr0 (                                   // 0x00 SCMIAERR0STAT
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (r2a_st_s1                            ),
         .wr                (1'b1                                 ),
         .rdata             (r2a_st_s2                            ),
@@ -664,7 +664,7 @@ module hang_prot_regfile #(
         .W                (NUM_IA                               )
     ) u_r_iaerr1 (                                   // 0x04 SCMIAERR1STAT
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (r2r_st_s1                            ),
         .wr                (1'b1                                 ),
         .rdata             (r2r_st_s2                            ),
@@ -676,7 +676,7 @@ module hang_prot_regfile #(
         .W                (NUM_IA                               )
     ) u_r_iastat (                                   // 0x08 SCMIASTAT (RO)
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (ia_act_s1                            ),
         .wr                (1'b1                                 ),
         .rdata             (ia_act_s2                            ),
@@ -688,7 +688,7 @@ module hang_prot_regfile #(
         .W                (OTD_BW                               )
     ) u_r_otd (                                   // 0x0C SCMOTD (RO)
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (otd_s1                               ),
         .wr                (1'b1                                 ),
         .rdata             (otd_s2                               ),
@@ -700,7 +700,7 @@ module hang_prot_regfile #(
         .W                (4                                    )
     ) u_r_cntrl (                                   // 0x10 SCMCNTRL.ENA image
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (ena_s1                               ),
         .wr                (1'b1                                 ),
         .rdata             (ena_s2                               ),
@@ -712,7 +712,7 @@ module hang_prot_regfile #(
         .W                (16                                   )
     ) u_r_thresh0 (                                   // 0x14 SCMTHRESH0 image
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (thr_a_s1                             ),
         .wr                (1'b1                                 ),
         .rdata             (thr_a_s2                             ),
@@ -724,7 +724,7 @@ module hang_prot_regfile #(
         .W                (16                                   )
     ) u_r_thresh1 (                                   // 0x18 SCMTHRESH1 image
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (thr_r_s1                             ),
         .wr                (1'b1                                 ),
         .rdata             (thr_r_s2                             ),
@@ -736,7 +736,7 @@ module hang_prot_regfile #(
         .W                (4                                    )
     ) u_r_fustat (                                   // 0x1C SCMIAFUSTAT rails
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (rail_s1                              ),
         .wr                (1'b1                                 ),
         .rdata             (rail_s2                              ),
@@ -748,7 +748,7 @@ module hang_prot_regfile #(
         .W                (FU_SRC_W                             )
     ) u_r_fusrc (                                   // 0x20 SCMIAFUSRC image
         .clk               (mbus_clk                              ),
-        .rst               (rst_mbus                              ),
+        .rst_n             (mbus_rstn                             ),
         .wdata             (fusrc_s1                             ),
         .wr                (1'b1                                 ),
         .rdata             (fusrc_s2                             ),

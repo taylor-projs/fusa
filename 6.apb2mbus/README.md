@@ -19,7 +19,7 @@ X7A MCU System / TR4 / MCUSys / FuSa。APB3 从端到 mbus 主端的 CDC 桥，
 
 | 路径 | 内容 |
 |------|------|
-| `rtl/` | `apb2mbus.sv` · `sync_2dff.sv` / `sync_dff.sv` (标准同步单元, 三分支) |
+| `rtl/` | `apb2mbus.sv` (sync_2dff/sync_dff 由 fusa 根 `common_modules/` 单一源提供, filelist 引用) |
 | `sim/` | `tb_apb2mbus.sv` (hang 看门狗专项, 28 checks) · `run_vcs.sh` (VCS+Verdi, 在 Rocky VM 跑) · `run_iverilog.sh` (WSL iverilog 兜底) |
 | `doc/` | `apb2mbus_design.md` (设计说明: MCP CDC 结构 / hang 看门狗 / SDC 要求 / 参数 / 验证) |
 

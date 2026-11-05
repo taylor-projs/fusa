@@ -32,10 +32,10 @@ register parity, fault injection and config-path hang monitoring.
 
 ```
 rtl/
-  reg_wrap.sv         register cell: storage + even parity + selftest injection
-                      + sticky flt (inverted duplicate) + W1C (CPU priority)
+  (reg_wrap.sv 移至 fusa 根 common_modules/, 经 filelist 引用:
+   register cell: storage + even parity + selftest injection
   cmm_clk_dut_mon.sv   one measurement channel (dut-domain prescaler 2FF->ref,
-                      window count, dual compare, debounce, dead detect,
+                      + sticky flt + W1C; 下同) cmm_clk_dut_mon.sv   one measurement channel
                       dual-rail counters, injection points)
   cmm_regfile.sv      mbus leaf + register wraps (both domains) + CDC toggle
                       handshake + hang/stale/drop monitors + read mux

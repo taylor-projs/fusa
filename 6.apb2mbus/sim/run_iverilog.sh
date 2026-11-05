@@ -10,8 +10,8 @@ OUT=apb2mbus_sim.vvp
 rm -f "$OUT"
 
 iverilog -g2012 -DIVERILOG -o "$OUT" -s tb_apb2mbus \
-    ../rtl/sync_dff.sv \
-    ../rtl/sync_2dff.sv \
+    ../../common_modules/sync_dff.sv \
+    ../../common_modules/sync_2dff.sv \
     ../rtl/apb2mbus.sv \
     tb_apb2mbus.sv
 

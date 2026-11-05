@@ -18,7 +18,7 @@ toggle 同步, 同步一律例化标准 sync 单元)。
 ## 2. CDC 结构 (MCP: 静态数据直采 + toggle 同步)
 
 数据通路一律直采"静止的电平", 不加同步 FF; 同步 FF 只用于两个单 bit
-控制 toggle, 例化标准 sync 单元 (`rtl/sync_2dff.sv` / `rtl/sync_dff.sv`,
+控制 toggle, 例化标准 sync 单元 (`../common_modules/sync_2dff.sv` / `sync_dff.sv`,
 FPGA / ASIC 仿真 / ASIC 后端工艺 cell 三分支):
 
 ```
@@ -152,7 +152,7 @@ set_max_delay -datapath_only \
 CDC 工具 (SpyGlass 等): 上述数据声明为 **MCP / quasi-static data**,
 enable = 同步后的 ce / rdy; 否则会报"未同步多比特跨域"。
 
-sync 单元分支选择 (rtl/sync_2dff.sv / rtl/sync_dff.sv):
+sync 单元分支选择 (common_modules/sync_2dff.sv / sync_dff.sv):
 
 | define | 分支 | 说明 |
 |--------|------|------|

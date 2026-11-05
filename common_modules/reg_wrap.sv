@@ -1,8 +1,10 @@
 `timescale 1ns/1ps
 //============================================================================
 // reg_wrap - one register: storage + even-parity FuSa monitor
-// (building block of reset_checker_regfile.
-//  Cell copied unchanged from the hang_prot/ia_bus_timeo/cmm projects.)
+// (fusa 全仓单一源 common_modules/reg_wrap.sv, 2026-11-05 收编自
+//  hang_prot/ia_bus_timeo/cmm/reset_checker 四份同构副本, 统一为
+//  异步低有效 rst_n - 高有效域用 rstn = ~rst 适配; 各设计 regfile
+//  从本目录引用, 禁止再留本地副本。)
 //
 // STRUCTURE (per register):
 //   wdata / wr / rdata        : plain RW storage. W1C / sticky-set /

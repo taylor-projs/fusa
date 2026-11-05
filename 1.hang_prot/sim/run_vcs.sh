@@ -19,10 +19,10 @@ BASE="${VCS_OUT:-$SIM/obj_vcs}"
 # 设计文件 (3 个 TB 共用; reg_wrap 被 regfile 例化, 必须在列;
 # sync 单元单源在 6.apb2mbus/rtl, 相对路径引用)
 cat > /tmp/hp_filelist.f <<EOF
-$ROOT/../6.apb2mbus/rtl/sync_dff.sv
-$ROOT/../6.apb2mbus/rtl/sync_2dff.sv
-$ROOT/../rst_checker/rtl/rst_sync.sv
-$ROOT/design/reg_wrap.sv
+$ROOT/../common_modules/sync_dff.sv
+$ROOT/../common_modules/sync_2dff.sv
+$ROOT/../common_modules/rst_sync.sv
+$ROOT/../common_modules/reg_wrap.sv
 $ROOT/design/hang_prot_regfile.sv
 $ROOT/design/hang_prot_core.sv
 $ROOT/design/hang_prot_wskid.sv

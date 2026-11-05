@@ -17,8 +17,8 @@ TOP=tb_apb2mbus
 mkdir -p "$OUT"
 
 cat > "$OUT/filelist.f" <<EOF
-$RTL/sync_dff.sv
-$RTL/sync_2dff.sv
+$ROOT/../common_modules/sync_dff.sv
+$ROOT/../common_modules/sync_2dff.sv
 $RTL/apb2mbus.sv
 $SIM/tb_apb2mbus.sv
 EOF
@@ -71,7 +71,7 @@ grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
 # 锁存为 1 - addr/r_apb.paddr_q/rin_apb.paddr_q 的 [15:9]).
 # -excl_strict 只排除真实未覆盖对象; RTL 变更后需重新生成:
 #   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
-EXCL="$(cd "$(dirname "$0")" && pwd)/tgl_struct_excl.el"
+EXCL="$SIM/tgl_struct_excl.el"
 if [ -f "$EXCL" ]; then
    echo "== coverage summary (toggle: structural-const excluded) =="
    urg -dir simv.vdb -elfile "$EXCL" -excl_strict \

@@ -19,9 +19,9 @@ rst_sync 的 `rstn_pair_s`（一致异步即时清零、分歧 2FF 释放、恢�
 rtl/
   reset_checker.sv          顶层：监控引擎（rst_sync/XOR/饱和计数/err+自愈）+ regfile 实例
   reset_checker_regfile.sv  mbus 叶子：CTRL/STAT/EV/REGPAR/REGST + 写保护 + 奇偶组
-  rst_sync.sv               复位同步器标准单元（异步断言/2FF 同步释放）
-  sync_2dff.sv              两级电平同步器标准单元（参考保留，本设计不例化）
-  reg_wrap.sv               寄存器奇偶单元（自 hang_prot/cmm 原样拷贝）
+  (rst_sync.sv / sync_2dff.sv / reg_wrap.sv 移至 fusa 根 common_modules/,
+   经 filelist 引用; regfile 仍例化 reg_wrap/rst_sync)
+
 doc/
   design.md                 设计说明（功能/业内对照/结构/寄存器/验证矩阵/集成约束）
 sim/

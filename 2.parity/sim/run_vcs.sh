@@ -27,8 +27,8 @@ $RTL/edc_chk.sv
 $RTL/edc_reg_wrap.sv
 $RTL/edc_regfile.sv
 $RTL/edc_core.sv
-$APB2MBUS_RTL/sync_dff.sv
-$APB2MBUS_RTL/sync_2dff.sv
+$ROOT/../common_modules/sync_dff.sv
+$ROOT/../common_modules/sync_2dff.sv
 $APB2MBUS_RTL/apb2mbus.sv
 $RTL/edc_top.sv
 $SIM/tb_edc_top.v

@@ -50,8 +50,8 @@ vcs -full64 -sverilog -timescale=1ns/1ps \
     +define+DUMP_FSDB \
     $CMFLAGS \
     -top tb_reset_checker \
-    ../rtl/rst_sync.sv \
-    ../rtl/reg_wrap.sv \
+    ../../common_modules/rst_sync.sv \
+    ../../common_modules/reg_wrap.sv \
     ../rtl/reset_checker_regfile.sv \
     ../rtl/reset_checker.sv \
     tb_reset_checker.sv \

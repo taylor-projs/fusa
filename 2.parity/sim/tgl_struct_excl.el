@@ -222,79 +222,79 @@ MODULE: edc_core
 Toggle addr [15:9] "logic addr[15:0]"
 
 CHECKSUM: "2477330202 2924855791"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_aw_addr_hi
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_addr_hi
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2924855791"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_aw_addr_lo
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_addr_lo
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1694263347"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_aw_attri0
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_attri0
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 4173391227"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_aw_attri1
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_attri1
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2762021082"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_aw_id
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_id
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1517805883"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_w_data
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_w_data
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1771576645"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_w_mask
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_w_mask
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 198081538"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_w_last
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_w_last
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2924855791"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_ar_addr_hi
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_ar_addr_hi
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2924855791"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_ar_addr_lo
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_ar_addr_lo
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1694263347"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_ar_attri0
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_ar_attri0
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 4173391227"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_ar_attri1
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_ar_attri1
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2762021082"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen.u_ar_id
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_ar_id
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1284107946"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk.u_b_attri
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk.u_b_attri
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2762021082"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk.u_b_id
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk.u_b_id
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 1517805883"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk.u_r_data
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk.u_r_data
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 3501548514"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk.u_r_attri
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk.u_r_attri
 Toggle o_err "logic o_err"
 
 CHECKSUM: "2477330202 2762021082"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk.u_r_id
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk.u_r_id
 Toggle o_err "logic o_err"
 
 CHECKSUM: "3225978230 4072875782"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_regfile
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_regfile
 Toggle addr [15:9] "logic addr[15:0]"
 Toggle err_axi [12:0] "logic err_axi[17:0]"
 Toggle fault_axi [12:0] "logic fault_axi[17:0]"
@@ -306,7 +306,7 @@ Toggle err_s2 [12:0] "logic err_s2[17:0]"
 Toggle fault_s2 [12:0] "logic fault_s2[17:0]"
 
 CHECKSUM: "3225978230 4072875782"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_regfile
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_regfile
 Toggle addr [15:9] "logic addr[15:0]"
 Toggle err_axi [17:13] "logic err_axi[17:0]"
 Toggle fault_axi [17:13] "logic fault_axi[17:0]"
@@ -348,7 +348,7 @@ Toggle err_nxt [17:13] "logic err_nxt[17:0]"
 Toggle fault_nxt [17:13] "logic fault_nxt[17:0]"
 
 CHECKSUM: "2114302478 363291260"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_regfile.u_err2
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_regfile.u_err2
 Toggle wdata [12:0] "logic wdata[17:0]"
 Toggle rdata [12:0] "logic rdata[17:0]"
 Toggle r.data_q [12:0] "logic r.data_q[17:0]"
@@ -356,7 +356,7 @@ Toggle rin.data_q [12:0] "logic rin.data_q[17:0]"
 Toggle wr "logic wr"
 
 CHECKSUM: "2114302478 363291260"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_regfile.u_fault2
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_regfile.u_fault2
 Toggle wdata [12:0] "logic wdata[17:0]"
 Toggle rdata [12:0] "logic rdata[17:0]"
 Toggle r.data_q [12:0] "logic r.data_q[17:0]"
@@ -380,7 +380,7 @@ Toggle rin.data_q [12:0] "logic rin.data_q[17:0]"
 Toggle wr "logic wr"
 
 CHECKSUM: "2114302478 363291260"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_regfile.u_err2
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_regfile.u_err2
 Toggle wdata [17:13] "logic wdata[17:0]"
 Toggle rdata [17:13] "logic rdata[17:0]"
 Toggle r.data_q [17:13] "logic r.data_q[17:0]"
@@ -388,7 +388,7 @@ Toggle rin.data_q [17:13] "logic rin.data_q[17:0]"
 Toggle wr "logic wr"
 
 CHECKSUM: "2114302478 363291260"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_regfile.u_fault2
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_regfile.u_fault2
 Toggle wdata [17:13] "logic wdata[17:0]"
 Toggle rdata [17:13] "logic rdata[17:0]"
 Toggle r.data_q [17:13] "logic r.data_q[17:0]"
@@ -412,7 +412,7 @@ Toggle rin.data_q [17:13] "logic rin.data_q[17:0]"
 Toggle wr "logic wr"
 
 CHECKSUM: "694128424 2529137035"
-INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_chk
+INSTANCE: tb_edc_top.dut.g_sport[0].u_ip.u_edc_chk
 Toggle b_at_err "logic b_at_err"
 Toggle b_id_err "logic b_id_err"
 Toggle r_rd_err "logic r_rd_err"
@@ -421,7 +421,7 @@ Toggle r_id_err "logic r_id_err"
 Toggle o_site_err [4:0] "logic o_site_err[4:0]"
 
 CHECKSUM: "514015025 56635311"
-INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_gen
+INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen
 Toggle aw_hi_err "logic aw_hi_err"
 Toggle aw_lo_err "logic aw_lo_err"
 Toggle aw_a0_err "logic aw_a0_err"

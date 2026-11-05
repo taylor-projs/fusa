@@ -11,7 +11,7 @@ config-path hang monitoring.
 
 | Dir | Content |
 |---|---|
-| `rtl/` | `cmm_top.sv` (top: ref mux, window gen, FSM, channels, ESM rails) · `cmm_regfile.sv` (mbus leaf + parity wraps + CDC + hang monitors) · `cmm_clk_dut_mon.sv` (per-channel measurement) · `reg_wrap.sv` (register cell w/ parity + injection, from hang_prot; style-adapted: logic+assign, negedge rst_n) |
+| `rtl/` | `cmm_top.sv` (top: ref mux, window gen, FSM, channels, ESM rails) · `cmm_regfile.sv` (mbus leaf + parity wraps + CDC + hang monitors) · `cmm_clk_dut_mon.sv` (per-channel measurement) · reg_wrap 由 fusa 根 `common_modules/reg_wrap.sv` 单一源提供 (filelist 引用) |
 | `sim/` | `tb_cmm_top.sv` (self-checking TB, 84 checks) · `run_iverilog.sh` |
 | `doc/` | `cmm_sil2_design.md` (architecture + register map) · `cmm_timing_sw_guide.md` (parameters, expire values, timing, error classes, SW flows) · `fusa_coverage_sil.md` (SM list, FMEDA-style coverage, SIL assessment) |
 | `legacy/` | previous cmm_m1 design (Verilog), its README and safety assessment |
