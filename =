@@ -1,2 +1,0 @@
-awk '/^Module : /{m=$0} /Not Covered|INVMQV/{print NR" ["m"] "$0}' ~/work/cmm/sim/urg_chk4/modinfo.txt | sed "s/  */ /g"; ssh rocky-eda "grep -n wdata_q[12:8]
-5""'' ~/work/cmm/sim/urg_chk4/modinfo.txt | head -3
