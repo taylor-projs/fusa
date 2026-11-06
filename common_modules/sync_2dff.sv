@@ -71,10 +71,10 @@ module sync_2dff #(
       for (gi = 0; gi < WIDTH; gi = gi + 1) begin : g_bit
          logic qs2;
          `SYNC_2DFF_TECH_CELL u_tech_cell (
-            .CK (clk   ),
-            .RN (rstn  ),
-            .D  (d[gi] ),
-            .Q  (qs2   )
+            .CK(clk  ),
+            .RN(rstn ),
+            .D (d[gi]),
+            .Q (qs2  )
          );
          if (STAGES == 3) begin : g_s3
             logic qs3;

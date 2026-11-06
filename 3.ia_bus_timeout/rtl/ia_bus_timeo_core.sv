@@ -200,13 +200,13 @@ module ia_bus_timeo_core #(
     assign rstn_i = ~rst;
     logic rstn_s;
     rst_sync #(
-       .SYNC_LVL_NUM(   3),
+       .SYNC_LVL_NUM(3   ),
        .DEF_VAL     (1'b0)
     ) u_rst_sync (
-       .clk      (      clk),
-       .rstn     (   rstn_i),
+       .clk      (clk      ),
+       .rstn     (rstn_i   ),
        .scan_mode(scan_mode),
-       .rstn_s   (   rstn_s)
+       .rstn_s   (rstn_s   )
     );
     logic rst_s;
     assign rst_s = ~rstn_s;

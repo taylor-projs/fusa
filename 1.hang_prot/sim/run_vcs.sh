@@ -28,9 +28,9 @@ $ROOT/design/hang_prot_core.sv
 $ROOT/design/hang_prot_wskid.sv
 $ROOT/design/hang_prot_bdry_in.sv
 $ROOT/design/hang_prot_recover.sv
-$ROOT/design/hang_prot_gen_wrap.sv
-$ROOT/design/hang_prot_mcu2main_mon.sv
-$ROOT/design/hang_prot_main2mcu_mon.sv
+$ROOT/design/hang_prot_top.sv
+$ROOT/design/hang_prot_mcu2main_top.sv
+$ROOT/design/hang_prot_main2mcu_top.sv
 EOF
 
 # 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)

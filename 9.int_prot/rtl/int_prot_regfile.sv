@@ -258,87 +258,87 @@ module int_prot_regfile #(
    assign cmd_wr = par_cmd_bad || (perr_w1c && wdata[7]);
 
    reg_wrap #(
-      .W    (          32),
+      .W    (32           ),
       .RESET(32'h0000_000F)
    ) u_w_en (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                            en_w),
-      .wr          (                            en_wr),
-      .rdata       (                             en_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (en_w                            ),
+      .wr          (en_wr                           ),
+      .rdata       (en_r                            ),
       .selftest_key(reg_selftest && (regsel == 4'd0)),
-      .flt         (                          flt_en),
-      .flt_w1c     (             perr_w1c && wdata[2])
+      .flt         (flt_en                          ),
+      .flt_w1c     (perr_w1c && wdata[2]            )
    );
 
    reg_wrap #(
-      .W    (  32),
+      .W    (32   ),
       .RESET(32'h0)
    ) u_w_ien (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                           ien_w),
-      .wr          (                          ien_wr),
-      .rdata       (                           ien_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (ien_w                           ),
+      .wr          (ien_wr                          ),
+      .rdata       (ien_r                           ),
       .selftest_key(reg_selftest && (regsel == 4'd1)),
-      .flt         (                         flt_ien),
-      .flt_w1c     (             perr_w1c && wdata[3])
+      .flt         (flt_ien                         ),
+      .flt_w1c     (perr_w1c && wdata[3]            )
    );
 
    reg_wrap #(
-      .W    (  32),
+      .W    (32   ),
       .RESET(32'h0)
    ) u_w_ispi (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                          ispi_w),
-      .wr          (                         ispi_wr),
-      .rdata       (                          ispi_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (ispi_w                          ),
+      .wr          (ispi_wr                         ),
+      .rdata       (ispi_r                          ),
       .selftest_key(reg_selftest && (regsel == 4'd2)),
-      .flt         (                        flt_ispi),
-      .flt_w1c     (             perr_w1c && wdata[4])
+      .flt         (flt_ispi                        ),
+      .flt_w1c     (perr_w1c && wdata[4]            )
    );
 
    reg_wrap #(
-      .W    (  32),
+      .W    (32   ),
       .RESET(32'h0)
    ) u_w_ichk (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                          ichk_w),
-      .wr          (                         ichk_wr),
-      .rdata       (                          ichk_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (ichk_w                          ),
+      .wr          (ichk_wr                         ),
+      .rdata       (ichk_r                          ),
       .selftest_key(reg_selftest && (regsel == 4'd3)),
-      .flt         (                        flt_ichk),
-      .flt_w1c     (             perr_w1c && wdata[5])
+      .flt         (flt_ichk                        ),
+      .flt_w1c     (perr_w1c && wdata[5]            )
    );
 
    reg_wrap #(
-      .W    (  32),
+      .W    (32   ),
       .RESET(32'h0)
    ) u_w_sta (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                       sta_err_w),
-      .wr          (                      sta_err_wr),
-      .rdata       (                       sta_err_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (sta_err_w                       ),
+      .wr          (sta_err_wr                      ),
+      .rdata       (sta_err_r                       ),
       .selftest_key(reg_selftest && (regsel == 4'd4)),
-      .flt         (                         flt_sta),
-      .flt_w1c     (             perr_w1c && wdata[6])
+      .flt         (flt_sta                         ),
+      .flt_w1c     (perr_w1c && wdata[6]            )
    );
 
    reg_wrap #(
-      .W    (   1),
+      .W    (1   ),
       .RESET(1'b0)
    ) u_w_cmd (
-      .clk         (                             clk),
-      .rst_n       (                            rstn),
-      .wdata       (                           cmd_w),
-      .wr          (                          cmd_wr),
-      .rdata       (                           cmd_r),
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (cmd_w                           ),
+      .wr          (cmd_wr                          ),
+      .rdata       (cmd_r                           ),
       .selftest_key(reg_selftest && (regsel == 4'd5)),
-      .flt         (                         flt_cmd),
-      .flt_w1c     (             perr_w1c && wdata[7])
+      .flt         (flt_cmd                         ),
+      .flt_w1c     (perr_w1c && wdata[7]            )
    );
 
    //--------------------------------------------------------------------------

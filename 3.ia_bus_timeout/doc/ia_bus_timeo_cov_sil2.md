@@ -72,14 +72,14 @@
 
 | 代码位置 | 分支 | 激励需求 |
 |---|---|---|
-| mbus 译码 | 对齐错 / 越界 / 写只读 / 实例号错 / 正常 | 四类静默忽略各定向 + 正常读写 10 个寄存器（mbus 无错误通道） |
+| mbus 译码 | 对齐错 / 越界 / 写只读 / 实例号错 / 正常 | 四类静默忽略各定向 + 正常读写 11 个寄存器 + ID@0xFC（mbus 无错误通道） |
 | wr_fire / wr_drop | 空闲接受 / 忙丢弃 | 背靠背写（CDC 未回 ack 时第二个写被丢弃，WR_DROPPED 置位 + W1C 清除） |
-| par_bad 命令奇偶 | 坏 par 写阻断 / 坏 par 读门控 / 错实例号+坏 par 仍锁存 | 三类定向，PERR_CMD 置位 + W1C 清除 |
-| req_edge 译码 | wsel 0..9 每个分支 / 无效 key 静默 | 写 0x24、写错 key（0x5 而非 0xA） |
+| par_bad 命令奇偶 | 坏 par 写阻断 / 坏 par 读门控 / 错实例号+坏 par 仍锁存 | 三类定向，PERR_CMD（组 10，STA_PAR bit 12）置位 + W1C 清除 |
+| req_edge 译码 | wsel 0..10 每个分支 / 无效 key 静默 | 写 0x24、写 0x28、写错 key（SCMCNTRL key=F、CFG_REGST key≠1010） |
 | cfg_shadow_ff | 三个寄存器各自更新 / ★ ena 非法码字拒绝 | 写 SCMCNTRL ENA=0101（应被拒，回读不变） |
-| pulse_ff | 每个 selftest / W1C 位 | SCMCNTRL 0x1A0/0x2A0/0x4A0/0x8A0/0x11A0+(k<<16) 全遍历 |
+| pulse_ff | 每个 selftest / W1C 位 | SCMCNTRL 0x1A0/0x2A0/0x4A0 + CFG_REGST 0x2A/0x1A+(k<<8) 全遍历 |
 | par_latch_ff | 置位（自检/在途）/ W1C 清 / ★ 副本失配自愈 | force `par_lq_n` |
-| REG_SELFTEST | REGSEL 0..8 每个选择 / ★ REGSEL>8 忽略 | 9 次注入 + 1 次非法选择 |
+| REG_SELFTEST | REGSEL 0..10 每个选择（9 无目标=no-op）/ ★ REGSEL>10 忽略 | 11 次注入（含 k=9 no-op）+ 1 次非法选择 |
 | flt_sync / wpar_err | 影子失配（aclk reg_wrap flt 同步）/ 在途锁存失配 | ★ force aclk 影子 `par_q` / force `wdata_q` 一位（在途期间） |
 
 #### reg_wrap
@@ -241,19 +241,24 @@ A_not_late: assert property (@(posedge aclk) disable iff (rst_s)
 
 | 实测项（对应上文计划点） | 结果 |
 |---|---|
-| 遗留 P1–P7（W1C / SELFTEST / FU_SELFTEST / PAR_SELFTEST / REG_SELFTEST k=0/k=5 / to_clear） | 全部 OK，行为与 APB 版一致 |
+| 遗留 P1–P7（W1C / SELFTEST / FU_SELFTEST / PAR_SELFTEST / REG_SELFTEST k=0/k=5 / to_clear） | 全部 OK（v1.2 起自检键走 CFG_REGST，行为语义不变） |
 | P2b 坏 par 写 | OK（写被阻断，TH0 保持旧值） |
-| P2b PERR_CMD 锁存 | OK（0x24[14] 置位，PAR_FAULT=1） |
+| P2b PERR_CMD 锁存 | OK（0x24[12] 置位，PAR_FAULT=1；v1.2 bit = 2+组号） |
 | P2b 坏 par 读 | OK（rdata 门控为 0） |
 | P2b 错实例号 + 坏 par | OK（PERR_CMD 仍锁存——译码独立于实例号） |
 | P2b 忙时写丢弃 | OK（WR_DROPPED 置位，TH0 保持 0xAAAA，W1C 清除） |
+| P9 CFG_REGST WO/坏 key / ID@0xFC / 0x3C 别名 | OK（读 0、坏 key 无副作用、ID=0x4941_0001、写 RO 丢弃） |
+| P11 REG_SELFTEST k=0..10 | OK（k=0..8/10 注入+W1C 全清；k=9 无目标 lane no-op、STA_PAR 保持 0x2） |
+| P14 par_lq 2 lane + u_w_cmd dup | OK（heal-to-SET / W1C / dup map 0x5FF→0） |
 | 覆盖监视 bin par_bad / wr_drop | 3 / 1 |
 
-代码覆盖率（urg，DUT 树内）：SCORE 71.39 / LINE 86.99 / TOGGLE 51.31 / BRANCH 75.89
-（Total Module Definition 口径：80.57 / 98.01 / 52.13 / 91.56）。
+代码覆盖率（urg，v1.2 地图改造后复测，DUT Module Definition 口径）：
+SCORE 99.18 / LINE 99.13 / TOGGLE 98.41 / BRANCH 100.00
+（u_ia_bus_timeo_regfile 实例：line 93.41 / toggle 98.27 / branch 87.13，
+缺口集中在地址别名空间的死分支——结构排除 .el 需按新 RTL 重新生成，已列跟进项）。
 
-未命中项均为计划内未激励项（m1 r2a 故意不 fire、thr_zero_dis、otd_sat 等），
-属后续回归补齐项，非 DUT 缺口。
+剩余未命中均为地址别名空间/结构常量类死对象与少量新译码分支，
+属 .el 重生成 + 后续回归补齐项，非 DUT 功能缺口。
 
 **调试中发现并修复的 DUT 缺口**：regfile 的 `cfg_wr` 原为 `req_edge`
 同拍组合脉冲，而 aclk 域配置影子（u_c_ena/c5/c6）在同一拍才加载数据——
@@ -347,7 +352,7 @@ DC_D   ≈ 99%（表 §4.1 加权，R1/R2 共模为残余）
 | 测试 | 时机 | 覆盖 |
 |---|---|---|
 | 上电端到端事务测试 | 每次上电 | 监控功能全链（含共模 R1/R2） |
-| REG_SELFTEST 扫描（k=0..8） | 上电 + **周期 ≤ 1 s（建议）** | 每寄存器 存储比较器→PERR→ESM |
+| REG_SELFTEST 扫描（k=0..10，CFG_REGST[4]+REGSEL） | 上电 + **周期 ≤ 1 s（建议）** | 每组 存储比较器→PERR→ESM（组 9 无目标、跳过） |
 | SELFTEST / FU_SELFTEST / PAR_SELFTEST | 同上（同一轮询例程） | 两条事件轨 + 奇偶汇聚 |
 | 阈值/使能回读比对 | 周期（如 100 ms） | 配置漂移（R2 兜底） |
 
@@ -441,6 +446,6 @@ end
 |---|---|---|
 | T1 随机回归 | CG1–CG3、CG5 正常激励 + SVA | 仿真器 + covergroup |
 | T2 注入回归 | F1–F9 全清单 | force/fault-injection API |
-| T3 自检回归 | 4 键 + REGSEL 0..8 扫描（含 SW 序列） | 定向 |
+| T3 自检回归 | SELFTEST/FU（SCMCNTRL）+ PAR/REG（CFG_REGST）4 键 + REGSEL 0..10 扫描（含 SW 序列） | 定向 |
 | T4 形式 | CDC/优先级/卫士/不迟到定理 | 形式工具 |
 | T5 复位/CDC 专项 | 异步断言、沿贴近、时钟矩阵 | 定向 |

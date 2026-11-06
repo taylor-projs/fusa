@@ -63,29 +63,29 @@ module tb_apb2mbus;
    logic hang_evt_n;
 
    apb2mbus #(
-      .NP      (NP     ),
-      .HANG_TO (HANG_TO)
+      .NP     (NP     ),
+      .HANG_TO(HANG_TO)
    ) dut (
-      .apb_clk     (apb_clk   ),
-      .apb_rstn    (apb_rstn  ),
-      .apb_paddr   (paddr     ),
-      .apb_psel    (psel      ),
-      .apb_penable (penable   ),
-      .apb_pwrite  (pwrite    ),
-      .apb_pwdata  (pwdata    ),
-      .apb_prdata  (prdata    ),
-      .apb_pready  (pready    ),
-      .apb_pslverr (pslverr   ),
-      .mbus_clk    (mbus_clk  ),
-      .mbus_rstn   (mbus_rstn ),
-      .ce          (ce        ),
-      .wr          (wr        ),
-      .addr        (addr      ),
-      .wdata       (wdata     ),
-      .par         (par       ),
-      .rdata       (rdata     ),
-      .hang_evt    (hang_evt  ),
-      .hang_evt_n  (hang_evt_n)
+      .apb_clk    (apb_clk   ),
+      .apb_rstn   (apb_rstn  ),
+      .apb_paddr  (paddr     ),
+      .apb_psel   (psel      ),
+      .apb_penable(penable   ),
+      .apb_pwrite (pwrite    ),
+      .apb_pwdata (pwdata    ),
+      .apb_prdata (prdata    ),
+      .apb_pready (pready    ),
+      .apb_pslverr(pslverr   ),
+      .mbus_clk   (mbus_clk  ),
+      .mbus_rstn  (mbus_rstn ),
+      .ce         (ce        ),
+      .wr         (wr        ),
+      .addr       (addr      ),
+      .wdata      (wdata     ),
+      .par        (par       ),
+      .rdata      (rdata     ),
+      .hang_evt   (hang_evt  ),
+      .hang_evt_n (hang_evt_n)
    );
 
    // ---------------- 常时检查: T6 双轨互补 / T7 命令奇偶 ----------------

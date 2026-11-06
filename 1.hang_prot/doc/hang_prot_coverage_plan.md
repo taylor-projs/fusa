@@ -1,7 +1,7 @@
 ﻿# hang_prot 代码覆盖率收敛清单（TB-A / TB-B）
 
-目标：两个集成 top（`hang_prot_mcu2main_mon`（原 a_wrap）/
-`hang_prot_main2mcu_mon`（原 b_wrap））在语句 (statement)、
+目标：两个集成 top（`hang_prot_mcu2main_top`（原 a_wrap）/
+`hang_prot_main2mcu_top`（原 b_wrap））在语句 (statement)、
 分支 (branch)、条件 (condition)、FSM、翻转 (toggle) 各项上尽可能 100%。
 执行方式：在有仿真器的机器上，于 `sim/` 目录运行
 `vsim -c -do run_tb_a.do`、`vsim -c -do run_tb_b.do`（Questa），或启用

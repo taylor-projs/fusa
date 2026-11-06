@@ -37,12 +37,23 @@ module tb_esm_core;
     integer i;
 
     esm_core #(.LTC_FIXED_L14(14'h10)) dut (
-        .vclk(vclk), .gclk(gclk), .nPORRST(nPORRST), .nRST(nRST),
-        .err_g1(err_g1_w), .err_g2(err_g2_w), .err_g3(err_g3_w),
-        .reg_wr(reg_wr), .reg_rd(reg_rd), .reg_addr(reg_addr),
-        .reg_wdata(reg_wdata), .reg_rdata(reg_rdata),
-        .esm_lo_irq(esm_lo_irq), .esm_hi_irq(esm_hi_irq),
-        .nerror_out(nerror_out), .nerror_oe(nerror_oe), .nerror_in(nerror_in)
+        .vclk      (vclk      ),
+        .gclk      (gclk      ),
+        .nPORRST   (nPORRST   ),
+        .nRST      (nRST      ),
+        .err_g1    (err_g1_w  ),
+        .err_g2    (err_g2_w  ),
+        .err_g3    (err_g3_w  ),
+        .reg_wr    (reg_wr    ),
+        .reg_rd    (reg_rd    ),
+        .reg_addr  (reg_addr  ),
+        .reg_wdata (reg_wdata ),
+        .reg_rdata (reg_rdata ),
+        .esm_lo_irq(esm_lo_irq),
+        .esm_hi_irq(esm_hi_irq),
+        .nerror_out(nerror_out),
+        .nerror_oe (nerror_oe ),
+        .nerror_in (nerror_in )
     );
 
     assign err_g1_w = err_g1;

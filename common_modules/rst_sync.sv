@@ -76,10 +76,10 @@ module rst_sync #(
    end
    logic q_cell;
    `SYNC_2DFF_TECH_CELL u_tech_cell (
-      .CK (clk    ),
-      .RN (rstn   ),
-      .D  (1'b1   ),
-      .Q  (q_cell )
+      .CK(clk   ),
+      .RN(rstn  ),
+      .D (1'b1  ),
+      .Q (q_cell)
    );
 
    assign rstn_s = scan_mode ? rstn : q_cell;

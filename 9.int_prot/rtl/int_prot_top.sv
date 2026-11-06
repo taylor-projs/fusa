@@ -66,24 +66,24 @@ module int_prot_top #(
    // 寄存器文件 (mbus 域, 与监视器同域)
    //--------------------------------------------------------------------------
    int_prot_regfile #(
-      .IDX    (    IDX),
+      .IDX    (IDX    ),
       .NUM_INT(NUM_INT)
    ) u_int_prot_regfile (
-      .clk            (           clk),
-      .rstn           (          rstn),
-      .ce             (            ce),
-      .wr             (            wr),
-      .addr           (          addr),
-      .wdata          (         wdata),
-      .par            (           par),
-      .rdata          (         rdata),
-      .en             (            en),
-      .inj_spi        (       inj_spi),
-      .inj_chk        (       inj_chk),
-      .spi_err        (       spi_err),
-      .esm_err        (       esm_err),
-      .esm_err_n      (     esm_err_n),
-      .reg_par_fault  ( reg_par_fault),
+      .clk            (clk            ),
+      .rstn           (rstn           ),
+      .ce             (ce             ),
+      .wr             (wr             ),
+      .addr           (addr           ),
+      .wdata          (wdata          ),
+      .par            (par            ),
+      .rdata          (rdata          ),
+      .en             (en             ),
+      .inj_spi        (inj_spi        ),
+      .inj_chk        (inj_chk        ),
+      .spi_err        (spi_err        ),
+      .esm_err        (esm_err        ),
+      .esm_err_n      (esm_err_n      ),
+      .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );
 
@@ -91,22 +91,22 @@ module int_prot_top #(
    // 监视器本体
    //--------------------------------------------------------------------------
    int_prot_core #(
-      .NUM_INT              (              NUM_INT),
-      .INT_INV              (              INT_INV),
-      .INT_CHK_INV          (          INT_CHK_INV),
-      .SYNC_MODE            (            SYNC_MODE),
-      .SYNC_STAGE           (           SYNC_STAGE),
-      .FUSA_STA_INT_TIMEOUT (FUSA_STA_INT_TIMEOUT),
-      .POSEDGE_DETECT_ONLY  ( POSEDGE_DETECT_ONLY)
+      .NUM_INT             (NUM_INT             ),
+      .INT_INV             (INT_INV             ),
+      .INT_CHK_INV         (INT_CHK_INV         ),
+      .SYNC_MODE           (SYNC_MODE           ),
+      .SYNC_STAGE          (SYNC_STAGE          ),
+      .FUSA_STA_INT_TIMEOUT(FUSA_STA_INT_TIMEOUT),
+      .POSEDGE_DETECT_ONLY (POSEDGE_DETECT_ONLY )
    ) u_int_prot (
-      .clk     (   clk),
-      .rstn    (  rstn),
-      .enable  (   en),
-      .spi     (   spi),
-      .spi_chk (spi_chk),
-      .spi_inj (inj_spi),
-      .chk_inj (inj_chk),
-      .spi_err (spi_err),
+      .clk     (clk     ),
+      .rstn    (rstn    ),
+      .enable  (en      ),
+      .spi     (spi     ),
+      .spi_chk (spi_chk ),
+      .spi_inj (inj_spi ),
+      .chk_inj (inj_chk ),
+      .spi_err (spi_err ),
       .spi_sync(spi_sync)
    );
 

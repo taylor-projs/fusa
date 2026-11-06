@@ -1,8 +1,8 @@
 ﻿# hang_prot 总线挂起监控与域边界隔离 —— 统一设计文档（v2）
 
-**模块族**：`hang_prot_core`（监控核）/ `hang_prot_recover`（出向恢复桥）/ `hang_prot_bdry_in`（入向边界单元）/ `hang_prot_wskid`（双 slot W skid，两单元共享）/ `hang_prot_gen_wrap`（单主控顶层）/ `hang_prot_regfile` + `reg_wrap`（mbus leaf 寄存器）
+**模块族**：`hang_prot_core`（监控核）/ `hang_prot_recover`（出向恢复桥）/ `hang_prot_bdry_in`（入向边界单元）/ `hang_prot_wskid`（双 slot W skid，两单元共享）/ `hang_prot_top`（单主控顶层）/ `hang_prot_regfile` + `reg_wrap`（mbus leaf 寄存器）
 **参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM / 4.3.5；Safety Manual SPNU575；ARM AXI4（AMBA 4）；IEC 61508:2010 SIL2
-**文档版本**：v3.2（v3.1：SIL2 FuSa 全机制注入验证；v3.2：mcore 感知读类重映射；见 §9.2c/§3.6）
+**文档版本**：v3.3（v3.2：mcore 感知读类重映射；v3.3：寄存器地图统一 house standard——SCMREGPARSTAT 更名 STA_PAR、自检键拆出 CFG_REGST 0x28、ID 殿后 0xFC，见 §7.1；v3.1：SIL2 FuSa 全机制注入验证）
 **写法说明**：本文面向学习与交付——每个设计决策给出"备选方案 → 拒绝理由"，关键流程给出逐周期时序推演。
 
 > **v2 相对 v1 的核心变化**
@@ -67,7 +67,7 @@
 
 ## 1. 设计目标与场景
 
-### 1.1 单主控场景（hang_prot_gen_wrap 的本命场景）
+### 1.1 单主控场景（hang_prot_top 的本命场景）
 
 | # | 目标 | 判据 |
 |---|---|---|
@@ -194,7 +194,7 @@ v2 新增注意：ID FIFO 满造成的 `m_arready=0` 与 slave 慢造成的 `arr
 - master 原来用不同 id 做的响应并行度被**类内**串行化（同 id 必须保序）——v2.3 多类重映射已把**跨 master** 的串行化拆开（§3.6），类内串行化对单 master 无损（边界单口、保序交付）；
 - 需要寄存器/参数配置重映射 id 值，且 id 宽度内不得与真实路由需求冲突（重映射 id 对 leaf 只是一个普通 id）；多类时 `AR_ID_REMAP` 低 CLSW 位必须为 0（类域叠加位，综合期检查）。
 
-### 3.3 拓扑（hang_prot_gen_wrap）
+### 3.3 拓扑（hang_prot_top）
 
 ```
                  mbus_clk 域                   ia_bus_aclk 域
@@ -801,7 +801,9 @@ len+1 拍 → rd_otd 归零 → **自动退出**（与写版出向对称：活 m
 
 ### 7.1 寄存器映射
 
-mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道；`addr[15:8]`=实例号须等于参数 `IDX`，`addr[7:0]`=字节偏移），10 个 32 位寄存器，0x00–0x24，字对齐访问（非对齐/越界/写只读 → 静默忽略；坏 `par` → 写阻断/读门控 + PERR_CMD 锁存）。`mbus_clk` 与 `aclk` 可异步（CDC 在内）。写为 fire-and-forget：CDC 忙时写被丢弃并置 `SCMIAFUSTAT[5]` WR_DROPPED，依赖写前须轮询 `[4]` CFG_BUSY（见 §7.6）。
+mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道；`addr[15:8]`=实例号须等于参数 `IDX`，`addr[7:0]`=字节偏移），11 个 32 位寄存器（0x00–0x28）+ ID 殿后 0xFC，字对齐访问（非对齐/越界/写只读 → 静默忽略；坏 `par` → 写阻断/读门控 + PERR_CMD 锁存）。`mbus_clk` 与 `aclk` 可异步（CDC 在内）。写为 fire-and-forget：CDC 忙时写被丢弃并置 `SCMIAFUSTAT[5]` WR_DROPPED，依赖写前须轮询 `[4]` CFG_BUSY（见 §7.6）。
+
+寄存器地图位置（house standard，与 fusa 全家族一致）：**STA_PAR 倒数第 3（0x24）、CFG_REGST 倒数第 2（0x28）、ID 殿后 0xFC**。CFG_REGST 用 house key `wdata[3:0]=4'b1010`（独立于 SCMCNTRL [7:4] 的本地 key 空间），错 key 写被静默丢弃（无锁存类，与其它 keyed 违例同样处理）。
 
 | 偏移 | 名称 | 访问 | 复位值 | 字段说明 |
 |---|---|---|---|---|
@@ -814,7 +816,9 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 | 0x18 | `SCMTHRESH1` | W/R | 0x000000FF | `[15:0]` REQ2RESP_MAX |
 | 0x1C | `SCMIAFUSTAT` | **W1C/R** | 0x00000000 | `[0]` FU_FAULT（W1C）；`[1]`/`[2]`/`[3]` FU_FAULT_N / ERR_EVENT / ERR_EVENT_N（RO 双轨）；`[4]` CFG_BUSY（RO，CDC 写在途）；`[5]` WR_DROPPED（W1C，忙时写被丢弃） |
 | 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | 完整性故障源（ENA/THRA/THRR + 每 master CNT/CMP/STAT + 顶位 OTDSAT） |
-| 0x24 | `SCMREGPARSTAT` | **W1C/R** | 0x00000000 | `[0]` PAR_FAULT；`[1]` RO 补码；`[13:4]` PERR9..PERR0（bit k = 0x4*k 寄存器奇偶错）；`[14]` PERR_CMD（mbus 命令奇偶错，W1C） |
+| 0x24 | `STA_PAR` | **W1C/R** | 0x00000002 | 寄存器奇偶状态（house standard 布局）：`[0]` PAR_FAULT / `[1]` PAR_FAULT_N / `[12:2]` PERR（**bit = 2+组号**），见 §7.2b。静息读 0x2 |
+| 0x28 | `CFG_REGST` | **WO** | — | 寄存器奇偶自检控制（house standard）：key[3:0]=1010 + `[4]` REG_SELFTEST + REGSEL[11:8] + `[5]` PAR_SELFTEST，见 §7.2c。读恒 0；错 key 写静默丢弃 |
+| 0xFC | `ID` | R | 0x4841_0001 | `"HA"` v1（house standard 殿后）。仅 `addr[7:0]==8'hFC` 精确译码（0x3C/0x7C/0xBC 落在 wsel 15 越界读 0） |
 
 #### 7.2 SCMCNTRL 字段（0x10）
 
@@ -825,12 +829,32 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 | [8] | TO_CLR | W（脉冲） | 重启实时计数器。动作写必须保 ENA=0xF |
 | [9] | SELFTEST | W（脉冲） | 强制比较器触发，证明 err_event 上报链路 |
 | [10] | FU_SELFTEST | W（脉冲） | 强制 fu_fault，证明监控故障上报链路 |
-| [11] | PAR_SELFTEST | W（脉冲） | 强制 PAR_FAULT 不置 PERR，证明奇偶上报链路 |
 | [12] | **QSR_REL** | W（脉冲） | **入向边界单元隔离释放**：main 保持复位时 SW 退出隔离态（§8.4） |
-| [20] | REG_SELFTEST | W（脉冲） | 逐寄存器奇偶注入，[19:16] REGSEL 选目标（0–8） |
-| [19:16] | REGSEL | W | REG_SELFTEST 目标寄存器号，>8 忽略 |
+
+（v3.3 地图起 PAR_SELFTEST/REG_SELFTEST/REGSEL 从 SCMCNTRL 移除，由 CFG_REGST 0x28 承担，见 §7.2c；原 [11]/[20]/[19:16] 写此处为无害忽略位。）
 
 脉冲位只写当拍起效、读回恒 0；KEY 只写不读。
+
+#### 7.2b STA_PAR 字段（0x24，house standard 布局）
+
+| 位 | 名称 | 属性 | 说明 |
+|---|---|---|---|
+| [0] | PAR_FAULT | R（电平） | 寄存器奇偶故障 = 全部 PERR 位与自检锁存的 OR；直连 ESM 双轨 `reg_par_fault`/`reg_par_fault_n`。写 [0] 仅清除自检锁存，各 PERR 位在其 own bit 清除 |
+| [1] | PAR_FAULT_N | R | PAR_FAULT 双轨补码 |
+| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，**bit = 2+组号**（house standard）。组 k = 偏移 0x4*k 的寄存器（4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总）；组 9 = 在途写锁存奇偶（latch lane，无注错目标、REGSEL=9 为文档化 no-op）；组 10 = PERR_CMD mbus 命令奇偶（W=1 wrap：sticky 体即 wrap 存储，写 bit[12] 是一次重写、重算奇偶）。组 10 详解：`ce` 当拍 `par != ^{addr, wr, wdata}`（**每次 ce 都检查，与实例号译码无关**）。坏奇偶写被阻断（不执行任何副作用），坏奇偶读门控为 0 |
+
+每个 PERR 位清除对应组在**两个域**的 sticky（mbus 镜像同拍、aclk 影子经握手 req_edge 拍）；故障仍存活时重新置位。各 sticky 与 2 位锁存内部带反相副本（失配自愈为置位）。
+
+#### 7.2c CFG_REGST 字段（0x28，house standard）
+
+| 位 | 名称 | 属性 | 说明 |
+|---|---|---|---|
+| [3:0] | KEY | W | 必须为 `4'b1010`（house key），否则整个写被静默丢弃（无副作用、无锁存） |
+| [4] | REG_SELFTEST | W（脉冲） | 逐组奇偶注入：翻转所选组的奇偶位（数据不动），经存储+比较器+sticky+ESM 完整链路上报 |
+| [5] | PAR_SELFTEST | W（脉冲） | 强制 PAR_FAULT 但不置任何 PERR 位（无源注错），证明奇偶→ESM 上报链路（写 0x2A） |
+| [11:8] | REGSEL | W | REG_SELFTEST 的目标组号（0–10 = 偏移 0x4*k 的寄存器，10 = CMD wrap；9 = 在途锁存 lane、无注错目标、忽略），>10 时注入被忽略 |
+
+读恒 0（WO）；典型写值：组 k 注入 `0x1A \| (k << 8)`、PAR_SELFTEST `0x2A`。
 
 ### 7.3 软件配置序列 —— 上电初始化（出向 Unit A 场景）
 
@@ -839,13 +863,13 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 | 步 | 操作 | 寄存器/值 | 功能说明 |
 |---|---|---|---|
 | 1 | 读 | `SCMCNTRL` | 确认回读 `[3:0]=0xF`（复位默认使能码字）+ `[7:4]` 读回为 0（KEY 只写）——同时验证 mbus 通路与复位值 |
-| 2 | 读 | `SCMIAERR0/1STAT`、`SCMIAFUSTAT`、`SCMREGPARSTAT` | 全 0 = 复位干净；非 0 说明复位不完整或已有故障 |
+| 2 | 读 | `SCMIAERR0/1STAT`、`SCMIAFUSTAT`、`STA_PAR` | 状态全 0、`STA_PAR` 恰为 0x2（仅 PAR_FAULT_N）= 复位干净；否则复位不完整或已有故障 |
 | 3 | 写 | `SCMTHRESH0 = REQ2ACCEPT_MAX` | 配地址相阈值。**必须 > 最坏合法等待**：满 FIFO(OTD_MAX 笔) 排空时间 + 仲裁延迟。写不需要 KEY（阈值寄存器无钥匙；监控核有码字使能与副本校验兜底） |
 | 4 | 写 | `SCMTHRESH1 = REQ2RESP_MAX` | 配数据相阈值。必须 > slave 最坏合法响应延迟（含 256 拍突发整流时间） |
 | 5 | 写 | `SCMCNTRL = 0x1AF` | KEY=0xA + ENA=0xF + TO_CLR：以 keyed 动作**重启所有实时计数器**，从干净起点开始监控（也验证了 key/动作链路） |
 | 6 | （可选，周期性） | `SCMCNTRL = 0x2AF`（SELFTEST） | 强制一次 err_event → ESM 应收到事件 → 证明**事件上报链路**活着（FuSa 周期诊断） |
 | 7 | （可选） | `SCMCNTRL = 0x4AF`（FU_SELFTEST）→ W1C `0x1C[0]`/`0x20` | 证明监控器故障上报链路活着 |
-| 8 | （可选） | `SCMCNTRL = 0x8AF`（PAR_SELFTEST）→ W1C `0x24[0]` | 证明寄存器奇偶上报链路活着 |
+| 8 | （可选） | `CFG_REGST = 0x2A`（PAR_SELFTEST）→ W1C `0x24[0]` | 证明寄存器奇偶上报链路活着（v1.2 地图：自检键在 CFG_REGST，house key 1010） |
 | 9 | 读 | `SCMOTD`、`SCMIASTAT` | 业务流量起来后确认 otd 在 0..OTD_MAX 内活动（动态值，两读一致才可信） |
 
 ### 7.4 软件服务序列 —— S1（出向超时恢复）
@@ -888,7 +912,7 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
 
 - **写方向**（mbus→aclk）：单飞 toggle 握手，数据保持稳定跨域（无需 Gray 码）；同一时刻最多一个写在途；任何译码（含无效 key 的忽略型写）都被 ack，握手不会悬挂。mbus 零等待：忙时到达的写被丢弃并置 `WR_DROPPED`（sticky，fail-visible）——软件的依赖写前先轮询 `SCMIAFUSTAT[4]` CFG_BUSY 为 0。
 - **读方向**（aclk→mbus）：sticky 位逐位独立同步；读组合返回、零等待；坏 `par` 读门控为 0；动态多比特值（IASTAT/OTD）读取有竞态——仅影响观测，重读解决。
-- **命令奇偶**：每次 `ce` 检查 `par == ^{addr, wr, wdata}`（与实例号译码无关）；失配 → 写阻断/读门控 + `PERR_CMD`（`SCMREGPARSTAT[14]`，W1C）。
+- **命令奇偶**：每次 `ce` 检查 `par == ^{addr, wr, wdata}`（与实例号译码无关）；失配 → 写阻断/读门控 + `PERR_CMD`（`STA_PAR[12]`，bit = 2+组10，W1C 即 wrap 重写）。
 - **逐寄存器偶校验**：每个寄存器在自己所在时钟域是独立 `reg_wrap`（存储+偶校验+selftest 注入+自身故障 sticky）；W1C 一次写、两域同清。
 - **配置旁路时序（cfg_wr 寄存一拍）**：`cfg_ena/cfg_key/cfg_req2a_max/cfg_req2r_max` 由 shadow 寄存器驱动，写落地的那一拍 `cfg_wr` 必须**晚一个 aclk**（`cfg_wr_q`）再脉冲——否则监控核在 shadow 的 NBA 更新同一拍采样，拿到的是上一次写的旧值（配置总线滞后一笔写：ENA 关→开序列会把监控核永远留在关态）。与 ia regfile 的 `cfg_wr_q` 做法一致。
 - **复位**：`mbus_rstn` 与 `rst` 必须系统级同时断言、同源同步释放，否则第一次写可能丢——集成约束。
@@ -1161,7 +1185,7 @@ v3.1 之前 regfile=偶校验、core=反相双份、wskid=one-hot，其余 sv �
 | hang_prot_wskid | 存储载荷奇偶：每 (slot,beat) 一位 `{wdata,wstrb}` 校验 + 每 slot AW 载荷一位；计数器/指针（fill_cnt/beats/ridx/alloc_p/fill_p/issue_p）反相双份 | `sk_integrity=0`（实时聚合）→ 父单元强制进入；sticky sk_fault；burst 照常完成（不中途截断，理由见 §9.2 表） |
 | hang_prot_recover | mode_r 双轨；ar/aw FIFO 表项奇偶（push 写、head 查）；指针/占用/rbeat 反相双份；内部 sticky iflt；**v3.2：`s_in_rst` 输入轨对（sir_dis）** | 轨/失配 → 强制进入 + recover_exit 加 `!int_dis`（活失配不退出）；自愈瞬态仍被 sticky 记住；s_in_rst 轨失配同语义（复位状态不可信 → 通路必须关闭） |
 | hang_prot_bdry_in | blk_r/qrel_pend 双轨；FIFO 表项奇偶 + 指针/占用/rbeat 反相双份（与 recover 同构） | 失配 → 强制进入 + quiesce_exit 加 `!int_dis`（不确定态永不退出——本单元危险方向是带在途流量退出） |
-| hang_prot_gen_wrap / main2mcu_mon | err_event 边沿检测器双轨（err_event_q_n） | 轨失配 → 强制一次 recover_req（脉冲进受控态）+ sticky edgeflt |
+| hang_prot_top / main2mcu_mon | err_event 边沿检测器双轨（err_event_q_n） | 轨失配 → 强制一次 recover_req（脉冲进受控态）+ sticky edgeflt |
 | mon 顶层（两方向） | 状态输出双轨化：recover_active/_n、recover_done/_n、block_active/_n（源寄存器内部双轨，ESM 传输侧可比对） | ESM 侧双轨比较 |
 
 **聚合语义**：`sk_fault/sk_fault_n` 从"wskid 槽状态非独热"升级为**边界
@@ -1331,9 +1355,9 @@ design/ hang_prot_core.sv        监控核（v1，未改）
 design/ hang_prot_wskid.sv      双 slot W skid（v2.3 新增：两单元共享，环形三指针，每槽 one-hot；v3.1 FuSa 载荷奇偶/计数器副本）
 design/ hang_prot_recover.sv    出向恢复桥（v3.2：mcore 感知多类 AR remap + 共享双 slot skid + v3.1 FuSa 双轨/条目奇偶）
 design/ hang_prot_bdry_in.sv    入向边界单元（v2.3 位域多类 AR remap——main 单主口无 mcore 语义，见 §3.6；共享双 slot skid + QSR 强清 + v3.1 FuSa）
-design/ hang_prot_gen_wrap.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + s_in_rst 透传 + FuSa 边沿双轨）
-design/ hang_prot_mcu2main_mon.sv Unit A 集成顶层（v3.2 mcore 参数透传）
-design/ hang_prot_main2mcu_mon.sv Unit B 集成顶层（v2.3 + FuSa）
+design/ hang_prot_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + s_in_rst 透传 + FuSa 边沿双轨）
+design/ hang_prot_mcu2main_top.sv Unit A 集成顶层（v3.2 mcore 参数透传）
+design/ hang_prot_main2mcu_top.sv Unit B 集成顶层（v2.3 + FuSa）
 design/ hang_prot_regfile.sv mbus leaf (reg_wrap 单一源在 fusa 根 common_modules/) 寄存器（奇偶保护，含 QSR_REL）
 sim/    tb_hang_prot_a_wrap.sv / tb_hang_prot_b_wrap.sv TB（P1..P12 / P1..P9，iverilog 全 PASS）
 sim/    run_iverilog.sh         WSL iverilog 功能仿真脚本（陈旧 .vvp 防护）

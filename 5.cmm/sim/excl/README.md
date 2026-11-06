@@ -24,8 +24,10 @@
    N_DUT>5 配置, 本族 i>=8 部分需重审。
 3. **reg_wrap 自检注入路径** (实例域): 12 个普通 wrap 的 `v.par_q = ~(^wdata)`
    (写+key 同拍) + 4 个镜像 wrap (wr 恒 1) 的 `v.par_q = ~r.par_q` (无写注入)
-   与 wr=0 分支臂 —— cmm 注错走 cmm_core FORCE/REGST 通道, 不驱动 regfile
-   侧 selftest_key (ia wr 恒 1 同款判例)。
+   与 wr=0 分支臂 —— **selftest_key 全例化实接** (`regst_st` 选通,
+   cmm_regfile.sv:372), 不可达纯因结构: ① 普通 wrap 的 REGST 注错脉冲与
+   目标寄存器写**永不同拍** (单口 mbus 一拍只译一个地址); ② 镜像 wrap
+   wr 恒 1, 无写注入臂与 wr=0 臂不可达 (ia wr 恒 1 同款判例)。
 4. **双轨一致性**: cmm_core `(dead_a|dead_b|ne_dup)` bins "010"/"100"
    (noedge_cnt 与其反相副本同拍装载, ne_dup=0 时 dead_a≡dead_b);
    cmm_top `(wend_a^wend_b)|(win_cnt_n!=~win_cnt)` bin "10" (wend 旗标由同一

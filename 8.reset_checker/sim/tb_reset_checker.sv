@@ -42,13 +42,14 @@ module tb_reset_checker;
     localparam logic [31:0] KEY = 32'h5000_0000;   // WKEY in [31:28]
     localparam int unsigned SAT = 31;              // counter all-ones value
 
-    // register offsets
-    localparam logic [7:0] A_ID     = 8'h00;
+    // register offsets (house layout: ID last, CFG_REGST 2nd-last,
+    // STA_PAR 3rd-last)
+    localparam logic [7:0] A_ID     = 8'hFC;
     localparam logic [7:0] A_CTRL   = 8'h04;
     localparam logic [7:0] A_STAT   = 8'h08;
     localparam logic [7:0] A_EV     = 8'h0C;
-    localparam logic [7:0] A_REGPAR = 8'h10;
-    localparam logic [7:0] A_REGST  = 8'h14;
+    localparam logic [7:0] A_REGPAR = 8'h10;    // STA_PAR
+    localparam logic [7:0] A_REGST  = 8'h14;    // CFG_REGST (key [3:0]=1010)
 
     localparam logic [31:0] ID_VAL  = 32'h5243_0001;
 
@@ -88,25 +89,25 @@ module tb_reset_checker;
     // DUT
     //=========================================================================
     reset_checker_top #(
-        .WKEY     (4'h5),
-        .IDX      (0    )
+        .WKEY(4'h5),
+        .IDX (0   )
     ) dut (
-        .mbus_clk         (mbus_clk       ),
-        .mbus_rstn        (mbus_rstn      ),
-        .ce               (mbus_ce        ),
-        .wr               (mbus_wr        ),
-        .addr             (mbus_addr      ),
-        .wdata            (mbus_wdata     ),
-        .par              (mbus_par       ),
-        .rdata            (mbus_rdata     ),
-        .reset_p          (reset_p        ),
-        .reset_m          (reset_m        ),
-        .rst_por_n_err    (rst_por_n_err  ),
-        .rst_por_n_err_n  (rst_por_n_err_n),
-        .rchk_par_fault   (rchk_par_fault ),
-        .rchk_par_fault_n (rchk_par_fault_n),
-        .rst_sync         (rst_sync       ),
-        .scan_mode        (scan_mode      )
+        .mbus_clk        (mbus_clk        ),
+        .mbus_rstn       (mbus_rstn       ),
+        .ce              (mbus_ce         ),
+        .wr              (mbus_wr         ),
+        .addr            (mbus_addr       ),
+        .wdata           (mbus_wdata      ),
+        .par             (mbus_par        ),
+        .rdata           (mbus_rdata      ),
+        .reset_p         (reset_p         ),
+        .reset_m         (reset_m         ),
+        .rst_por_n_err   (rst_por_n_err   ),
+        .rst_por_n_err_n (rst_por_n_err_n ),
+        .rchk_par_fault  (rchk_par_fault  ),
+        .rchk_par_fault_n(rchk_par_fault_n),
+        .rst_sync        (rst_sync        ),
+        .scan_mode       (scan_mode       )
     );
 
     //=========================================================================
@@ -308,17 +309,16 @@ module tb_reset_checker;
         mb_wr(A_STAT, 32'hFFFF_FFFF);          // RO
         mb_wr(8'h18, 32'hFFFF_FFFF);           // unknown offset
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b1, "T11 REG_PROT latched (unkeyed/RO/unknown)");
-
+        chk(rd[6] == 1'b1, "T11 REG_PROT latched (unkeyed/RO/unknown)");
         mb_rd(A_CTRL, rd);
         chk(rd[3:0] == 4'b0001, "T12 CTRL unchanged after protected writes");
 
         mb_rd(A_STAT, rd);
         chk(rd[9] == 1'b1 && rd[10] == 1'b0, "T13 STAT image unchanged (EN,FI)");
 
-        mb_wr(A_REGPAR, 32'h0004_0000);        // W1C bit18
+        mb_wr(A_REGPAR, 32'h0000_0040);        // W1C bit6
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b0, "T14 REG_PROT W1C clear");
+        chk(rd[6] == 1'b0, "T14 REG_PROT W1C clear");
 
         //---------------------------------------------------------------------
         // Phase 3: EN gating (disabled checker reports nothing; the
@@ -513,48 +513,59 @@ module tb_reset_checker;
         // Phase 9: register parity self-test
         //---------------------------------------------------------------------
         // sel=0 CTRL (config wrap: holds until rewritten)
-        mb_wr(A_REGST, KEY | 32'h0000_0100);
+        mb_wr(A_REGST, 32'h0000_001A);
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[4] == 1'b1, "T46 CTRL wrap parity injection flagged");
+        chk(rd[2] == 1'b1, "T46 CTRL wrap parity injection flagged");
         chk(rchk_par_fault == 1'b1, "T47 par_fault rail asserted");
 
         mb_wr(A_CTRL, KEY | 32'h0000_0001);    // rewrite heals the wrap
-        mb_wr(A_REGPAR, 32'h0000_0010);        // W1C bit4
+        mb_wr(A_REGPAR, 32'h0000_0004);        // W1C bit2 (PERR0)
         mb_rd(A_REGPAR, rd);
-        chk(rd[4] == 1'b0 && rd[1] == 1'b1, "T48 CTRL wrap healed + cleared");
+        chk(rd[2] == 1'b0 && rd[1] == 1'b1, "T48 CTRL wrap healed + cleared");
 
         // sel=1 EV image (follows every cycle: self-restores next cycle)
-        mb_wr(A_REGST, KEY | 32'h0000_0101);
+        mb_wr(A_REGST, 32'h0000_011A);
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[5] == 1'b1, "T49 EV image injection flagged");
+        chk(rd[3] == 1'b1, "T49 EV image injection flagged");
 
-        mb_wr(A_REGPAR, 32'h0000_0020);
+        mb_wr(A_REGPAR, 32'h0000_0008);
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[5] == 1'b0, "T50 EV image self-restored + cleared");
+        chk(rd[3] == 1'b0, "T50 EV image self-restored + cleared");
 
         // sel=2 STAT image
-        mb_wr(A_REGST, KEY | 32'h0000_0102);
+        mb_wr(A_REGST, 32'h0000_021A);
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[6] == 1'b1, "T51 STAT image injection flagged");
+        chk(rd[4] == 1'b1, "T51 STAT image injection flagged");
 
-        mb_wr(A_REGPAR, 32'h0000_0040);
+        mb_wr(A_REGPAR, 32'h0000_0010);
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[6] == 1'b0, "T52 STAT image self-restored + cleared");
+        chk(rd[4] == 1'b0, "T52 STAT image self-restored + cleared");
+
+        // sel=3 CMD wrap (W=1 sticky body: its W1C IS the healing rewrite)
+        mb_wr(A_REGST, 32'h0000_031A);
+        repeat (2) @(posedge mbus_clk);
+        mb_rd(A_REGPAR, rd);
+        chk(rd[5] == 1'b1, "T52b CMD wrap injection flagged (PERR3)");
+
+        mb_wr(A_REGPAR, 32'h0000_0020);        // W1C bit5 rewrites cmd wrap
+        repeat (2) @(posedge mbus_clk);
+        mb_rd(A_REGPAR, rd);
+        chk(rd[5] == 1'b0, "T52c CMD wrap healed by W1C rewrite");
 
         // no-source latch: "fault, no source" self-test signature
-        mb_wr(A_REGST, KEY | 32'h0000_0200);
+        mb_wr(A_REGST, 32'h0000_002A);         // PAR_SELFTEST pulse only
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[17] == 1'b1, "T53 PAR_SELFTEST latched");
+        chk(rd[0] == 1'b1 && rd[6:2] == 5'b0, "T53 PAR_SELFTEST latched (fault, no source)");
 
-        mb_wr(A_REGPAR, 32'h0002_0000);
+        mb_wr(A_REGPAR, 32'h0000_0001);        // bit0 clears ONLY the latch
         mb_rd(A_REGPAR, rd);
-        chk(rd[17] == 1'b0, "T54 PAR_SELFTEST cleared");
+        chk(rd[0] == 1'b0, "T54 PAR_SELFTEST cleared");
 
         chk(rchk_par_fault == 1'b0, "T55 par_fault rail clean after self-test");
 
@@ -566,7 +577,7 @@ module tb_reset_checker;
         chk(rd[0] == 1'b1, "T56 bad-parity write blocked");
 
         mb_rd(A_REGPAR, rd);
-        chk(rd[16] == 1'b1, "T57 PERR_CMD latched");
+        chk(rd[5] == 1'b1, "T57 PERR_CMD latched");
 
         @(negedge mbus_clk);
         mbus_addr  = {8'h00, A_ID};
@@ -579,9 +590,9 @@ module tb_reset_checker;
         mbus_ce = 1'b0;
         chk(rd == 32'h0, "T58 bad-parity read returns 0");
 
-        mb_wr(A_REGPAR, 32'h0001_0000);
+        mb_wr(A_REGPAR, 32'h0000_0020);
         mb_rd(A_REGPAR, rd);
-        chk(rd[16] == 1'b0, "T59 PERR_CMD cleared");
+        chk(rd[5] == 1'b0, "T59 PERR_CMD cleared");
 
         //---------------------------------------------------------------------
         // Phase 11: instance decode (addr[15:8] != IDX)
@@ -593,7 +604,7 @@ module tb_reset_checker;
         mb_rd(A_CTRL, rd);
         chk(rd[0] == 1'b1, "T61 wrong-instance write ignored");
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b0, "T62 wrong-instance write no REG_PROT");
+        chk(rd[6] == 1'b0, "T62 wrong-instance write no REG_PROT");
 
         //---------------------------------------------------------------------
         // Phase 12: duplicate heal-to-SET + pair-XOR reset auto-clear.
@@ -671,18 +682,18 @@ module tb_reset_checker;
         mb_wr(A_EV, 32'h0000_0007);            // clean up
         repeat (2) @(posedge mbus_clk);
 
-        mb_wr(A_REGST, 32'h0000_0100);         // unkeyed REGST: rejected
+        mb_wr(A_REGST, 32'h0000_0110);         // bad 1010 key: rejected
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b1, "T72 unkeyed REGST latches REG_PROT");
-        mb_wr(A_REGPAR, 32'h0004_0000);
+        chk(rd[6] == 1'b1, "T72 unkeyed REGST latches REG_PROT");
+        mb_wr(A_REGPAR, 32'h0000_0040);
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b0, "T73 REG_PROT W1C clear");
+        chk(rd[6] == 1'b0, "T73 REG_PROT W1C clear");
 
-        mb_wr(A_REGST, KEY | 32'h0000_0113);   // TGT=3 + INJ: silent ignore
+        mb_wr(A_REGST, 32'h0000_041A);         // REGSEL=4 (>3) + INJ: ignore
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[6:4] == 3'b000 && rd[18] == 1'b0,
-            "T74 TGT>2 inject silently ignored (no wrap fault, no REG_PROT)");
+        chk(rd[5:2] == 4'b0000 && rd[6] == 1'b0,
+            "T74 REGSEL>3 inject silently ignored (no wrap fault, no REG_PROT)");
 
         mb_rd_i(8'hFF, A_ID, rd);
         chk(rd == 32'h0, "T75 high-instance decode returns 0");
@@ -771,14 +782,14 @@ module tb_reset_checker;
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
 
-        // regfile local-sticky duplicate (lst heal-to-SET, all three lanes)
+        // regfile local-sticky duplicate (lst heal-to-SET, both lanes)
         force dut.u_reset_checker_regfile.r_mb.lst_qn = dut.u_reset_checker_regfile.r_mb.lst_q;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[18:16] == 3'b111, "T83 REGPAR sticky duplicate heals to SET");
+        chk(rd[6] == 1'b1 && rd[0] == 1'b1, "T83 REGPAR sticky duplicate heals to SET");
         release dut.u_reset_checker_regfile.r_mb.lst_qn;
         repeat (1) @(posedge mbus_clk);
-        mb_wr(A_REGPAR, 32'h0007_0000);
+        mb_wr(A_REGPAR, 32'h0000_0041);        // W1C REG_PROT + selftest latch
         repeat (2) @(posedge mbus_clk);
 
         //---------------------------------------------------------------------
@@ -834,39 +845,39 @@ module tb_reset_checker;
         mb_wr(A_EV, 32'h0000_0007);
         repeat (1) @(posedge mbus_clk);
 
-        // u_evimg duplicate rail -> REGPAR[5]
+        // u_evimg duplicate rail -> STA_PAR[3] (PERR1)
         force dut.u_reset_checker_regfile.u_evimg.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);        // heal lands on posedge 1
         release dut.u_reset_checker_regfile.u_evimg.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[5] == 1'b1, "T90 evimg dup heal sets REGPAR[5]");
-        mb_wr(A_REGPAR, 32'h0000_0020);
+        chk(rd[3] == 1'b1, "T90 evimg dup heal sets STA_PAR[3]");
+        mb_wr(A_REGPAR, 32'h0000_0008);
         mb_rd(A_REGPAR, rd);
-        chk(rd[5] == 1'b0, "T91 evimg dup W1C clear (no rewrite)");
+        chk(rd[3] == 1'b0, "T91 evimg dup W1C clear (no rewrite)");
 
-        // u_statimg duplicate rail -> REGPAR[6]
+        // u_statimg duplicate rail -> STA_PAR[4] (PERR2)
         force dut.u_reset_checker_regfile.u_statimg.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);
         release dut.u_reset_checker_regfile.u_statimg.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[6] == 1'b1, "T92 statimg dup heal sets REGPAR[6]");
-        mb_wr(A_REGPAR, 32'h0000_0040);
+        chk(rd[4] == 1'b1, "T92 statimg dup heal sets STA_PAR[4]");
+        mb_wr(A_REGPAR, 32'h0000_0010);
         mb_rd(A_REGPAR, rd);
-        chk(rd[6] == 1'b0, "T93 statimg dup W1C clear (no rewrite)");
+        chk(rd[4] == 1'b0, "T93 statimg dup W1C clear (no rewrite)");
 
-        // u_ctrl duplicate rail -> REGPAR[4] (config-hold wrap, but the dup
-        // heal corrupts no parity: W1C alone restores, no CTRL rewrite)
+        // u_ctrl duplicate rail -> STA_PAR[2] (PERR0; config-hold wrap, but
+        // the dup heal corrupts no parity: W1C alone restores, no rewrite)
         force dut.u_reset_checker_regfile.u_ctrl.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk);
         release dut.u_reset_checker_regfile.u_ctrl.r.flt_q_n;
         repeat (1) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
-        chk(rd[4] == 1'b1, "T94 ctrl dup heal sets REGPAR[4]");
-        mb_wr(A_REGPAR, 32'h0000_0010);
+        chk(rd[2] == 1'b1, "T94 ctrl dup heal sets STA_PAR[2]");
+        mb_wr(A_REGPAR, 32'h0000_0004);
         mb_rd(A_REGPAR, rd);
-        chk(rd[4] == 1'b0, "T95 ctrl dup W1C clear (no rewrite)");
+        chk(rd[2] == 1'b0, "T95 ctrl dup W1C clear (no rewrite)");
         repeat (2) @(posedge mbus_clk);
 
         //---------------------------------------------------------------------
@@ -911,13 +922,13 @@ module tb_reset_checker;
         mb_rd(A_CTRL, rd);
         chk(rd[3:0] == 4'b0001, "T101 illegal MODE 0x3 rejected, storage unchanged");
         mb_rd(A_REGPAR, rd);
-        chk(rd[18] == 1'b1, "T102 illegal MODE latches REG_PROT");
-        mb_wr(A_REGPAR, 32'h0004_0000);        // W1C bit18
+        chk(rd[6] == 1'b1, "T102 illegal MODE latches REG_PROT");
+        mb_wr(A_REGPAR, 32'h0000_0040);        // W1C bit6
 
         mb_wr(A_CTRL, KEY | 32'h0000_000F);    // another illegal code
         mb_rd(A_CTRL, rd);
         chk(rd[3:0] == 4'b0001, "T103 illegal MODE 0xF rejected");
-        mb_wr(A_REGPAR, 32'h0004_0000);
+        mb_wr(A_REGPAR, 32'h0000_0040);
 
         mb_wr(A_CTRL, KEY | 32'h0000_0004);    // OFF accepted
         mb_rd(A_CTRL, rd);

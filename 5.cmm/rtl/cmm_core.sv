@@ -175,16 +175,16 @@ module cmm_core #(
     logic [N_DUT-1:0] sq_s2;
     logic [N_DUT-1:0] sq_d;
     sync_2dff #(.WIDTH(N_DUT)) u_sq_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (dut_sq   ),
-        .q    (sq_s2    )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (dut_sq   ),
+        .q   (sq_s2    )
     );
     sync_dff #(.WIDTH(N_DUT)) u_sq_dly (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (sq_s2    ),
-        .q    (sq_d     )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (sq_s2    ),
+        .q   (sq_d     )
     );
     logic [N_DUT-1:0] edge_det;
     assign edge_det = sq_s2 & ~sq_d;
@@ -195,10 +195,10 @@ module cmm_core #(
     //=========================================================================
     logic [N_DUT-1:0] pd_s2;
     sync_2dff #(.WIDTH(N_DUT)) u_pd_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (psc_dup  ),
-        .q    (pd_s2    )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (psc_dup  ),
+        .q   (pd_s2    )
     );
 
     //=========================================================================

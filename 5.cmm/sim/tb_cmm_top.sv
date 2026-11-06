@@ -11,7 +11,7 @@
 //   ch4      1MHz PSC=0 -> 6..7 edges/window   (window [4,9] set at boot)
 //
 // Phases: boot/ID/reset values -> normal run -> DEAD -> FAIL_FREQ -> FORCE
-// -> key/RO protection -> threshold self-test -> REGPAR injection (image,
+// -> key/RO protection -> threshold self-test -> STA_PAR injection (image,
 // config, command, no-source) -> CFG_HANG (+WR_DROPPED + escape) ->
 // REF_STALE -> inj_cnt/cmp/psc -> ref-domain shadow injection -> EN nibble
 // protection -> disable gating -> REFSEL switch.
@@ -46,10 +46,10 @@ module tb_cmm_top;
     localparam logic [7:0] A_FUSRC0  = 8'h20;
     localparam logic [7:0] A_FUSRC1  = 8'h24;
     localparam logic [7:0] A_FORCE   = 8'h28;
-    localparam logic [7:0] A_REGPAR  = 8'h2C;
-    localparam logic [7:0] A_REGST   = 8'h30;
-    localparam logic [7:0] A_DBG0    = 8'h34;
-    localparam logic [7:0] A_DBG1    = 8'h38;
+    localparam logic [7:0] A_DBG0    = 8'h2C;
+    localparam logic [7:0] A_DBG1    = 8'h30;
+    localparam logic [7:0] A_STAPAR  = 8'h34;   // 倒数第3 (house standard)
+    localparam logic [7:0] A_REGST   = 8'h38;   // 倒数第2, key 1010
     localparam logic [7:0] A_CH0_LO  = 8'h40;   // +12 per ch: LO/HI/DEAD
 
     localparam logic [31:0] KEY = 32'h5000_0000;   // WKEY in [31:28]
@@ -109,40 +109,40 @@ module tb_cmm_top;
     // DUT
     //=========================================================================
     cmm_top #(
-        .N_DUT         (N_DUT        ),
-        .N_WIN         (N_WIN        ),
-        .WIN_LO_RST    (WIN_LO_RST   ),
-        .WIN_HI_RST    (WIN_HI_RST   ),
-        .NDEAD_RST     (NDEAD_RST    ),
-        .N_DEB         (2'd3         ),
-        .WKEY          (4'h5         ),
-        .DUT_PSC       (20'h05333    ),   // ch4=0 ch3=5 ch2..0=3
-        .HANG_TO       (HANG_TO      ),
-        .WIN_ALIVE_MAX (WIN_ALIVE_MAX),
-        .IDX           (0            )
+        .N_DUT        (N_DUT        ),
+        .N_WIN        (N_WIN        ),
+        .WIN_LO_RST   (WIN_LO_RST   ),
+        .WIN_HI_RST   (WIN_HI_RST   ),
+        .NDEAD_RST    (NDEAD_RST    ),
+        .N_DEB        (2'd3         ),
+        .WKEY         (4'h5         ),
+        .DUT_PSC      (20'h05333    ),  // ch4=0 ch3=5 ch2..0=3
+        .HANG_TO      (HANG_TO      ),
+        .WIN_ALIVE_MAX(WIN_ALIVE_MAX),
+        .IDX          (0            )
     ) dut (
-        .refclk0         (refclk0        ),
-        .refclk1         (refclk1        ),
-        .rst_n           (rst_n          ),
-        .clk_dut         (clk_dut        ),
-        .mbus_clk        (mbus_clk       ),
-        .mbus_rstn       (mbus_rstn      ),
-        .mbus_ce         (mbus_ce        ),
-        .mbus_wr         (mbus_wr        ),
-        .mbus_addr       (mbus_addr      ),
-        .mbus_wdata      (mbus_wdata     ),
-        .mbus_par        (mbus_par       ),
-        .mbus_rdata      (mbus_rdata     ),
-        .nerr_n          (nerr_n         ),
-        .cmm_err         (cmm_err        ),
-        .cmm_err_n       (cmm_err_n      ),
-        .cmm_fu          (cmm_fu         ),
-        .cmm_fu_n        (cmm_fu_n       ),
-        .reg_par_fault   (reg_par_fault  ),
-        .reg_par_fault_n (reg_par_fault_n),
-        .cfg_hang        (cfg_hang       ),
-        .cfg_hang_n      (cfg_hang_n     ),
-        .cmm_active      (cmm_active     )
+        .refclk0        (refclk0        ),
+        .refclk1        (refclk1        ),
+        .rst_n          (rst_n          ),
+        .clk_dut        (clk_dut        ),
+        .mbus_clk       (mbus_clk       ),
+        .mbus_rstn      (mbus_rstn      ),
+        .mbus_ce        (mbus_ce        ),
+        .mbus_wr        (mbus_wr        ),
+        .mbus_addr      (mbus_addr      ),
+        .mbus_wdata     (mbus_wdata     ),
+        .mbus_par       (mbus_par       ),
+        .mbus_rdata     (mbus_rdata     ),
+        .nerr_n         (nerr_n         ),
+        .cmm_err        (cmm_err        ),
+        .cmm_err_n      (cmm_err_n      ),
+        .cmm_fu         (cmm_fu         ),
+        .cmm_fu_n       (cmm_fu_n       ),
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n),
+        .cfg_hang       (cfg_hang       ),
+        .cfg_hang_n     (cfg_hang_n     ),
+        .cmm_active     (cmm_active     )
     );
 
     //=========================================================================
@@ -323,15 +323,15 @@ module tb_cmm_top;
     end
 
     // 20k.7 mbus-domain reg_wrap duplicate self-heal: force flt_q_n low
-    // -> dup_err -> flt heals to SET -> REGPAR[4+g] -> W1C
+    // -> dup_err -> flt heals to SET -> STA_PAR[2+g] -> W1C
     `define WRAP_DUP(inst, grp) \
     begin \
         force dut.u_cmm_regfile.inst.r.flt_q_n = 1'b0; \
         repeat (2) @(posedge mbus_clk); \
         release dut.u_cmm_regfile.inst.r.flt_q_n; \
-        mb_rd(A_REGPAR, rd); \
-        chk(rd[grp] == 1'b1, $sformatf("COVk: regwrap dup self-heal -> REGPAR[%0d]", grp)); \
-        mb_wr(A_REGPAR, 32'h1 << grp); \
+        mb_rd(A_STAPAR, rd); \
+        chk(rd[grp] == 1'b1, $sformatf("COVk: regwrap dup self-heal -> STA_PAR[%0d]", grp)); \
+        mb_wr(A_STAPAR, 32'h1 << grp); \
     end
 
     // 20k.5(iii) EN codeword 2-bit ambiguity: force channel k's enable
@@ -564,58 +564,58 @@ module tb_cmm_top;
         chk(rd == 32'h0, "THRESHOLD self-test cleared");
 
         // ------------------------------------------------------------------
-        // PHASE 7: REGPAR injection - image group (self-restoring)
+        // PHASE 7: STA_PAR injection - image group (self-restoring)
         // ------------------------------------------------------------------
-        mb_wr_sync(A_REGST, KEY | 32'h107);            // selftest group 7 (ERRSTAT img)
+        mb_wr_sync(A_REGST, 32'h071A);                 // selftest group 7 (ERRSTAT img)
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[11] == 1'b1, "REGPAR: image group 7 PERR bit (4+7=11)");
-        chk(reg_par_fault == 1'b1 && reg_par_fault_n == 1'b0, "REGPAR: rail active");
-        mb_wr(A_REGPAR, 32'h800);                      // W1C bit11 (local, no fwd)
+        mb_rd(A_STAPAR, rd);
+        chk(rd[9] == 1'b1, "STA_PAR: image group 7 PERR bit (2+7=9)");
+        chk(reg_par_fault == 1'b1 && reg_par_fault_n == 1'b0, "STA_PAR: rail active");
+        mb_wr(A_STAPAR, 32'h200);                      // W1C bit9 (local, no fwd)
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[11] == 1'b0 && rd[0] == 1'b0, "REGPAR image group self-restored + W1C");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[9] == 1'b0 && rd[0] == 1'b0, "STA_PAR image group self-restored + W1C");
 
         // ------------------------------------------------------------------
-        // PHASE 8: REGPAR injection - config group (rewrite-to-restore)
+        // PHASE 8: STA_PAR injection - config group (rewrite-to-restore)
         // ------------------------------------------------------------------
-        mb_wr_sync(A_REGST, KEY | 32'h104);            // selftest group 4 (CLO)
+        mb_wr_sync(A_REGST, 32'h041A);                 // selftest group 4 (CLO)
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[8] == 1'b1, "REGPAR: config group 4 PERR bit (4+4=8)");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[6] == 1'b1, "STA_PAR: config group 4 PERR bit (2+4=6)");
         mb_wr_sync(A_CH0_LO, KEY | 32'd14);            // rewrite -> parity restored
-        mb_wr(A_REGPAR, 32'h100);                      // W1C bit8
+        mb_wr(A_STAPAR, 32'h40);                       // W1C bit6
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[8] == 1'b0 && rd[0] == 1'b0, "REGPAR config group restored by rewrite");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[6] == 1'b0 && rd[0] == 1'b0, "STA_PAR config group restored by rewrite");
 
         // ------------------------------------------------------------------
         // PHASE 9: bad command parity -> write blocked + PERR_CMD
         // ------------------------------------------------------------------
         mb_wr_badpar(A_FORCE, KEY | 32'h1);            // attempt force ch0, bad par
         #1000;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[16] == 1'b1, "PERR_CMD latched on bad command parity");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[14] == 1'b1, "PERR_CMD latched on bad command parity");
         chk(reg_par_fault == 1'b1, "PERR_CMD raises reg_par_fault");
         mb_rd(A_FORCE, rd);
         chk(rd == KEY, "bad-parity write blocked (FORCE unchanged)");
-        mb_wr(A_REGPAR, 32'h1_0000);                   // W1C bit16
+        mb_wr(A_STAPAR, 32'h4000);                     // W1C bit14 (= cmd wrap rewrite)
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[16] == 1'b0 && rd[0] == 1'b0, "PERR_CMD cleared");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[14] == 1'b0 && rd[0] == 1'b0, "PERR_CMD cleared");
 
         // ------------------------------------------------------------------
         // PHASE 10: PAR_SELFTEST - "fault, no source" ESM service signature
         // ------------------------------------------------------------------
-        mb_wr_sync(A_REGST, KEY | 32'h200);            // bit9: no-group injection
+        mb_wr_sync(A_REGST, 32'h2A);                   // bit5: no-group injection
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[17] == 1'b1 && rd[15:4] == 12'h0, "PAR_SELFTEST: fault with no source");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[0] == 1'b1 && rd[14:2] == 13'h0, "PAR_SELFTEST: fault with no source");
         chk(reg_par_fault == 1'b1, "PAR_SELFTEST raises reg_par_fault");
-        mb_wr(A_REGPAR, 32'h2_0000);                   // W1C bit17
+        mb_wr(A_STAPAR, 32'h1);                        // W1C bit0 (selftest latch only)
         #500;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[17] == 1'b0 && rd[0] == 1'b0, "PAR_SELFTEST cleared");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[0] == 1'b0 && rd[1] == 1'b1, "PAR_SELFTEST cleared");
 
         // ------------------------------------------------------------------
         // PHASE 11: CFG_HANG (force_hang masks ack) + WR_DROPPED + escape
@@ -737,7 +737,7 @@ module tb_cmm_top;
         // ------------------------------------------------------------------
         // PHASE 16: ref-domain config shadow injection (REGSEL=16+ch)
         // ------------------------------------------------------------------
-        mb_wr_sync(A_REGST, KEY | 32'h111);            // sel=17 -> ch1 shadow wrap
+        mb_wr_sync(A_REGST, 32'h111A);                 // sel=17 -> ch1 shadow wrap
         #2000;
         mb_rd(A_FUSRC0, rd);
         chk(rd[6] == 1'b1, "CFG shadow: FUSRC0 ch1 cfgpar bit (4i+2=6)");
@@ -826,12 +826,12 @@ module tb_cmm_top;
         end
 
         // 20b: REGST selftest sweep, mbus wrapper groups 0..10
-        //   (inject parity flip -> PERR[4+g] -> restore rewrite -> W1C)
+        //   (inject parity flip -> PERR[2+g] -> restore rewrite -> W1C)
         for (k = 0; k <= 10; k = k + 1) begin
-            mb_wr_sync(A_REGST, KEY | 32'h100 | k[4:0]);
+            mb_wr_sync(A_REGST, (k[7:0] << 8) | 32'h1A);
             #800;
-            mb_rd(A_REGPAR, rd);
-            chk(rd[4+k] == 1'b1, $sformatf("COVb: REGST group %0d PERR", k));
+            mb_rd(A_STAPAR, rd);
+            chk(rd[2+k] == 1'b1, $sformatf("COVb: REGST group %0d PERR", k));
             case (k)    // restore flipped parity by rewriting the register
                 0:       mb_wr_sync(A_ENLO,  32'hFFFF_FFFF);
                 1:       mb_wr_sync(A_ENHI,  32'h0);
@@ -843,17 +843,17 @@ module tb_cmm_top;
                 default: ;                             // 7..10 self-resync
             endcase
             #800;
-            mb_wr(A_REGPAR, 32'h10 << k);              // W1C bit (4+k)
+            mb_wr(A_STAPAR, 32'h4 << k);               // W1C bit (2+k)
             #800;
-            mb_rd(A_REGPAR, rd);
-            chk(rd[4+k] == 1'b0, $sformatf("COVb: group %0d restored+W1C", k));
+            mb_rd(A_STAPAR, rd);
+            chk(rd[2+k] == 1'b0, $sformatf("COVb: group %0d restored+W1C", k));
         end
         chk(reg_par_fault == 1'b0, "COVb: reg_par_fault rail clean after sweep");
 
         // 20c: ref-domain shadow wrap selftest ch0/2/3/4 (ch1 done in P16)
         for (k = 0; k < N_DUT; k = k + 1) begin
             if (k == 1) continue;
-            mb_wr_sync(A_REGST, KEY | 32'h100 | (5'd16 + k[4:0]));
+            mb_wr_sync(A_REGST, ((5'd16 + k[4:0]) << 8) | 32'h1A);
             #2000;
             mb_rd(A_FUSRC0, rd);
             chk(rd[4*k+2] == 1'b1, $sformatf("COVc: shadow selftest ch%0d", k));
@@ -1252,12 +1252,12 @@ module tb_cmm_top;
         // SRCSTAT/FUSRC1 forwarded writes + REGST variants + bad key
         mb_wr_sync(A_SRCSTAT, 32'h0);                       // forwarded W1C
         mb_wr_sync(A_FUSRC1, 32'h0);                        // forwarded W1C
-        mb_wr_sync(A_REGST, KEY | 32'd16);                  // bit8=0 variant
-        mb_wr_sync(A_REGST, KEY | 32'h100 | 32'd5);         // sel<16: CHI selftest
-        mb_rd(A_REGPAR, rd);
-        chk(rd[9] == 1'b1, "COVk: CHI selftest (sel=5) -> PERR5");
+        mb_wr_sync(A_REGST, 32'h100A);                      // [4]=0 variant (sel=16)
+        mb_wr_sync(A_REGST, 32'h051A);                      // sel<16: CHI selftest
+        mb_rd(A_STAPAR, rd);
+        chk(rd[7] == 1'b1, "COVk: CHI selftest (sel=5) -> PERR5");
         mb_wr_sync(A_CH0_LO + 8'd4, KEY | 32'd26);          // rewrite restores par
-        mb_wr(A_REGPAR, 32'h200);                           // W1C group5
+        mb_wr(A_STAPAR, 32'h80);                            // W1C group5 (bit 2+5)
         mb_wr(A_REGST, 32'h100);                            // bad key -> REG_PROT
         mb_rd(A_FUSTAT, rd);
         chk(rd[6] == 1'b1, "COVk: REGST bad key -> REG_PROT");
@@ -1287,13 +1287,13 @@ module tb_cmm_top;
         repeat (2) @(posedge mbus_clk);
         // release KEEPS the forced value until the next procedural write
         // (VCS force/release semantics) -> restore the payload first, else
-        // inflight_ev stays stuck and keeps re-setting lst_q[6]
+        // inflight_ev stays stuck and keeps re-setting lst_q[5]
         force dut.u_cmm_regfile.r_mb.wdata_q = wdata_save;
         repeat (1) @(posedge mbus_clk);
         release dut.u_cmm_regfile.r_mb.wdata_q;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[15] == 1'b1, "COVk: inflight payload parity -> REGPAR[15]");
-        mb_wr(A_REGPAR, 32'h8000);                          // W1C bit15
+        mb_rd(A_STAPAR, rd);
+        chk(rd[13] == 1'b1, "COVk: inflight payload parity -> STA_PAR[13]");
+        mb_wr(A_STAPAR, 32'h2000);                          // W1C bit13
         mb_wr(A_FORCE, 32'h0);                              // bad key while busy
         mb_rd(A_FUSTAT, rd);
         chk(rd[6] == 1'b1, "COVk: bad-key FORCE while busy -> REG_PROT");
@@ -1316,7 +1316,7 @@ module tb_cmm_top;
         release dut.u_cmm_regfile.r_mb.hang_cnt_n;
         mb_rd(A_FUSTAT, rd);
         chk(rd[8] == 1'b1, "COVk: genuine hang timeout -> CFG_HANG");
-        mb_wr(A_REGPAR, 32'h3_8000);                        // W1C 15/16/17
+        mb_wr(A_STAPAR, 32'h6001);                        // W1C 13/14/0
         mb_wr(A_FORCE, KEY | 32'h0);                        // escape: force_hang=0
         repeat (10) @(posedge mbus_clk);
         mb_rd(A_GSTAT, rd);
@@ -1325,16 +1325,16 @@ module tb_cmm_top;
         // (in-window FUSTAT W1Cs are forwarded writes -> dropped), letting
         // every lst_dup bit toggle 0->1
         mb_wr_sync(A_FUSTAT, 32'h3E0);                      // clear lst 6..9
-        force dut.u_cmm_regfile.r_mb.lst_qn = 7'b000_0000;           // all-rail heal
+        force dut.u_cmm_regfile.r_mb.lst_qn = 6'b000_000;           // all-rail heal
         repeat (2) @(posedge mbus_clk);
         release dut.u_cmm_regfile.r_mb.lst_qn;
         mb_rd(A_FUSTAT, rd);
         if (rd[9:6] !== 4'hF)
-            $display("[%0t] DBG heal FUSTAT=%08h lst_q=%07b lst_qn=%07b",
+            $display("[%0t] DBG heal FUSTAT=%08h lst_q=%06b lst_qn=%06b",
                      $time, rd, dut.u_cmm_regfile.r_mb.lst_q, dut.u_cmm_regfile.r_mb.lst_qn);
         chk(rd[9:6] == 4'hF, "COVk: lst_qn corrupt -> heal all SET");
         mb_wr_sync(A_FUSTAT, 32'h3E0);                      // W1C lst 6..9
-        mb_wr(A_REGPAR, 32'h3_8000);                        // W1C lst 4..6 (REGPAR 17..15)
+        mb_wr(A_STAPAR, 32'h2001);                        // W1C lst 5..4 (STA_PAR 13/0)
         // idle payload-parity row (mismatch while !busy: no event)
         wdata_save = dut.u_cmm_regfile.r_mb.wdata_q;
         force dut.u_cmm_regfile.r_mb.wdata_q = 32'h1;
@@ -1342,29 +1342,29 @@ module tb_cmm_top;
         force dut.u_cmm_regfile.r_mb.wdata_q = wdata_save;           // restore before release
         repeat (1) @(posedge mbus_clk);
         release dut.u_cmm_regfile.r_mb.wdata_q;
-        mb_rd(A_REGPAR, rd);
-        chk(rd[15] == 1'b0, "COVk: idle payload mismatch -> no event");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[13] == 1'b0, "COVk: idle payload mismatch -> no event");
         recover(rd);
 
         // 20k.7: reg_wrap duplicate self-heal, every instance
-        `WRAP_DUP(u_enlo,      4)
-        `WRAP_DUP(u_enhi,      5)
-        `WRAP_DUP(u_gctrl,     6)
-        `WRAP_DUP(u_force,     7)
-        `WRAP_DUP(u_clo,       8)
-        `WRAP_DUP(u_chi,       9)
-        `WRAP_DUP(u_cdead,     10)
-        `WRAP_DUP(u_errimg,    11)
-        `WRAP_DUP(u_srcimg,    12)
-        `WRAP_DUP(u_fusrcimg,  13)
-        `WRAP_DUP(u_fustatimg, 14)
+        `WRAP_DUP(u_enlo,      2)
+        `WRAP_DUP(u_enhi,      3)
+        `WRAP_DUP(u_gctrl,     4)
+        `WRAP_DUP(u_force,     5)
+        `WRAP_DUP(u_clo,       6)
+        `WRAP_DUP(u_chi,       7)
+        `WRAP_DUP(u_cdead,     8)
+        `WRAP_DUP(u_errimg,    9)
+        `WRAP_DUP(u_srcimg,    10)
+        `WRAP_DUP(u_fusrcimg,  11)
+        `WRAP_DUP(u_fustatimg, 12)
         `CWRAP_DUP(0)
         `CWRAP_DUP(1)
         `CWRAP_DUP(2)
         `CWRAP_DUP(3)
         `CWRAP_DUP(4)
-        mb_rd(A_REGPAR, rd);
-        chk(rd[15:4] == 12'h0, "COVk: REGPAR clean after wrap sweep");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[14:2] == 13'h0, "COVk: STA_PAR clean after wrap sweep");
         mb_rd(A_FUSRC0, rd);
         chk(rd == 32'h0, "COVk: FUSRC0 clean after wrap sweep");
 
@@ -1469,14 +1469,14 @@ module tb_cmm_top;
             tmp_par = dut.u_cmm_regfile.r_mb.wpar_q;
             force dut.u_cmm_regfile.r_mb.wpar_q = ~tmp_par;
             repeat (3) @(posedge mbus_clk);
-            mb_rd(A_REGPAR, rd);
-            chk(rd[15] == 1'b0, "COVk: idle payload mismatch gated by busy");
+            mb_rd(A_STAPAR, rd);
+            chk(rd[13] == 1'b0, "COVk: idle payload mismatch gated by busy");
             force dut.u_cmm_regfile.r_mb.wpar_q = tmp_par;
             release dut.u_cmm_regfile.r_mb.wpar_q;
         end
         repeat (2) @(posedge mbus_clk);
-        mb_rd(A_REGPAR, rd);
-        chk(rd[15] == 1'b0, "COVk: REGPAR[15] clean after idle-mismatch");
+        mb_rd(A_STAPAR, rd);
+        chk(rd[13] == 1'b0, "COVk: STA_PAR[13] clean after idle-mismatch");
 
         // 20k.11: unmapped / misaligned read boundary sweep. Toggles
         // off[7], off[1:0], q_off[7:1], q_coff high bits, q_chidx[3]

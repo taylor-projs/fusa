@@ -174,15 +174,20 @@ rejected). All W1C writes cross to `clk_ref` through the CDC handshake.
 | 0x20 | FUSRC0 | W1C | | ch0..7 nibbles {psc, cfgpar, cmp, cnt} |
 | 0x24 | FUSRC1 | W1C | | ch8..15 |
 | 0x28 | FORCE | RW | ✓ | [N_DUT-1:0] per-ch verdict force · [16] force_hang · [17] force_stale · [18] inj_psc · [19] inj_cmp · [20] inj_cnt (inj targets channel DBGSEL) |
-| 0x2C | REGPAR | W1C | | [0] reg_par_fault · [1] _n · [3:2] rsvd · [14:4] PERR group 0..10 · [15] PERR11 in-flight · [16] PERR_CMD · [17] PAR_SELFTEST |
-| 0x30 | REGST | WO | ✓ | [8]+[4:0]≤10: inject mbus wrap group · [8]+[4:0]=16+i: inject ref-domain shadow of ch i · [9]: no-source injection (ESM service signature) |
-| 0x34 | DBG0 | RO | | {4b0, noedge, 4b0, shadow} of channel DBGSEL |
-| 0x38 | DBG1 | RO | | {win_cnt[15:0], 4b0, edgecnt} of channel DBGSEL |
+| 0x2C | DBG0 | RO | | {4b0, noedge, 4b0, shadow} of channel DBGSEL |
+| 0x30 | DBG1 | RO | | {win_cnt[15:0], 4b0, edgecnt} of channel DBGSEL |
+| 0x34 | STA_PAR | W1C | | [0] PAR_FAULT (W1C 清自测锁存) · [1] _n · [14:2] PERR group 0..12 (bit = 2+组号) · [14] PERR12 CMD |
+| 0x38 | CFG_REGST | WO | ✓ | key[3:0]=1010 · [4] REG_SELFTEST + REGSEL[12:8] (0..12; 11 无注错目标) · [5] PAR_SELFTEST 无源注错 · REGSEL 16+i: ref-domain shadow of ch i |
 | 0x40+12i | CHi_WIN_LO / +4 WIN_HI / +8 NDEAD | RW | ✓ | 12-bit fields per channel |
 
-REGPAR groups (bit 4+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE · 4 CLO ·
-5 CHI · 6 CDEAD · 7 ERRSTAT image · 8 SRCSTAT image · 9 FUSRC image ·
-10 FUSTAT image · 15 in-flight payload.
+寄存器地图位置 (house standard): STA_PAR 倒数第 3、CFG_REGST 倒数第 2
+(固定段内; 变长通道数组区 0x40+ 不参与倒数, ID 留 0x00)。CFG_REGST 用
+house key `wdata[3:0]=4'b1010` (非 WKEY 空间), 错 key = REG_PROT。
+
+STA_PAR PERR groups (bit 2+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE ·
+4 CLO · 5 CHI · 6 CDEAD · 7 ERRSTAT image · 8 SRCSTAT image · 9 FUSRC
+image · 10 FUSTAT image · 11 in-flight payload (latch lane, W1C bit13,
+无注错目标) · 12 CMD (W=1 wrap: 命令在途奇偶粘滞体, W1C bit14 即重写).
 
 ## 6. CDC and liveness
 

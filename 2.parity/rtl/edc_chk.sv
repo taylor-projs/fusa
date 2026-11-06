@@ -138,28 +138,28 @@ module edc_chk #(
 
    // GEN: tap 输入切片, o_edc = 新算; CHK: tap 已寄存切片, o_err = 比对
    edc_site #(
-      .DW   (2   ),
-      .MODE (MODE)
+      .DW  (2   ),
+      .MODE(MODE)
    ) u_b_attri (
-      .i_payload   (MODE == 0 ? b_attri_dat : r.b_attri_q ),
-      .i_edc       (MODE == 0 ? b_at_edc_i  : r.b_at_edc_q),
-      .o_edc       (b_at_edc_w          ),
-      .i_inj_pos   (i_inj_pos[0*64 +: 64]),
-      .i_inj_en    (i_inj_en[0]         ),
-      .i_inj_force (i_inj_force[0]      ),
-      .o_err       (b_at_err            )
+      .i_payload  (MODE == 0 ? b_attri_dat : r.b_attri_q ),
+      .i_edc      (MODE == 0 ? b_at_edc_i  : r.b_at_edc_q),
+      .o_edc      (b_at_edc_w                            ),
+      .i_inj_pos  (i_inj_pos[0*64 +: 64]                 ),
+      .i_inj_en   (i_inj_en[0]                           ),
+      .i_inj_force(i_inj_force[0]                        ),
+      .o_err      (b_at_err                              )
    );
    edc_site #(
-      .DW   (IDW ),
-      .MODE (MODE)
+      .DW  (IDW ),
+      .MODE(MODE)
    ) u_b_id (
-      .i_payload   (MODE == 0 ? b_id_dat    : r.b_id_q    ),
-      .i_edc       (MODE == 0 ? b_id_edc_i  : r.b_id_edc_q),
-      .o_edc       (b_id_edc_w          ),
-      .i_inj_pos   (i_inj_pos[1*64 +: 64]),
-      .i_inj_en    (i_inj_en[1]         ),
-      .i_inj_force (i_inj_force[1]      ),
-      .o_err       (b_id_err            )
+      .i_payload  (MODE == 0 ? b_id_dat    : r.b_id_q    ),
+      .i_edc      (MODE == 0 ? b_id_edc_i  : r.b_id_edc_q),
+      .o_edc      (b_id_edc_w                            ),
+      .i_inj_pos  (i_inj_pos[1*64 +: 64]                 ),
+      .i_inj_en   (i_inj_en[1]                           ),
+      .i_inj_force(i_inj_force[1]                        ),
+      .o_err      (b_id_err                              )
    );
 
    // vld 门控在父级 (GEN 模式引擎 o_err 恒 0)
@@ -201,40 +201,40 @@ module edc_chk #(
    assign s_axi_ruser = {r.rdat_edc_q, r.rattr_edc_q, r.rid_edc_q};
 
    edc_site #(
-      .DW   (64  ),
-      .MODE (MODE)
+      .DW  (64  ),
+      .MODE(MODE)
    ) u_r_data (
-      .i_payload   (MODE == 0 ? r_data_dat  : r.rdat_q    ),
-      .i_edc       (MODE == 0 ? r_rd_edc_i  : r.rdat_edc_q),
-      .o_edc       (r_rd_edc_w          ),
-      .i_inj_pos   (i_inj_pos[2*64 +: 64]),
-      .i_inj_en    (i_inj_en[2]         ),
-      .i_inj_force (i_inj_force[2]      ),
-      .o_err       (r_rd_err            )
+      .i_payload  (MODE == 0 ? r_data_dat  : r.rdat_q    ),
+      .i_edc      (MODE == 0 ? r_rd_edc_i  : r.rdat_edc_q),
+      .o_edc      (r_rd_edc_w                            ),
+      .i_inj_pos  (i_inj_pos[2*64 +: 64]                 ),
+      .i_inj_en   (i_inj_en[2]                           ),
+      .i_inj_force(i_inj_force[2]                        ),
+      .o_err      (r_rd_err                              )
    );
    edc_site #(
-      .DW   (3   ),
-      .MODE (MODE)
+      .DW  (3   ),
+      .MODE(MODE)
    ) u_r_attri (
-      .i_payload   (MODE == 0 ? r_attri_dat : r.rattr_q    ),
-      .i_edc       (MODE == 0 ? r_at_edc_i  : r.rattr_edc_q),
-      .o_edc       (r_at_edc_w          ),
-      .i_inj_pos   (i_inj_pos[3*64 +: 64]),
-      .i_inj_en    (i_inj_en[3]         ),
-      .i_inj_force (i_inj_force[3]      ),
-      .o_err       (r_at_err            )
+      .i_payload  (MODE == 0 ? r_attri_dat : r.rattr_q    ),
+      .i_edc      (MODE == 0 ? r_at_edc_i  : r.rattr_edc_q),
+      .o_edc      (r_at_edc_w                             ),
+      .i_inj_pos  (i_inj_pos[3*64 +: 64]                  ),
+      .i_inj_en   (i_inj_en[3]                            ),
+      .i_inj_force(i_inj_force[3]                         ),
+      .o_err      (r_at_err                               )
    );
    edc_site #(
-      .DW   (IDW ),
-      .MODE (MODE)
+      .DW  (IDW ),
+      .MODE(MODE)
    ) u_r_id (
-      .i_payload   (MODE == 0 ? r_id_dat    : r.rid_q    ),
-      .i_edc       (MODE == 0 ? r_id_edc_i  : r.rid_edc_q),
-      .o_edc       (r_id_edc_w          ),
-      .i_inj_pos   (i_inj_pos[4*64 +: 64]),
-      .i_inj_en    (i_inj_en[4]         ),
-      .i_inj_force (i_inj_force[4]      ),
-      .o_err       (r_id_err            )
+      .i_payload  (MODE == 0 ? r_id_dat    : r.rid_q    ),
+      .i_edc      (MODE == 0 ? r_id_edc_i  : r.rid_edc_q),
+      .o_edc      (r_id_edc_w                           ),
+      .i_inj_pos  (i_inj_pos[4*64 +: 64]                ),
+      .i_inj_en   (i_inj_en[4]                          ),
+      .i_inj_force(i_inj_force[4]                       ),
+      .o_err      (r_id_err                             )
    );
 
    assign o_site_err[2] = r_rd_err & r.r_vld;

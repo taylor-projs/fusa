@@ -23,8 +23,8 @@ run_a() {
     rm -f a.vvp
     iverilog -g2012 -DIVERILOG -o a.vvp -s tb_hang_prot_a_wrap \
         $D/hang_prot_wskid.sv $D/hang_prot_recover.sv $D/hang_prot_core.sv \
-        ../../common_modules/reg_wrap.sv $D/hang_prot_regfile.sv $D/hang_prot_gen_wrap.sv \
-        $D/hang_prot_mcu2main_mon.sv \
+        ../../common_modules/reg_wrap.sv $D/hang_prot_regfile.sv $D/hang_prot_top.sv \
+        $D/hang_prot_mcu2main_top.sv \
         tb_hang_prot_a_wrap.sv
     if [ ! -s a.vvp ]; then echo "TB_A: compile FAILED (no a.vvp)"; return 1; fi
     vvp a.vvp > a.log 2>&1
@@ -34,7 +34,7 @@ run_b() {
     rm -f b.vvp
     iverilog -g2012 -DIVERILOG -o b.vvp -s tb_hang_prot_b_wrap \
         $D/hang_prot_wskid.sv $D/hang_prot_bdry_in.sv $D/hang_prot_core.sv \
-        ../../common_modules/reg_wrap.sv $D/hang_prot_regfile.sv $D/hang_prot_main2mcu_mon.sv \
+        ../../common_modules/reg_wrap.sv $D/hang_prot_regfile.sv $D/hang_prot_main2mcu_top.sv \
         tb_hang_prot_b_wrap.sv
     if [ ! -s b.vvp ]; then echo "TB_B: compile FAILED (no b.vvp)"; return 1; fi
     vvp b.vvp > b.log 2>&1

@@ -68,6 +68,19 @@ fi
 
 ./simv $CMRUN -l vcs_run.log
 
+# self-check: the TB verdict (and any SVA/stop) is NOT in the exit code -
+# scan the run log (memory rule: ERR: + failed at + TB PASS line)
+if grep -qE "CHECKS FAILED|UVM_ERROR|Error:|\*Error|fatal" vcs_run.log; then
+    echo "RUN FAILED - see vcs_run.log"
+    grep -E "FAIL|CHECKS FAILED" vcs_run.log | head -20
+    exit 1
+fi
+if ! grep -q "CHECKS PASSED" vcs_run.log; then
+    echo "RUN FAILED - no PASS line in vcs_run.log (crash?)"
+    exit 1
+fi
+echo "RUN OK: $(grep -o 'ALL [0-9]* CHECKS PASSED' vcs_run.log)"
+
 if [ "$COV" = "1" ]; then
     urg -dir simv.vdb -report urg_report -format both -log urg.log
     echo "=== coverage summary (urg_report/dashboard.txt) ==="

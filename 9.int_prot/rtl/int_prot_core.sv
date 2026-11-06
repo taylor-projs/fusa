@@ -126,24 +126,24 @@ module int_prot_core #(
    logic [NUM_INT-1:0] chk_sync_q;
 
    sync_2dff #(
-      .WIDTH  (       NUM_INT),
+      .WIDTH  (NUM_INT        ),
       .RST_VAL({NUM_INT{1'b0}}),
-      .STAGES (   SYNC_STAGE)
+      .STAGES (SYNC_STAGE     )
    ) u_spi_sync (
-      .clk (       clk),
-      .rstn(      rstn),
-      .d   (   spi_in),
+      .clk (clk       ),
+      .rstn(rstn      ),
+      .d   (spi_in    ),
       .q   (spi_sync_q)
    );
 
    sync_2dff #(
-      .WIDTH  (       NUM_INT),
+      .WIDTH  (NUM_INT        ),
       .RST_VAL({NUM_INT{1'b1}}),
-      .STAGES (   SYNC_STAGE)
+      .STAGES (SYNC_STAGE     )
    ) u_chk_sync (
-      .clk (       clk),
-      .rstn(      rstn),
-      .d   (   chk_in),
+      .clk (clk       ),
+      .rstn(rstn      ),
+      .d   (chk_in    ),
       .q   (chk_sync_q)
    );
 

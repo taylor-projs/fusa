@@ -102,32 +102,32 @@ module reset_checker_top #(
     // regfile: config in, W1C pulses out, status images in
     //=========================================================================
     reset_checker_regfile #(
-        .WKEY     (WKEY    ),
-        .CTRL_RST (4'b0001 ),      // MODE=NORMAL (EN=1 FI=0, fail-safe on)
-        .IDX      (IDX     )
+        .WKEY    (WKEY   ),
+        .CTRL_RST(4'b0001),  // MODE=NORMAL (EN=1 FI=0, fail-safe on)
+        .IDX     (IDX    )
     ) u_reset_checker_regfile (
-        .mbus_clk        (mbus_clk       ),
-        .mbus_rstn       (mbus_rstn      ),
-        .ce              (ce             ),
-        .wr              (wr             ),
-        .addr            (addr           ),
-        .wdata           (wdata          ),
-        .par             (par            ),
-        .rdata           (rdata          ),
-        .cfg_en          (cfg_en         ),
-        .cfg_fi          (cfg_fi         ),
-        .err_w1c         (err_w1c        ),
-        .ev_da_w1c       (ev_da_w1c      ),
-        .ev_db_w1c       (ev_db_w1c      ),
-        .sts_ev_da       (sts_ev_da      ),
-        .sts_ev_db       (sts_ev_db      ),
-        .sts_ev_err      (sts_ev_err     ),
-        .sts_viol        (sts_viol       ),
-        .sts_div_a       (sts_div_a      ),
-        .sts_div_b       (sts_div_b      ),
-        .sts_cnt_full    (sts_cnt_full   ),
-        .sts_cnt         (sts_cnt        ),
-        .rchk_par_fault  (rchk_par_fault ),
+        .mbus_clk        (mbus_clk        ),
+        .mbus_rstn       (mbus_rstn       ),
+        .ce              (ce              ),
+        .wr              (wr              ),
+        .addr            (addr            ),
+        .wdata           (wdata           ),
+        .par             (par             ),
+        .rdata           (rdata           ),
+        .cfg_en          (cfg_en          ),
+        .cfg_fi          (cfg_fi          ),
+        .err_w1c         (err_w1c         ),
+        .ev_da_w1c       (ev_da_w1c       ),
+        .ev_db_w1c       (ev_db_w1c       ),
+        .sts_ev_da       (sts_ev_da       ),
+        .sts_ev_db       (sts_ev_db       ),
+        .sts_ev_err      (sts_ev_err      ),
+        .sts_viol        (sts_viol        ),
+        .sts_div_a       (sts_div_a       ),
+        .sts_div_b       (sts_div_b       ),
+        .sts_cnt_full    (sts_cnt_full    ),
+        .sts_cnt         (sts_cnt         ),
+        .rchk_par_fault  (rchk_par_fault  ),
         .rchk_par_fault_n(rchk_par_fault_n)
     );
 

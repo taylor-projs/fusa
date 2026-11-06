@@ -645,49 +645,49 @@ module hang_prot_bdry_in #(
     logic wsk_fault_n;
 
     hang_prot_wskid #(
-        .AXI_ADDR_W  (AXI_ADDR_W),
-        .AXI_DATA_W  (AXI_DATA_W),
-        .STRB_W      (STRB_W),
-        .WSKID_BEATS (WSKID_BEATS)
+        .AXI_ADDR_W (AXI_ADDR_W ),
+        .AXI_DATA_W (AXI_DATA_W ),
+        .STRB_W     (STRB_W     ),
+        .WSKID_BEATS(WSKID_BEATS)
     ) u_hang_prot_wskid (
-        .clk         (clk),
-        .rst         (rst),
-        .mode        (r.blk_r),
-        .force_clear (quiesce_exit),
-        .aw_allow    (wr_otd_mon < OTD_MAX),
+        .clk        (clk                 ),
+        .rst        (rst                 ),
+        .mode       (r.blk_r             ),
+        .force_clear(quiesce_exit        ),
+        .aw_allow   (wr_otd_mon < OTD_MAX),
 
-        .m_awvalid   (m_awvalid),
-        .m_awready   (m_awready),
-        .m_awaddr    (m_awaddr),
-        .m_awlen     (m_awlen),
-        .m_awsize    (m_awsize),
-        .m_awburst   (m_awburst),
-        .m_wvalid    (m_wvalid),
-        .m_wready    (m_wready),
-        .m_wdata     (m_wdata),
-        .m_wstrb     (m_wstrb),
-        .m_wlast     (m_wlast),
+        .m_awvalid(m_awvalid),
+        .m_awready(m_awready),
+        .m_awaddr (m_awaddr ),
+        .m_awlen  (m_awlen  ),
+        .m_awsize (m_awsize ),
+        .m_awburst(m_awburst),
+        .m_wvalid (m_wvalid ),
+        .m_wready (m_wready ),
+        .m_wdata  (m_wdata  ),
+        .m_wstrb  (m_wstrb  ),
+        .m_wlast  (m_wlast  ),
 
-        .s_awvalid   (s_awvalid),
-        .s_awready   (s_awready),
-        .s_awaddr    (s_awaddr),
-        .s_awlen     (s_awlen),
-        .s_awsize    (s_awsize),
-        .s_awburst   (s_awburst),
-        .s_wvalid    (s_wvalid),
-        .s_wlast     (s_wlast),
-        .s_wdata     (s_wdata),
-        .s_wstrb     (s_wstrb),
-        .s_wready    (s_wready),
+        .s_awvalid(s_awvalid),
+        .s_awready(s_awready),
+        .s_awaddr (s_awaddr ),
+        .s_awlen  (s_awlen  ),
+        .s_awsize (s_awsize ),
+        .s_awburst(s_awburst),
+        .s_wvalid (s_wvalid ),
+        .s_wlast  (s_wlast  ),
+        .s_wdata  (s_wdata  ),
+        .s_wstrb  (s_wstrb  ),
+        .s_wready (s_wready ),
 
-        .all_free    (wsk_all_free),
+        .all_free    (wsk_all_free  ),
         .any_replay  (),
         .quiesce_ok  (wsk_quiesce_ok),
-        .sk_onehot   (sk_onehot),
-        .sk_integrity(sk_integrity),   // live entry condition (FuSa v3.1)
-        .sk_fault    (wsk_fault),
-        .sk_fault_n  (wsk_fault_n),
-        .slot_st     (wsk_slot_st)
+        .sk_onehot   (sk_onehot     ),
+        .sk_integrity(sk_integrity  ),  // live entry condition (FuSa v3.1)
+        .sk_fault    (wsk_fault     ),
+        .sk_fault_n  (wsk_fault_n   ),
+        .slot_st     (wsk_slot_st   )
     );
 
     //--------------------------------------------------------------------------

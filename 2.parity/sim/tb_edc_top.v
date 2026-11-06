@@ -426,103 +426,215 @@ module tb_edc_top;
    endtask
 
    edc_top #(.NM(NM), .NS(NS), .IDW(IDW)) dut (
-      .apb_clk(apb_clk), .apb_rstn(apb_rstn),
-      .apb_paddr(apb_paddr), .apb_psel(apb_psel), .apb_penable(apb_penable),
-      .apb_pwrite(apb_pwrite), .apb_pwdata(apb_pwdata),
-      .apb_prdata(apb_prdata), .apb_pready(apb_pready),
+      .apb_clk    (apb_clk    ),
+      .apb_rstn   (apb_rstn   ),
+      .apb_paddr  (apb_paddr  ),
+      .apb_psel   (apb_psel   ),
+      .apb_penable(apb_penable),
+      .apb_pwrite (apb_pwrite ),
+      .apb_pwdata (apb_pwdata ),
+      .apb_prdata (apb_prdata ),
+      .apb_pready (apb_pready ),
       .apb_pslverr(apb_pslverr),
 
-      .mbus_clk(mbus_clk), .mbus_rstn(mbus_rstn),
-      .m_clk(m_clk), .m_rstn(m_rstn), .s_clk(s_clk), .s_rstn(s_rstn),
+      .mbus_clk (mbus_clk ),
+      .mbus_rstn(mbus_rstn),
+      .m_clk    (m_clk    ),
+      .m_rstn   (m_rstn   ),
+      .s_clk    (s_clk    ),
+      .s_rstn   (s_rstn   ),
 
       // master s 侧 (外部 master)
-      .sm_axi_awid(sm_awid), .sm_axi_awaddr(sm_awaddr), .sm_axi_awlen(sm_awlen),
-      .sm_axi_awsize(sm_awsize), .sm_axi_awburst(sm_awburst),
-      .sm_axi_awlock(sm_awlock), .sm_axi_awcache(sm_awcache),
-      .sm_axi_awprot(sm_awprot), .sm_axi_awqos(sm_awqos),
-      .sm_axi_awregion(sm_awregion), .sm_axi_awuser(sm_awuser),
-      .sm_axi_awvalid(sm_awvalid), .sm_axi_awready(sm_awready),
-      .sm_axi_wdata(sm_wdata), .sm_axi_wstrb(sm_wstrb), .sm_axi_wlast(sm_wlast),
-      .sm_axi_wuser(sm_wuser), .sm_axi_wvalid(sm_wvalid), .sm_axi_wready(sm_wready),
-      .sm_axi_arid(sm_arid), .sm_axi_araddr(sm_araddr), .sm_axi_arlen(sm_arlen),
-      .sm_axi_arsize(sm_arsize), .sm_axi_arburst(sm_arburst),
-      .sm_axi_arlock(sm_arlock), .sm_axi_arcache(sm_arcache),
-      .sm_axi_arprot(sm_arprot), .sm_axi_arqos(sm_arqos),
-      .sm_axi_arregion(sm_arregion), .sm_axi_aruser(sm_aruser),
-      .sm_axi_arvalid(sm_arvalid), .sm_axi_arready(sm_arready),
-      .sm_axi_bid(sm_bid), .sm_axi_bresp(sm_bresp), .sm_axi_buser(sm_buser),
-      .sm_axi_bvalid(sm_bvalid), .sm_axi_bready(sm_bready),
-      .sm_axi_rid(sm_rid), .sm_axi_rdata(sm_rdata), .sm_axi_rresp(sm_rresp),
-      .sm_axi_rlast(sm_rlast), .sm_axi_ruser(sm_ruser),
-      .sm_axi_rvalid(sm_rvalid), .sm_axi_rready(sm_rready),
+      .sm_axi_awid    (sm_awid    ),
+      .sm_axi_awaddr  (sm_awaddr  ),
+      .sm_axi_awlen   (sm_awlen   ),
+      .sm_axi_awsize  (sm_awsize  ),
+      .sm_axi_awburst (sm_awburst ),
+      .sm_axi_awlock  (sm_awlock  ),
+      .sm_axi_awcache (sm_awcache ),
+      .sm_axi_awprot  (sm_awprot  ),
+      .sm_axi_awqos   (sm_awqos   ),
+      .sm_axi_awregion(sm_awregion),
+      .sm_axi_awuser  (sm_awuser  ),
+      .sm_axi_awvalid (sm_awvalid ),
+      .sm_axi_awready (sm_awready ),
+      .sm_axi_wdata   (sm_wdata   ),
+      .sm_axi_wstrb   (sm_wstrb   ),
+      .sm_axi_wlast   (sm_wlast   ),
+      .sm_axi_wuser   (sm_wuser   ),
+      .sm_axi_wvalid  (sm_wvalid  ),
+      .sm_axi_wready  (sm_wready  ),
+      .sm_axi_arid    (sm_arid    ),
+      .sm_axi_araddr  (sm_araddr  ),
+      .sm_axi_arlen   (sm_arlen   ),
+      .sm_axi_arsize  (sm_arsize  ),
+      .sm_axi_arburst (sm_arburst ),
+      .sm_axi_arlock  (sm_arlock  ),
+      .sm_axi_arcache (sm_arcache ),
+      .sm_axi_arprot  (sm_arprot  ),
+      .sm_axi_arqos   (sm_arqos   ),
+      .sm_axi_arregion(sm_arregion),
+      .sm_axi_aruser  (sm_aruser  ),
+      .sm_axi_arvalid (sm_arvalid ),
+      .sm_axi_arready (sm_arready ),
+      .sm_axi_bid     (sm_bid     ),
+      .sm_axi_bresp   (sm_bresp   ),
+      .sm_axi_buser   (sm_buser   ),
+      .sm_axi_bvalid  (sm_bvalid  ),
+      .sm_axi_bready  (sm_bready  ),
+      .sm_axi_rid     (sm_rid     ),
+      .sm_axi_rdata   (sm_rdata   ),
+      .sm_axi_rresp   (sm_rresp   ),
+      .sm_axi_rlast   (sm_rlast   ),
+      .sm_axi_ruser   (sm_ruser   ),
+      .sm_axi_rvalid  (sm_rvalid  ),
+      .sm_axi_rready  (sm_rready  ),
 
       // master m 侧 (NIC 内部 -> fabric)
-      .mm_axi_awid(mm_awid), .mm_axi_awaddr(mm_awaddr), .mm_axi_awlen(mm_awlen),
-      .mm_axi_awsize(mm_awsize), .mm_axi_awburst(mm_awburst),
-      .mm_axi_awlock(mm_awlock), .mm_axi_awcache(mm_awcache),
-      .mm_axi_awprot(mm_awprot), .mm_axi_awqos(mm_awqos),
-      .mm_axi_awregion(mm_awregion), .mm_axi_awuser(mm_awuser),
-      .mm_axi_awvalid(mm_awvalid), .mm_axi_awready(mm_awready),
-      .mm_axi_wdata(mm_wdata), .mm_axi_wstrb(mm_wstrb), .mm_axi_wlast(mm_wlast),
-      .mm_axi_wuser(mm_wuser), .mm_axi_wvalid(mm_wvalid), .mm_axi_wready(mm_wready),
-      .mm_axi_arid(mm_arid), .mm_axi_araddr(mm_araddr), .mm_axi_arlen(mm_arlen),
-      .mm_axi_arsize(mm_arsize), .mm_axi_arburst(mm_arburst),
-      .mm_axi_arlock(mm_arlock), .mm_axi_arcache(mm_arcache),
-      .mm_axi_arprot(mm_arprot), .mm_axi_arqos(mm_arqos),
-      .mm_axi_arregion(mm_arregion), .mm_axi_aruser(mm_aruser),
-      .mm_axi_arvalid(mm_arvalid), .mm_axi_arready(mm_arready),
-      .mm_axi_bid(mm_bid), .mm_axi_bresp(mm_bresp), .mm_axi_buser(mm_buser),
-      .mm_axi_bvalid(mm_bvalid), .mm_axi_bready(mm_bready),
-      .mm_axi_rid(mm_rid), .mm_axi_rdata(mm_rdata), .mm_axi_rresp(mm_rresp),
-      .mm_axi_rlast(mm_rlast), .mm_axi_ruser(mm_ruser),
-      .mm_axi_rvalid(mm_rvalid), .mm_axi_rready(mm_rready),
+      .mm_axi_awid    (mm_awid    ),
+      .mm_axi_awaddr  (mm_awaddr  ),
+      .mm_axi_awlen   (mm_awlen   ),
+      .mm_axi_awsize  (mm_awsize  ),
+      .mm_axi_awburst (mm_awburst ),
+      .mm_axi_awlock  (mm_awlock  ),
+      .mm_axi_awcache (mm_awcache ),
+      .mm_axi_awprot  (mm_awprot  ),
+      .mm_axi_awqos   (mm_awqos   ),
+      .mm_axi_awregion(mm_awregion),
+      .mm_axi_awuser  (mm_awuser  ),
+      .mm_axi_awvalid (mm_awvalid ),
+      .mm_axi_awready (mm_awready ),
+      .mm_axi_wdata   (mm_wdata   ),
+      .mm_axi_wstrb   (mm_wstrb   ),
+      .mm_axi_wlast   (mm_wlast   ),
+      .mm_axi_wuser   (mm_wuser   ),
+      .mm_axi_wvalid  (mm_wvalid  ),
+      .mm_axi_wready  (mm_wready  ),
+      .mm_axi_arid    (mm_arid    ),
+      .mm_axi_araddr  (mm_araddr  ),
+      .mm_axi_arlen   (mm_arlen   ),
+      .mm_axi_arsize  (mm_arsize  ),
+      .mm_axi_arburst (mm_arburst ),
+      .mm_axi_arlock  (mm_arlock  ),
+      .mm_axi_arcache (mm_arcache ),
+      .mm_axi_arprot  (mm_arprot  ),
+      .mm_axi_arqos   (mm_arqos   ),
+      .mm_axi_arregion(mm_arregion),
+      .mm_axi_aruser  (mm_aruser  ),
+      .mm_axi_arvalid (mm_arvalid ),
+      .mm_axi_arready (mm_arready ),
+      .mm_axi_bid     (mm_bid     ),
+      .mm_axi_bresp   (mm_bresp   ),
+      .mm_axi_buser   (mm_buser   ),
+      .mm_axi_bvalid  (mm_bvalid  ),
+      .mm_axi_bready  (mm_bready  ),
+      .mm_axi_rid     (mm_rid     ),
+      .mm_axi_rdata   (mm_rdata   ),
+      .mm_axi_rresp   (mm_rresp   ),
+      .mm_axi_rlast   (mm_rlast   ),
+      .mm_axi_ruser   (mm_ruser   ),
+      .mm_axi_rvalid  (mm_rvalid  ),
+      .mm_axi_rready  (mm_rready  ),
 
       // slave s 侧 (NIC 内部 <- fabric)
-      .ss_axi_awid(ss_awid), .ss_axi_awaddr(ss_awaddr), .ss_axi_awlen(ss_awlen),
-      .ss_axi_awsize(ss_awsize), .ss_axi_awburst(ss_awburst),
-      .ss_axi_awlock(ss_awlock), .ss_axi_awcache(ss_awcache),
-      .ss_axi_awprot(ss_awprot), .ss_axi_awqos(ss_awqos),
-      .ss_axi_awregion(ss_awregion), .ss_axi_awuser(ss_awuser),
-      .ss_axi_awvalid(ss_awvalid), .ss_axi_awready(ss_awready),
-      .ss_axi_wdata(ss_wdata), .ss_axi_wstrb(ss_wstrb), .ss_axi_wlast(ss_wlast),
-      .ss_axi_wuser(ss_wuser_use), .ss_axi_wvalid(ss_wvalid), .ss_axi_wready(ss_wready),
-      .ss_axi_arid(ss_arid), .ss_axi_araddr(ss_araddr), .ss_axi_arlen(ss_arlen),
-      .ss_axi_arsize(ss_arsize), .ss_axi_arburst(ss_arburst),
-      .ss_axi_arlock(ss_arlock), .ss_axi_arcache(ss_arcache),
-      .ss_axi_arprot(ss_arprot), .ss_axi_arqos(ss_arqos),
-      .ss_axi_arregion(ss_arregion), .ss_axi_aruser(ss_aruser),
-      .ss_axi_arvalid(ss_arvalid), .ss_axi_arready(ss_arready),
-      .ss_axi_bid(ss_bid), .ss_axi_bresp(ss_bresp), .ss_axi_buser(ss_buser),
-      .ss_axi_bvalid(ss_bvalid), .ss_axi_bready(ss_bready),
-      .ss_axi_rid(ss_rid), .ss_axi_rdata(ss_rdata), .ss_axi_rresp(ss_rresp),
-      .ss_axi_rlast(ss_rlast), .ss_axi_ruser(ss_ruser),
-      .ss_axi_rvalid(ss_rvalid), .ss_axi_rready(ss_rready),
+      .ss_axi_awid    (ss_awid     ),
+      .ss_axi_awaddr  (ss_awaddr   ),
+      .ss_axi_awlen   (ss_awlen    ),
+      .ss_axi_awsize  (ss_awsize   ),
+      .ss_axi_awburst (ss_awburst  ),
+      .ss_axi_awlock  (ss_awlock   ),
+      .ss_axi_awcache (ss_awcache  ),
+      .ss_axi_awprot  (ss_awprot   ),
+      .ss_axi_awqos   (ss_awqos    ),
+      .ss_axi_awregion(ss_awregion ),
+      .ss_axi_awuser  (ss_awuser   ),
+      .ss_axi_awvalid (ss_awvalid  ),
+      .ss_axi_awready (ss_awready  ),
+      .ss_axi_wdata   (ss_wdata    ),
+      .ss_axi_wstrb   (ss_wstrb    ),
+      .ss_axi_wlast   (ss_wlast    ),
+      .ss_axi_wuser   (ss_wuser_use),
+      .ss_axi_wvalid  (ss_wvalid   ),
+      .ss_axi_wready  (ss_wready   ),
+      .ss_axi_arid    (ss_arid     ),
+      .ss_axi_araddr  (ss_araddr   ),
+      .ss_axi_arlen   (ss_arlen    ),
+      .ss_axi_arsize  (ss_arsize   ),
+      .ss_axi_arburst (ss_arburst  ),
+      .ss_axi_arlock  (ss_arlock   ),
+      .ss_axi_arcache (ss_arcache  ),
+      .ss_axi_arprot  (ss_arprot   ),
+      .ss_axi_arqos   (ss_arqos    ),
+      .ss_axi_arregion(ss_arregion ),
+      .ss_axi_aruser  (ss_aruser   ),
+      .ss_axi_arvalid (ss_arvalid  ),
+      .ss_axi_arready (ss_arready  ),
+      .ss_axi_bid     (ss_bid      ),
+      .ss_axi_bresp   (ss_bresp    ),
+      .ss_axi_buser   (ss_buser    ),
+      .ss_axi_bvalid  (ss_bvalid   ),
+      .ss_axi_bready  (ss_bready   ),
+      .ss_axi_rid     (ss_rid      ),
+      .ss_axi_rdata   (ss_rdata    ),
+      .ss_axi_rresp   (ss_rresp    ),
+      .ss_axi_rlast   (ss_rlast    ),
+      .ss_axi_ruser   (ss_ruser    ),
+      .ss_axi_rvalid  (ss_rvalid   ),
+      .ss_axi_rready  (ss_rready   ),
 
       // slave m 侧 (外部 slave)
-      .ms_axi_awid(ms_awid), .ms_axi_awaddr(ms_awaddr), .ms_axi_awlen(ms_awlen),
-      .ms_axi_awsize(ms_awsize), .ms_axi_awburst(ms_awburst),
-      .ms_axi_awlock(ms_awlock), .ms_axi_awcache(ms_awcache),
-      .ms_axi_awprot(ms_awprot), .ms_axi_awqos(ms_awqos),
-      .ms_axi_awregion(ms_awregion), .ms_axi_awuser(ms_awuser),
-      .ms_axi_awvalid(ms_awvalid), .ms_axi_awready(ms_awready),
-      .ms_axi_wdata(ms_wdata), .ms_axi_wstrb(ms_wstrb), .ms_axi_wlast(ms_wlast),
-      .ms_axi_wuser(ms_wuser), .ms_axi_wvalid(ms_wvalid), .ms_axi_wready(ms_wready),
-      .ms_axi_arid(ms_arid), .ms_axi_araddr(ms_araddr), .ms_axi_arlen(ms_arlen),
-      .ms_axi_arsize(ms_arsize), .ms_axi_arburst(ms_arburst),
-      .ms_axi_arlock(ms_arlock), .ms_axi_arcache(ms_arcache),
-      .ms_axi_arprot(ms_arprot), .ms_axi_arqos(ms_arqos),
-      .ms_axi_arregion(ms_arregion), .ms_axi_aruser(ms_aruser),
-      .ms_axi_arvalid(ms_arvalid), .ms_axi_arready(ms_arready),
-      .ms_axi_bid(ms_bid), .ms_axi_bresp(ms_bresp), .ms_axi_buser(ms_buser),
-      .ms_axi_bvalid(ms_bvalid), .ms_axi_bready(ms_bready),
-      .ms_axi_rid(ms_rid), .ms_axi_rdata(ms_rdata), .ms_axi_rresp(ms_rresp),
-      .ms_axi_rlast(ms_rlast), .ms_axi_ruser(ms_ruser),
-      .ms_axi_rvalid(ms_rvalid), .ms_axi_rready(ms_rready),
+      .ms_axi_awid    (ms_awid    ),
+      .ms_axi_awaddr  (ms_awaddr  ),
+      .ms_axi_awlen   (ms_awlen   ),
+      .ms_axi_awsize  (ms_awsize  ),
+      .ms_axi_awburst (ms_awburst ),
+      .ms_axi_awlock  (ms_awlock  ),
+      .ms_axi_awcache (ms_awcache ),
+      .ms_axi_awprot  (ms_awprot  ),
+      .ms_axi_awqos   (ms_awqos   ),
+      .ms_axi_awregion(ms_awregion),
+      .ms_axi_awuser  (ms_awuser  ),
+      .ms_axi_awvalid (ms_awvalid ),
+      .ms_axi_awready (ms_awready ),
+      .ms_axi_wdata   (ms_wdata   ),
+      .ms_axi_wstrb   (ms_wstrb   ),
+      .ms_axi_wlast   (ms_wlast   ),
+      .ms_axi_wuser   (ms_wuser   ),
+      .ms_axi_wvalid  (ms_wvalid  ),
+      .ms_axi_wready  (ms_wready  ),
+      .ms_axi_arid    (ms_arid    ),
+      .ms_axi_araddr  (ms_araddr  ),
+      .ms_axi_arlen   (ms_arlen   ),
+      .ms_axi_arsize  (ms_arsize  ),
+      .ms_axi_arburst (ms_arburst ),
+      .ms_axi_arlock  (ms_arlock  ),
+      .ms_axi_arcache (ms_arcache ),
+      .ms_axi_arprot  (ms_arprot  ),
+      .ms_axi_arqos   (ms_arqos   ),
+      .ms_axi_arregion(ms_arregion),
+      .ms_axi_aruser  (ms_aruser  ),
+      .ms_axi_arvalid (ms_arvalid ),
+      .ms_axi_arready (ms_arready ),
+      .ms_axi_bid     (ms_bid     ),
+      .ms_axi_bresp   (ms_bresp   ),
+      .ms_axi_buser   (ms_buser   ),
+      .ms_axi_bvalid  (ms_bvalid  ),
+      .ms_axi_bready  (ms_bready  ),
+      .ms_axi_rid     (ms_rid     ),
+      .ms_axi_rdata   (ms_rdata   ),
+      .ms_axi_rresp   (ms_rresp   ),
+      .ms_axi_rlast   (ms_rlast   ),
+      .ms_axi_ruser   (ms_ruser   ),
+      .ms_axi_rvalid  (ms_rvalid  ),
+      .ms_axi_rready  (ms_rready  ),
 
-      .esm_err(o_esm_err), .esm_err_n(o_esm_err_n),
-      .esm_fault(o_esm_fault), .esm_fault_n(o_esm_fault_n),
-      .reg_par_fault(o_reg_par_fault), .reg_par_fault_n(o_reg_par_fault_n),
-      .irq(o_irq)
+      .esm_err        (o_esm_err        ),
+      .esm_err_n      (o_esm_err_n      ),
+      .esm_fault      (o_esm_fault      ),
+      .esm_fault_n    (o_esm_fault_n    ),
+      .reg_par_fault  (o_reg_par_fault  ),
+      .reg_par_fault_n(o_reg_par_fault_n),
+      .irq            (o_irq            )
    );
 
    // =========================================================================
@@ -534,10 +646,16 @@ module tb_edc_top;
                         mm_awregion, mm_awuser};
    wire [93:0] aw_pl_fab;
    tb_relay_cdc #(.PW(94)) u_fab_aw (
-      .a_clk(m_clk), .a_rstn(m_rstn),
-      .a_valid(mm_awvalid), .a_pl(aw_pl), .a_ready(mm_awready),
-      .b_clk(s_clk), .b_rstn(s_rstn),
-      .b_valid(ss_awvalid), .b_pl(aw_pl_fab), .b_ready(ss_awready)
+      .a_clk  (m_clk     ),
+      .a_rstn (m_rstn    ),
+      .a_valid(mm_awvalid),
+      .a_pl   (aw_pl     ),
+      .a_ready(mm_awready),
+      .b_clk  (s_clk     ),
+      .b_rstn (s_rstn    ),
+      .b_valid(ss_awvalid),
+      .b_pl   (aw_pl_fab ),
+      .b_ready(ss_awready)
    );
    assign {ss_awid, ss_awaddr, ss_awlen, ss_awsize, ss_awburst,
            ss_awlock, ss_awcache, ss_awprot, ss_awqos,
@@ -546,10 +664,16 @@ module tb_edc_top;
    wire [84:0] w_pl = {mm_wdata, mm_wstrb, mm_wlast, mm_wuser};
    wire [84:0] w_pl_fab;
    tb_relay_cdc #(.PW(85)) u_fab_w (
-      .a_clk(m_clk), .a_rstn(m_rstn),
-      .a_valid(mm_wvalid), .a_pl(w_pl), .a_ready(mm_wready),
-      .b_clk(s_clk), .b_rstn(s_rstn),
-      .b_valid(ss_wvalid), .b_pl(w_pl_fab), .b_ready(ss_wready)
+      .a_clk  (m_clk    ),
+      .a_rstn (m_rstn   ),
+      .a_valid(mm_wvalid),
+      .a_pl   (w_pl     ),
+      .a_ready(mm_wready),
+      .b_clk  (s_clk    ),
+      .b_rstn (s_rstn   ),
+      .b_valid(ss_wvalid),
+      .b_pl   (w_pl_fab ),
+      .b_ready(ss_wready)
    );
    wire [63:0] fab_wdata;
    assign {fab_wdata, ss_wstrb, ss_wlast, fab_wuser} = w_pl_fab;
@@ -560,10 +684,16 @@ module tb_edc_top;
                         mm_arregion, mm_aruser};
    wire [93:0] ar_pl_fab;
    tb_relay_cdc #(.PW(94)) u_fab_ar (
-      .a_clk(m_clk), .a_rstn(m_rstn),
-      .a_valid(mm_arvalid), .a_pl(ar_pl), .a_ready(mm_arready),
-      .b_clk(s_clk), .b_rstn(s_rstn),
-      .b_valid(ss_arvalid), .b_pl(ar_pl_fab), .b_ready(ss_arready)
+      .a_clk  (m_clk     ),
+      .a_rstn (m_rstn    ),
+      .a_valid(mm_arvalid),
+      .a_pl   (ar_pl     ),
+      .a_ready(mm_arready),
+      .b_clk  (s_clk     ),
+      .b_rstn (s_rstn    ),
+      .b_valid(ss_arvalid),
+      .b_pl   (ar_pl_fab ),
+      .b_ready(ss_arready)
    );
    assign {ss_arid, ss_araddr, ss_arlen, ss_arsize, ss_arburst,
            ss_arlock, ss_arcache, ss_arprot, ss_arqos,
@@ -573,20 +703,32 @@ module tb_edc_top;
    wire [11:0] b_pl = {ss_bid, ss_bresp, ss_buser};
    wire [11:0] b_pl_fab;
    tb_relay_cdc #(.PW(12)) u_fab_b (
-      .a_clk(s_clk), .a_rstn(s_rstn),
-      .a_valid(ss_bvalid), .a_pl(b_pl), .a_ready(ss_bready),
-      .b_clk(m_clk), .b_rstn(m_rstn),
-      .b_valid(mm_bvalid), .b_pl(b_pl_fab), .b_ready(mm_bready)
+      .a_clk  (s_clk    ),
+      .a_rstn (s_rstn   ),
+      .a_valid(ss_bvalid),
+      .a_pl   (b_pl     ),
+      .a_ready(ss_bready),
+      .b_clk  (m_clk    ),
+      .b_rstn (m_rstn   ),
+      .b_valid(mm_bvalid),
+      .b_pl   (b_pl_fab ),
+      .b_ready(mm_bready)
    );
    assign {mm_bid, mm_bresp, mm_buser} = b_pl_fab;
 
    wire [83:0] r_pl = {ss_rid, ss_rdata, ss_rresp, ss_rlast, ss_ruser};
    wire [83:0] r_pl_fab;
    tb_relay_cdc #(.PW(84)) u_fab_r (
-      .a_clk(s_clk), .a_rstn(s_rstn),
-      .a_valid(ss_rvalid), .a_pl(r_pl), .a_ready(ss_rready),
-      .b_clk(m_clk), .b_rstn(m_rstn),
-      .b_valid(mm_rvalid), .b_pl(r_pl_fab), .b_ready(mm_rready)
+      .a_clk  (s_clk    ),
+      .a_rstn (s_rstn   ),
+      .a_valid(ss_rvalid),
+      .a_pl   (r_pl     ),
+      .a_ready(ss_rready),
+      .b_clk  (m_clk    ),
+      .b_rstn (m_rstn   ),
+      .b_valid(mm_rvalid),
+      .b_pl   (r_pl_fab ),
+      .b_ready(mm_rready)
    );
    wire [63:0]    fab_rdata;
    wire [RUW-1:0] fab_ruser;
@@ -748,23 +890,23 @@ module tb_edc_top;
       apb_wr(16'h01B0, 32'h0000_001A);   // key=0xA, REG_SELFTEST, regsel=0
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
-      check(rdata === 32'h0000_0011, "T11: PERR0 (mbus cfg_en) injected");
+      check(rdata === 32'h0000_0005, "T11: PERR0 (mbus cfg_en) injected");
       check(o_reg_par_fault === 1'b1, "T11: reg_par_fault rail high");
       check(o_reg_par_fault_n === 1'b0, "T11: reg_par_fault_n rail low");
       apb_wr(16'h0100, 32'h0);           // 恢复: 重写寄存器恢复校验
-      apb_wr(16'h01AC, 32'h0000_0010);   // W1C bit4 = PERR0
+      apb_wr(16'h01AC, 32'h0000_0004);   // W1C bit2 = PERR0
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
       check(rdata === 32'h0000_0002, "T11: PERR0 restored + W1C");
 
       // b) PERR7: AXI 域 inj_en_q 影子, 注错经命令下发, W1C 跨域清除
-      apb_wr(16'h01B0, 32'h0000_0E1A);   // regsel=7 (inj_en_q 影子)
+      apb_wr(16'h01B0, 32'h0000_071A);   // regsel=7 (inj_en_q 影子)
       repeat (6) @(negedge s_clk);       // cmd CDC + 注错脉冲 + sticky
       repeat (2) @(negedge mbus_clk);    // PERR 2FF 回读
       apb_rd(16'h01AC, rdata);
-      check(rdata === 32'h0000_0801, "T11: PERR7 (AXI inj_en_q) injected");
+      check(rdata === 32'h0000_0201, "T11: PERR7 (AXI inj_en_q) injected");
       apb_wr(16'h0100, 32'h0);           // 恢复: 下一条命令重载影子 (校验恢复)
-      apb_wr(16'h01AC, 32'h0000_0800);   // W1C bit11 = PERR7 (经命令到 AXI)
+      apb_wr(16'h01AC, 32'h0000_0200);   // W1C bit9 = PERR7 (经命令到 AXI)
       repeat (6) @(negedge s_clk);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
@@ -796,10 +938,10 @@ module tb_edc_top;
       repeat (6) @(negedge s_clk);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
-      check(rdata === 32'h0002_0001, "T12: in-flight parity -> PERR13");
+      check(rdata === 32'h0000_8001, "T12: in-flight parity -> PERR13");
       check(o_reg_par_fault === 1'b1, "T12: reg_par_fault asserted");
       apb_wr(16'h0100, 32'h0);           // 恢复影子 (强制期间载入了错值)
-      apb_wr(16'h01AC, 32'h0002_0000);   // W1C bit17 = PERR13
+      apb_wr(16'h01AC, 32'h0000_8000);   // W1C bit15 = PERR13
       repeat (6) @(negedge s_clk);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
@@ -815,7 +957,7 @@ module tb_edc_top;
       release dut.u_apb2mbus.r_apb.paddr_q;
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
-      check(rdata[18] === 1'b1 && rdata[0] === 1'b1,
+      check(rdata[16] === 1'b1 && rdata[0] === 1'b1,
             "T13: addr in-flight -> PERR14 + PAR_FAULT");
       check(o_reg_par_fault === 1'b1 && o_reg_par_fault_n === 1'b0,
             "T13: reg_par_fault dual rail");
@@ -829,9 +971,9 @@ module tb_edc_top;
       apb_rd(16'h01FC, rdata);
       release dut.u_apb2mbus.r_apb.paddr_q;
       check(rdata === 32'h0, "T13: corrupted read gated (rdata 0, not inst0 ID)");
-      // W1C bit18 (广播损坏双实例置位, 逐实例清)
-      apb_wr(16'h01AC, 32'h0004_0000);
-      apb_wr(16'h00AC, 32'h0004_0000);
+      // W1C bit16 (广播损坏双实例置位, 逐实例清)
+      apb_wr(16'h01AC, 32'h0001_0000);
+      apb_wr(16'h00AC, 32'h0001_0000);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
       check(rdata === 32'h0000_0002, "T13: PERR14 W1C");
@@ -1564,8 +1706,8 @@ module tb_edc_top;
          for (inst = 0; inst < 2; inst = inst + 1) begin
             base = (inst == 0) ? 16'h0000 : 16'h0100;
             for (k = 0; k <= 12; k = k + 1) begin
-               perr_bit = 32'h1 << (4 + k);
-               apb_wr(base + 16'hB0, (k << 9) | 32'h1A); // key=0xA+SELFTEST
+               perr_bit = 32'h1 << (2 + k);
+               apb_wr(base + 16'hB0, (k << 8) | 32'h1A); // key=0xA+SELFTEST
                if (k >= 7) begin             // AXI 域: cmd CDC + sticky + 2FF
                   if (inst == 0) repeat (6) @(negedge m_clk);
                   else           repeat (6) @(negedge s_clk);
@@ -1629,10 +1771,10 @@ module tb_edc_top;
          repeat (6) @(negedge m_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
-         check(rdata === 32'h0002_0001, "T21: mport in-flight parity -> PERR13");
+         check(rdata === 32'h0000_8001, "T21: mport in-flight parity -> PERR13");
          check(o_reg_par_fault === 1'b1, "T21: mport reg_par_fault asserted");
          apb_wr(16'h0000, 32'h0);              // 恢复影子 (强制期间载入错值)
-         apb_wr(16'h00AC, 32'h0002_0000);      // W1C bit17 = PERR13
+         apb_wr(16'h00AC, 32'h0000_8000);      // W1C bit15 = PERR13
          repeat (6) @(negedge m_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
@@ -1684,8 +1826,8 @@ module tb_edc_top;
          repeat (6) @(negedge m_clk);     // AXI 域 pf 2FF + perr 回读
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
-         check(rdata === 32'h0007_FFF1, "T22: mport dup_err all 15 PERR set");
-         apb_wr(16'h00AC, 32'h0007_FFF1); // 全位 W1C (含 bit18/17:4/bit0)
+         check(rdata === 32'h0001_FFFD, "T22: mport dup_err all 15 PERR set");
+         apb_wr(16'h00AC, 32'h0001_FFFD); // 全位 W1C (含 bit16/16:2/bit0)
          repeat (6) @(negedge m_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
@@ -1729,8 +1871,8 @@ module tb_edc_top;
          repeat (6) @(negedge s_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h01AC, rdata);
-         check(rdata === 32'h0007_FFF1, "T22: sport dup_err all 15 PERR set");
-         apb_wr(16'h01AC, 32'h0007_FFF1);
+         check(rdata === 32'h0001_FFFD, "T22: sport dup_err all 15 PERR set");
+         apb_wr(16'h01AC, 32'h0001_FFFD);
          repeat (6) @(negedge s_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h01AC, rdata);

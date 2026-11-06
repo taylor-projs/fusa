@@ -183,12 +183,12 @@ module nuclei300_edc_chk_fault_ej #(
   assign edc_ej   = edc   ^ einj_pos[DW+PW-1:DW];
 
   nuclei300_edc_chk #(
-    .DW   (DW  ),
-    .EDCW (EDCW)
+    .DW  (DW  ),
+    .EDCW(EDCW)
   ) u_nuclei300_edc_chk (
-    .i_dat (i_dat_ej ),
-    .edc   (edc_ej   ),
-    .o_err (o_err_raw)
+    .i_dat(i_dat_ej ),
+    .edc  (edc_ej   ),
+    .o_err(o_err_raw)
   );
   assign o_err    = einj_force_err[128-DW-PW] | o_err_raw;
 endmodule 

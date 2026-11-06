@@ -220,16 +220,16 @@ module apb2mbus #(
    // 四个消费者, 造成同拍采样分歧. rdat 直采后无需再多级让路.
    // ------------------------------------------------------------------
    sync_2dff #(.WIDTH(1)) u_ack_sync (
-      .clk  (apb_clk       ),
-      .rstn (apb_rstn      ),
-      .d    (r_mb.ack_flag ),
-      .q    (ack_s2        )
+      .clk (apb_clk      ),
+      .rstn(apb_rstn     ),
+      .d   (r_mb.ack_flag),
+      .q   (ack_s2       )
    );
    sync_dff  #(.WIDTH(1)) u_ack_dly (
-      .clk  (apb_clk       ),
-      .rstn (apb_rstn      ),
-      .d    (ack_s2        ),
-      .q    (ack_s3        )
+      .clk (apb_clk ),
+      .rstn(apb_rstn),
+      .d   (ack_s2  ),
+      .q   (ack_s3  )
    );
 
    // =========================================================================
@@ -327,16 +327,16 @@ module apb2mbus #(
    // =========================================================================
    // 请求 toggle = sync_2dff (亚稳态吸收+解析) + sync_dff (边沿检测延迟级)
    sync_2dff #(.WIDTH(1)) u_req_sync (
-      .clk  (mbus_clk       ),
-      .rstn (mbus_rstn      ),
-      .d    (r_apb.req_flag ),
-      .q    (flag_s2        )
+      .clk (mbus_clk      ),
+      .rstn(mbus_rstn     ),
+      .d   (r_apb.req_flag),
+      .q   (flag_s2       )
    );
    sync_dff  #(.WIDTH(1)) u_req_dly (
-      .clk  (mbus_clk       ),
-      .rstn (mbus_rstn      ),
-      .d    (flag_s2        ),
-      .q    (flag_s3        )
+      .clk (mbus_clk ),
+      .rstn(mbus_rstn),
+      .d   (flag_s2  ),
+      .q   (flag_s3  )
    );
 
    // ------------------------------------------------------------------

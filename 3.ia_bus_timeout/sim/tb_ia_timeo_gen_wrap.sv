@@ -12,14 +12,17 @@
 //   P3  AXI read timeout: AR pending (req2accept), then R hang (req2resp)
 //   P4  AXI write timeout: AW hang, W hang, WLAST->B hang
 //   P5  status readback + W1C clear (with CPU-priority race)
-//   P6  self-tests: SELFTEST / FU_SELFTEST / PAR_SELFTEST / REG_SELFTEST
+//   P6  self-tests: SELFTEST / FU_SELFTEST (SCMCNTRL) + PAR_SELFTEST /
+//       REG_SELFTEST via CFG_REGST 0x28 (house key 1010, bit = 2+组号)
 //   P7  normal traffic: full read burst, full write burst, boundary-guard
 //   P8  to_clear during pending
 //   P9  mbus address sweep: unaligned / out-of-range / addr[15:9] alias /
-//       wrong instance decode (range_ok / inst_ok / align toggles)
+//       wrong instance decode (range_ok / inst_ok / align toggles) +
+//       CFG_REGST WO/bad-key no-op + ID readback at 0xFC
 //   P10 threshold + key + wdata sweep (all thr bits, wrong keys, garbage
 //       data patterns -> wdata_q high bits, wpar)
-//   P11 REG_SELFTEST k=0..8 (all reg_wrap instances: par_err + flt + W1C)
+//   P11 REG_SELFTEST k=0..10 (all reg_wrap instances: par_err + flt + W1C;
+//       k=9 = inflight lane, documented no-op)
 //   P12 outstanding depth to OTD_MAX on rd/wr/dlv -> otd_sat (fu_src[9])
 //       + FUSTAT/FUSRC W1C, both masters
 //   P13 long counts: thr=0xFFFF, counters run through bit15 + wrap
@@ -27,7 +30,7 @@
 //   P14 SEU fault injection (force/release, posedge hold): ena code
 //       (1/2/3-flip), thr dup mismatch, per-master counter/otd/dlv/status
 //       dup mismatch, comparator cf windows, regfile wpar latch, par_lq
-//       dup, reg_wrap dup_err (all 11 instances)
+//       dup, reg_wrap dup_err (all 13 instances incl. u_w_cmd)
 //   P15 mid-sim reset pulse + re-readback (rst 0->1, mbus_rstn 1->0)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
@@ -75,44 +78,44 @@ module tb_ia_timeo_gen_wrap;
     // DUT
     //------------------------------------------------------------------------
     ia_bus_timeo_top #(
-        .NUM_M          (NUM_M),
-        .OTD_MAX        (8),
-        .REQ2ACCEPT_RST (16'd15),
-        .REQ2RESP_RST   (16'd255),
-        .IDX            (0)
+        .NUM_M         (NUM_M  ),
+        .OTD_MAX       (8      ),
+        .REQ2ACCEPT_RST(16'd15 ),
+        .REQ2RESP_RST  (16'd255),
+        .IDX           (0      )
     ) u_dut (
-        .mbus_clk      (mbus_clk),
-        .mbus_rstn     (mbus_rstn),
-        .mbus_ce       (mbus_ce),
-        .mbus_wr       (mbus_wr),
-        .mbus_addr     (mbus_addr),
-        .mbus_wdata    (mbus_wdata),
-        .mbus_par      (mbus_par),
-        .mbus_rdata    (mbus_rdata),
+        .mbus_clk  (mbus_clk  ),
+        .mbus_rstn (mbus_rstn ),
+        .mbus_ce   (mbus_ce   ),
+        .mbus_wr   (mbus_wr   ),
+        .mbus_addr (mbus_addr ),
+        .mbus_wdata(mbus_wdata),
+        .mbus_par  (mbus_par  ),
+        .mbus_rdata(mbus_rdata),
 
-        .ia_bus_aclk   (aclk),
-        .rst           (rst),
-        .scan_mode     (scan_mode),
+        .ia_bus_aclk(aclk     ),
+        .rst        (rst      ),
+        .scan_mode  (scan_mode),
 
-        .axi_arvalid   (axi_arvalid),
-        .axi_arready   (axi_arready),
-        .axi_rvalid    (axi_rvalid),
-        .axi_rready    (axi_rready),
-        .axi_rlast     (axi_rlast),
-        .axi_awvalid   (axi_awvalid),
-        .axi_awready   (axi_awready),
-        .axi_wvalid    (axi_wvalid),
-        .axi_wready    (axi_wready),
-        .axi_wlast     (axi_wlast),
-        .axi_bvalid    (axi_bvalid),
-        .axi_bready    (axi_bready),
+        .axi_arvalid(axi_arvalid),
+        .axi_arready(axi_arready),
+        .axi_rvalid (axi_rvalid ),
+        .axi_rready (axi_rready ),
+        .axi_rlast  (axi_rlast  ),
+        .axi_awvalid(axi_awvalid),
+        .axi_awready(axi_awready),
+        .axi_wvalid (axi_wvalid ),
+        .axi_wready (axi_wready ),
+        .axi_wlast  (axi_wlast  ),
+        .axi_bvalid (axi_bvalid ),
+        .axi_bready (axi_bready ),
 
-        .err_event     (err_event),
-        .err_event_n   (err_event_n),
-        .fu_fault      (fu_fault),
-        .fu_fault_n    (fu_fault_n),
-        .reg_par_fault (reg_par_fault),
-        .reg_par_fault_n (reg_par_fault_n)
+        .err_event      (err_event      ),
+        .err_event_n    (err_event_n    ),
+        .fu_fault       (fu_fault       ),
+        .fu_fault_n     (fu_fault_n     ),
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n)
     );
 
     //------------------------------------------------------------------------
@@ -450,7 +453,8 @@ module tb_ia_timeo_gen_wrap;
             u_dut.u_ia_bus_timeo_regfile.u_r_iastat.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_otd.dup_err ||
             u_dut.u_ia_bus_timeo_regfile.u_r_cntrl.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_thresh0.dup_err ||
             u_dut.u_ia_bus_timeo_regfile.u_r_thresh1.dup_err || u_dut.u_ia_bus_timeo_regfile.u_r_fustat.dup_err ||
-            u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.dup_err || u_dut.u_ia_bus_timeo_regfile.u_c_ena.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.dup_err || u_dut.u_ia_bus_timeo_regfile.u_w_cmd.dup_err ||
+            u_dut.u_ia_bus_timeo_regfile.u_c_ena.dup_err ||
             u_dut.u_ia_bus_timeo_regfile.u_c_thresh0.dup_err || u_dut.u_ia_bus_timeo_regfile.u_c_thresh1.dup_err)  fi_dup   = fi_dup   + 1;
     end
 
@@ -516,7 +520,11 @@ module tb_ia_timeo_gen_wrap;
         mb_rd(8'h18, rd_val); if (rd_val[15:0] !== 16'd255) begin $display("ERR: TH1 readback %h", rd_val); errors++; end
         mb_rd(8'h1C, rd_val); // SCMIAFUSTAT
         mb_rd(8'h20, rd_val); // SCMIAFUSRC
-        mb_rd(8'h24, rd_val); if (rd_val[0] !== 1'b0) begin $display("ERR: PAR_FAULT after reset"); errors++; end
+        // STA_PAR quiescent = 0x2 (house standard: [1] PAR_FAULT_N only)
+        mb_rd(8'h24, rd_val); if (rd_val !== 32'h2) begin $display("ERR: STA_PAR after reset %h (want 0x2)", rd_val); errors++; end
+        // ID at 0xFC (house standard 殿后): "IA" v1
+        mb_rd(8'hFC, rd_val); if (rd_val !== 32'h4941_0001) begin $display("ERR: ID readback %h", rd_val); errors++; end
+        else $display("ID@0xFC: OK (0x4941_0001)");
 
         // ---- P2: config writes ---------------------------------------------
         $display("\n--- P2: config ---");
@@ -541,14 +549,14 @@ module tb_ia_timeo_gen_wrap;
         if (rd_val2 !== rd_val) begin $display("ERR: bad-parity write took effect (%h != %h)", rd_val2, rd_val); errors++; end
         else $display("bad-par write: OK (blocked)");
         mb_rd(8'h24, rd_val2);
-        if (rd_val2[14] !== 1'b1) begin $display("ERR: bad-parity write did not set PERR_CMD"); errors++; end
+        if (rd_val2[12] !== 1'b1) begin $display("ERR: bad-parity write did not set PERR_CMD"); errors++; end
         else $display("PERR_CMD: OK (bad-parity write latched, PAR_FAULT=%b)", rd_val2[0]);
         mb_rd_badpar(8'h14, rd_val2);
         if (rd_val2 !== 32'h0) begin $display("ERR: bad-parity read not gated to 0 (%h)", rd_val2); errors++; end
         else $display("bad-par read : OK (rdata gated to 0)");
-        mb_wr_wait(8'h24, 32'h4000);         // W1C PERR_CMD
+        mb_wr_wait(8'h24, 32'h1000);         // W1C PERR_CMD (bit 12 = 2+组10)
         mb_rd(8'h24, rd_val2);
-        if (rd_val2[14] !== 1'b0) begin $display("ERR: PERR_CMD clear failed"); errors++; end
+        if (rd_val2[12] !== 1'b0) begin $display("ERR: PERR_CMD clear failed"); errors++; end
         // bad parity on a WRONG instance still latches PERR_CMD (checked at
         // every ce regardless of the instance decode)
         @(negedge mbus_clk);
@@ -556,9 +564,9 @@ module tb_ia_timeo_gen_wrap;
         mbus_par = ~(^({8'h01, 8'h14, 1'b1, 32'h1234_5678})); mbus_ce = 1'b1;
         @(negedge mbus_clk); mbus_ce = 1'b0; mbus_wr = 1'b0;
         mb_rd(8'h24, rd_val2);
-        if (rd_val2[14] !== 1'b1) begin $display("ERR: bad-parity (wrong inst) no PERR_CMD"); errors++; end
+        if (rd_val2[12] !== 1'b1) begin $display("ERR: bad-parity (wrong inst) no PERR_CMD"); errors++; end
         else $display("PERR_CMD: OK (wrong-instance bad parity latched)");
-        mb_wr_wait(8'h24, 32'h4000);         // clear again
+        mb_wr_wait(8'h24, 32'h1000);         // clear again
         // CDC-busy drop: back-to-back writes without a drain wait - the
         // second lands while the first is still crossing and is DROPPED
         mb_wr(8'h14, 32'hAAAA);              // accepted (handshake idle)
@@ -662,30 +670,30 @@ module tb_ia_timeo_gen_wrap;
         else $display("FU_SELFTEST: OK (fu_fault set)");
         mb_wr_wait(8'h1C, 32'h1);             // clear
         repeat (10) @(negedge mbus_clk);
-        mb_wr_wait(8'h10, 32'h0000_08A0);     // PAR_SELFTEST
+        mb_wr_wait(8'h28, 32'h0000_002A);     // PAR_SELFTEST (CFG_REGST key+bit5)
         repeat (10) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
         if (rd_val[0] !== 1'b1) begin $display("ERR: PAR_SELFTEST did not set PAR_FAULT"); errors++; end
         else $display("PAR_SELFTEST: OK (PAR_FAULT set, PERR=0)");
-        if (rd_val[14:4] !== '0) begin $display("ERR: PAR_SELFTEST set PERR bits"); errors++; end
+        if (rd_val[12:2] !== '0) begin $display("ERR: PAR_SELFTEST set PERR bits"); errors++; end
         mb_wr_wait(8'h24, 32'h1);             // clear latch only
         repeat (10) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val); if (rd_val[0] !== 1'b0) begin $display("ERR: PAR latch clear failed"); errors++; end
-        // REG_SELFTEST on image register r0 (k=0) and on shadow (k=5)
-        // REGSEL is SCMCNTRL[19:16]: k=0 -> 0x0010_00A0, k=5 -> 0x0015_00A0
-        mb_wr_wait(8'h10, 32'h0010_00A0);     // REGSEL=0
+        // REG_SELFTEST on image register r0 (k=0) and on shadow (k=5):
+        // CFG_REGST 0x28, key[3:0]=1010, [4]=REG_SELFTEST, REGSEL[11:8]
+        mb_wr_wait(8'h28, 32'h0000_001A);     // REGSEL=0
         repeat (10) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[4] !== 1'b1) begin $display("ERR: REG_SELFTEST k=0 no PERR0"); errors++; end
+        if (rd_val[2] !== 1'b1) begin $display("ERR: REG_SELFTEST k=0 no PERR0"); errors++; end
         else $display("REG_SELFTEST k=0: OK (PERR0 set)");
-        mb_wr_wait(8'h24, 32'h10);            // W1C PERR0
+        mb_wr_wait(8'h24, 32'h4);             // W1C PERR0 (bit 2 = 2+组0)
         repeat (10) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val); if (rd_val[0] !== 1'b0) begin $display("ERR: PERR0 clear failed"); errors++; end
-        mb_wr_wait(8'h10, 32'h0015_00A0);     // REGSEL=5 (shadow injection)
+        mb_wr_wait(8'h28, 32'h0000_051A);     // REGSEL=5 (shadow injection)
         repeat (10) @(negedge mbus_clk);
         mb_wr_wait(8'h14, 32'd15);            // rewrite TH0 to restore shadow parity
         repeat (10) @(negedge mbus_clk);       // aclk W1C needs the handshake
-        mb_wr_wait(8'h24, 32'h200);           // W1C PERR5 = wdata[9] (AFTER parity restored)
+        mb_wr_wait(8'h24, 32'h80);            // W1C PERR5 = bit 7 (AFTER parity restored)
         repeat (10) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val); if (rd_val[0] !== 1'b0) begin $display("ERR: PERR5 clear failed"); errors++; end
 
@@ -709,11 +717,29 @@ module tb_ia_timeo_gen_wrap;
         // unaligned (addr[1:0] != 00): writes silently ignored
         mb_raw_wr(16'h0001, 32'hDEAD_BEEF);
         mb_raw_wr(16'h0003, 32'hDEAD_BEEF);
-        // out of register range (wsel > 9, range_ok 1->0): write ignored,
+        // out of register range (wsel > 10, range_ok 0): write ignored,
         // read returns 0
-        mb_raw_wr(16'h0028, 32'hFFFF_FFFF);
-        mb_raw_rd(16'h0028, rd_val);
+        mb_raw_wr(16'h002C, 32'hFFFF_FFFF);
+        mb_raw_rd(16'h002C, rd_val);
         if (rd_val !== 32'h0) begin $display("ERR: out-of-range read not 0 (%h)", rd_val); errors++; end
+        // CFG_REGST (0x28): WO, reads 0; a wrong-key (key != 1010)
+        // self-test write is silently dropped (no REG_PROT lane here)
+        mb_raw_rd(16'h0028, rd_val);
+        if (rd_val !== 32'h0) begin $display("ERR: CFG_REGST read not 0 (%h)", rd_val); errors++; end
+        mb_raw_wr(16'h0028, 32'hFFFF_FFFF);   // key=F: dropped
+        repeat (4) @(negedge mbus_clk);
+        mb_rd(8'h24, rd_val);
+        if (rd_val !== 32'h0000_0002) begin $display("ERR: bad-key REGST not inert (STA_PAR %h)", rd_val); errors++; end
+        else $display("CFG_REGST bad-key: OK (inert, STA_PAR quiescent)");
+        // ID at 0xFC: exact-address decode only (0x3C/0x7C/0xBC alias wsel
+        // 15 -> range_ok 0, read 0); write to the RO ID is dropped
+        mb_raw_rd(16'h00FC, rd_val);
+        if (rd_val !== 32'h4941_0001) begin $display("ERR: ID@0xFC read %h", rd_val); errors++; end
+        mb_raw_rd(16'h003C, rd_val);
+        if (rd_val !== 32'h0) begin $display("ERR: 0x3C alias not 0 (%h)", rd_val); errors++; end
+        mb_raw_wr(16'h00FC, 32'hDEAD_BEEF);   // RO -> dropped
+        mb_raw_rd(16'h00FC, rd_val);
+        if (rd_val !== 32'h4941_0001) begin $display("ERR: ID@0xFC write not dropped (%h)", rd_val); errors++; end
         // alias offsets (addr[7:6] non-zero): decode mirrors low offsets
         mb_raw_rd(16'h0040, rd_val);   // aliases wsel 0
         mb_raw_rd(16'h0080, rd_val);
@@ -754,52 +780,61 @@ module tb_ia_timeo_gen_wrap;
         mb_wr_wait(8'h10, 32'hFFFF_FFF5);   // key=F, all action bits set
         mb_wr_wait(8'h10, 32'hAAAA_AAA5);   // key=A but ENA=5 non-codeword
         mb_wr_wait(8'h10, 32'h5555_55F5);   // key=F, wide pattern
-        mb_wr_wait(8'h10, 32'h0008_00F0);   // key=F, wdata[19]
-        mb_wr_wait(8'h10, 32'h0002_00F0);   // key=F, wdata[17]
+        mb_wr_wait(8'h28, 32'h0000_0F1A);   // REGST key=F + REG_SELFTEST: inert
+        mb_wr_wait(8'h28, 32'h0000_0B1A);   // REGST key ok but REGSEL=11: ignored
+        repeat (4) @(negedge mbus_clk);
+        mb_rd(8'h24, rd_val);
+        if (rd_val !== 32'h0000_0002) begin $display("ERR: REGST gate sweep set PERR (%h)", rd_val); errors++; end
         mb_rd(8'h10, rd_val);
         if (rd_val[3:0] !== 4'b1111) begin $display("ERR: wrong-key write changed ENA"); errors++; end
         else $display("key/data sweep: OK (wrong keys inert)");
         // restore working thresholds
         mb_wr_wait(8'h14, 32'd15); mb_wr_wait(8'h18, 32'd255);
 
-        // ---- P11: REG_SELFTEST k=0..8 (every reg_wrap instance) --------------
+        // ---- P11: REG_SELFTEST k=0..10 (every reg_wrap instance) -------------
         $display("\n--- P11: REG_SELFTEST k sweep ---");
         begin : p11
             int k;
             logic [31:0] perr;
-            for (k = 0; k <= 8; k++) begin
-                mb_wr_wait(8'h10, 32'h0010_00A0 | (k << 16));
+            for (k = 0; k <= 10; k++) begin
+                mb_wr_wait(8'h28, 32'h1A | (k << 8));
                 repeat (10) @(negedge mbus_clk);
                 mb_rd(8'h24, perr);
-                if (perr[4+k] !== 1'b1) begin
-                    $display("ERR: REG_SELFTEST k=%0d no PERR%0d (0x%h)", k, k, perr); errors++;
-                end
-                if (perr[0] !== 1'b1) begin
-                    $display("ERR: REG_SELFTEST k=%0d no PAR_FAULT", k); errors++;
-                end
-                // restore shadow parity BEFORE the W1C (T6: a live source
-                // re-sets): k=4 ENA shadow, k=5 TH0 shadow, k=6 TH1 shadow
-                if (k == 4) mb_wr_wait(8'h10, 32'h0000_00AF);
-                if (k == 5) mb_wr_wait(8'h14, 32'd15);
-                if (k == 6) mb_wr_wait(8'h18, 32'd255);
-                repeat (4) @(negedge mbus_clk);
-                mb_wr_wait(8'h24, 32'h1 << (4+k));   // W1C PERRk
-                repeat (10) @(negedge mbus_clk);
-                mb_rd(8'h24, perr);
-                if (perr[4+k] !== 1'b0) begin
-                    $display("ERR: PERR%0d clear failed (0x%h)", k, perr); errors++;
+                if (k == 9) begin
+                    // group 9 = in-flight latch lane: NO injection target,
+                    // the keyed write is a documented no-op
+                    if (perr !== 32'h0000_0002) begin
+                        $display("ERR: REG_SELFTEST k=9 not a no-op (0x%h)", perr); errors++;
+                    end
+                end else begin
+                    if (perr[2+k] !== 1'b1) begin
+                        $display("ERR: REG_SELFTEST k=%0d no PERR%0d (0x%h)", k, k, perr); errors++;
+                    end
+                    if (perr[0] !== 1'b1) begin
+                        $display("ERR: REG_SELFTEST k=%0d no PAR_FAULT", k); errors++;
+                    end
+                    // restore shadow parity BEFORE the W1C (T6: a live source
+                    // re-sets): k=4 ENA shadow, k=5 TH0 shadow, k=6 TH1 shadow;
+                    // k=10 CMD wrap needs no restore (its W1C IS the rewrite)
+                    if (k == 4) mb_wr_wait(8'h10, 32'h0000_00AF);
+                    if (k == 5) mb_wr_wait(8'h14, 32'd15);
+                    if (k == 6) mb_wr_wait(8'h18, 32'd255);
+                    repeat (4) @(negedge mbus_clk);
+                    mb_wr_wait(8'h24, 32'h1 << (2+k));   // W1C PERRk (bit 2+k)
+                    repeat (10) @(negedge mbus_clk);
+                    mb_rd(8'h24, perr);
+                    if (perr[2+k] !== 1'b0) begin
+                        $display("ERR: PERR%0d clear failed (0x%h)", k, perr); errors++;
+                    end
                 end
             end
-            // the k-inject writes carry ENA=0 (codeword 0000 side effect):
-            // the loop leaves the shadow at 0000 - put it back on
-            mb_wr_wait(8'h10, 32'h0000_00AF);
-            // every inject also set the PAR_SELFTEST latch (par_lq[0],
-            // rdata bit0): W1C it or reg_par_fault stays high forever
-            mb_wr_wait(8'h24, 32'h1);
+            // ENA is untouched by CFG_REGST writes (no 0000 side effect any
+            // more); the inject writes carry bit5=0 so the PAR_SELFTEST
+            // latch never set - STA_PAR must read quiescent here
             repeat (6) @(negedge mbus_clk);
             mb_rd(8'h24, rd_val);
-            if (rd_val[0] !== 1'b0) begin $display("ERR: PAR_FAULT stuck after k sweep"); errors++; end
-            else $display("REG_SELFTEST k=0..8: OK (all PERR set + cleared)");
+            if (rd_val !== 32'h0000_0002) begin $display("ERR: STA_PAR dirty after k sweep (0x%h)", rd_val); errors++; end
+            else $display("REG_SELFTEST k=0..10: OK (all PERR set + cleared)");
         end
 
         // ---- P12: outstanding depth to OTD_MAX + saturation -------------------
@@ -1130,54 +1165,54 @@ module tb_ia_timeo_gen_wrap;
         join
         repeat (6) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[13] !== 1'b1) begin $display("ERR: PERR9 not set by wpar SEU"); errors++; end
+        if (rd_val[11] !== 1'b1) begin $display("ERR: PERR9 not set by wpar SEU"); errors++; end
         mb_wr_wait(8'h14, 32'd15);          // next write reloads the parity
-        mb_wr_wait(8'h24, 32'h2000);        // W1C PERR9 (wdata[13])
+        mb_wr_wait(8'h24, 32'h0800);        // W1C PERR9 (bit 11 = 2+组9)
         repeat (6) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[13] !== 1'b0) begin $display("ERR: PERR9 clear failed"); errors++; end
-        // (8) PAR latch dup: heal-to-SET all three latch bits at once.
-        // NB: par_l_dup_f is a 3-bit vector whose RHS (a != b) yields a
+        if (rd_val[11] !== 1'b0) begin $display("ERR: PERR9 clear failed"); errors++; end
+        // (8) PAR latch dup: heal-to-SET both latch lanes at once.
+        // NB: par_l_dup_f is a 2-bit vector whose RHS (a != b) yields a
         // 1-bit scalar - only bit0 can ever be set; the heal is bank-wide
-        // (|par_l_dup_f), so bits [2:1] are structurally dead (excluded
-        // in tgl_struct_excl.el). Shots below fault each latch bit in turn.
-        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq_n = 3'b110;   // bit0 wrong (q=000)
+        // (|par_l_dup_f), so bit1 is structurally dead (excluded in
+        // tgl_struct_excl.el). Shots below fault each latch lane in turn.
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq_n = 2'b10;    // lane0 wrong (q=00)
         repeat (2) @(posedge mbus_clk);
         release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq_n;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[14:13] !== 2'b11) begin $display("ERR: par_lq dup did not heal-to-SET"); errors++; end
-        mb_wr_wait(8'h24, 32'h6001);        // W1C PERR_CMD + PERR9 + PAR_SELFTEST
+        if (rd_val[11] !== 1'b1 || rd_val[0] !== 1'b1) begin $display("ERR: par_lq dup did not heal-to-SET"); errors++; end
+        mb_wr_wait(8'h24, 32'h0801);        // W1C PERR9 + PAR_SELFTEST latch
         repeat (6) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[14:13] !== 2'b00) begin $display("ERR: par_lq W1C failed"); errors++; end
+        if (rd_val[11] !== 1'b0 || rd_val[0] !== 1'b0) begin $display("ERR: par_lq W1C failed"); errors++; end
         // (8b) PAR latch dup via the non-inverted member: right after a
-        // W1C (q=000, n=111) a forced q[i]=1 is a bit-i fault. Each shot
-        // needs its own W1C first - after any heal q=111 and a 1-forced
+        // W1C (q=00, n=11) a forced q[i]=1 is a lane-i fault. Each shot
+        // needs its own W1C first - after any heal q=11 and a 1-forced
         // q bit would be a no-op.
-        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 3'b010;     // q[1] fault
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 2'b10;      // q[1] fault (PERR9)
         repeat (2) @(posedge mbus_clk);
         release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[14:13] !== 2'b11) begin
+        if (rd_val[11] !== 1'b1 || rd_val[0] !== 1'b1) begin
             $display("ERR: par_lq dup bit1 did not heal-to-SET"); errors++;
         end
-        mb_wr_wait(8'h24, 32'h6001);
+        mb_wr_wait(8'h24, 32'h0801);
         repeat (6) @(negedge mbus_clk);
-        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 3'b100;     // q[2] fault
+        force u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq = 2'b01;      // q[0] fault (latch)
         repeat (2) @(posedge mbus_clk);
         release u_dut.u_ia_bus_timeo_regfile.r_mb.par_lq;
         repeat (2) @(posedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[14:13] !== 2'b11) begin
-            $display("ERR: par_lq dup bit2 did not heal-to-SET"); errors++;
+        if (rd_val[11] !== 1'b1 || rd_val[0] !== 1'b1) begin
+            $display("ERR: par_lq dup bit0 did not heal-to-SET"); errors++;
         end
-        mb_wr_wait(8'h24, 32'h6001);        // W1C PERR_CMD + PERR9 + PAR_SELFTEST
+        mb_wr_wait(8'h24, 32'h0801);        // W1C PERR9 + PAR_SELFTEST latch
         repeat (6) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[14:13] !== 2'b00) begin $display("ERR: par_lq W1C failed (8b)"); errors++; end
-        // (9) reg_wrap sticky dup SEU on every instance (12/12)
+        if (rd_val[11] !== 1'b0 || rd_val[0] !== 1'b0) begin $display("ERR: par_lq W1C failed (8b)"); errors++; end
+        // (9) reg_wrap sticky dup SEU on every instance (13/13)
         force u_dut.u_ia_bus_timeo_regfile.u_r_iaerr0.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_iaerr0.r.flt_q_n;
         force u_dut.u_ia_bus_timeo_regfile.u_r_iaerr1.r.flt_q_n = 1'b0;
@@ -1196,6 +1231,8 @@ module tb_ia_timeo_gen_wrap;
         repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_fustat.r.flt_q_n;
         force u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
         repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_r_fusrc.r.flt_q_n;
+        force u_dut.u_ia_bus_timeo_regfile.u_w_cmd.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk); release u_dut.u_ia_bus_timeo_regfile.u_w_cmd.r.flt_q_n;
         force u_dut.u_ia_bus_timeo_regfile.u_c_ena.r.flt_q_n = 1'b0;
         repeat (2) @(posedge aclk);   release u_dut.u_ia_bus_timeo_regfile.u_c_ena.r.flt_q_n;
         force u_dut.u_ia_bus_timeo_regfile.u_c_thresh0.r.flt_q_n = 1'b0;
@@ -1204,11 +1241,13 @@ module tb_ia_timeo_gen_wrap;
         repeat (2) @(posedge aclk);   release u_dut.u_ia_bus_timeo_regfile.u_c_thresh1.r.flt_q_n;
         repeat (4) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[12:4] !== 9'h1FF) begin $display("ERR: dup_err sweep PERR map %h", rd_val[12:4]); errors++; end
-        mb_wr_wait(8'h24, 32'h1FF0);        // W1C PERR0..8
+        // expected: groups 0..8 (bits [10:2]) + CMD (bit 12) all set; the
+        // PERR9 lane (bit 11) is not part of this sweep and must stay 0
+        if (rd_val[12:2] !== 11'h5FF) begin $display("ERR: dup_err sweep PERR map %h", rd_val[12:2]); errors++; end
+        mb_wr_wait(8'h24, 32'h17FC);        // W1C PERR0..8 + PERR10 CMD
         repeat (6) @(negedge mbus_clk);
         mb_rd(8'h24, rd_val);
-        if (rd_val[12:4] !== 9'h000) begin $display("ERR: PERR W1C after dup sweep"); errors++; end
+        if (rd_val[12:2] !== 11'h000) begin $display("ERR: PERR W1C after dup sweep"); errors++; end
         // wrap-up: clear everything the injections set, then prove every
         // injected fault was observed live by its watcher
         mb_wr_wait(8'h00, 32'hF);           // r2a W1C (healed-to-SET bits)

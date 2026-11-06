@@ -21,24 +21,24 @@ reg  [1:0]   fi_val;
 integer      errors;
 
 vdsp_sp_16384x524_d4w4_mem_wrap dut (
-    .rstn                   (rstn),
-    .mem_cfg                (42'd0),
-    .A                      (A),
-    .D_in                   (D_in),
-    .WEB                    (WEB),
-    .CEB                    (CEB),
-    .CLK                    (CLK),
-    .Q_out                  (Q_out),
-    .ecc_encoder_parity_out (enc_pout),
-    .ecc_decoder_parity_out (dec_pout),
-    .ecc_error_type         (etype),
-    .latent_err             (lat_err),
-    .mission_err            (mis_err),
-    .ecc_encoder_bypass     (enc_byp),
-    .ecc_encoder_parity_in  (11'd0),
-    .ecc_decoder_bypass     (dec_byp),
-    .fault_injection_enable (fi_en),
-    .fault_injection_value  (fi_val)
+    .rstn                  (rstn    ),
+    .mem_cfg               (42'd0   ),
+    .A                     (A       ),
+    .D_in                  (D_in    ),
+    .WEB                   (WEB     ),
+    .CEB                   (CEB     ),
+    .CLK                   (CLK     ),
+    .Q_out                 (Q_out   ),
+    .ecc_encoder_parity_out(enc_pout),
+    .ecc_decoder_parity_out(dec_pout),
+    .ecc_error_type        (etype   ),
+    .latent_err            (lat_err ),
+    .mission_err           (mis_err ),
+    .ecc_encoder_bypass    (enc_byp ),
+    .ecc_encoder_parity_in (11'd0   ),
+    .ecc_decoder_bypass    (dec_byp ),
+    .fault_injection_enable(fi_en   ),
+    .fault_injection_value (fi_val  )
 );
 
 always #5 CLK = ~CLK;

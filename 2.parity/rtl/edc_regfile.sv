@@ -24,14 +24,15 @@
 //   0xA0 STA_ERR        RW1C [17:0]
 //   0xA4 STA_FAULT      RW1C [17:0]
 //   0xA8 CFG_IRQEN      RW  [17:0]
-//   0xAC STA_REGPAR     RW1C/R        寄存器奇偶校验状态 (见下)
+//   0xAC STA_PAR        RW1C/R        寄存器奇偶校验状态 (见下)
 //   0xB0 CFG_REGST      W(带key)      寄存器奇偶自测控制 (读回 0)
 //   0xFC ID             RO 32'hEDC0_1000 | IDX
 //
-// 寄存器奇偶保护 (FuSa, 参照 hang_prot reg_wrap 设计):
+// 寄存器奇偶保护 (FuSa, 家族标准布局: ID 殿后 / CFG_REGST 倒数第2 /
+//   STA_PAR 倒数第3, 位域 bit = 2 + 组号, 样板 10.dup_ctrl):
 //   每个数据寄存器都是本域的 reg_wrap 实例 = 存储 + 偶校验 +
 //   自测注错 + 自带粘滞 {flt, flt_w1c}, 检查与被保护的存储同域:
-//     PERR 组号 (STA_REGPAR bit = 4 + 组号, 共 15 组):
+//     PERR 组号 (STA_PAR bit = 2 + 组号, 共 15 组):
 //       0  CFG_INJ_EN (mbus, 18*4b 整组)
 //       1  CFG_INJ_FORCE (mbus)      2  CFG_IRQEN    (mbus)
 //       3  CFG_INJ_POS    (mbus, 18*64b 整组)
@@ -41,18 +42,17 @@
 //       9  irqen_q 影子 (AXI)       10  inj_pos_q 影子 (AXI)
 //      11  err_st sticky (AXI)      12  fault_st sticky (AXI)
 //      13  在途负载奇偶锁存 (AXI 域检查, 经 2FF 回读)
-//      14  命令在途奇偶 (APB->mbus, 本域 ce 拍检查; bit18)
+//      14  命令在途奇偶 (APB->mbus, 本域 ce 拍检查; bit16)
 //   PAR_FAULT (bit0) = 所有 PERR 之源或 + 自测锁存, 双轨输出
 //   reg_par_fault/_n -> ESM (独立事件, 与 esm_err/esm_fault 分开).
 //
-//   0xAC STA_REGPAR (RW1C/R):
+//   0xAC STA_PAR (RW1C/R):
 //     [0]    PAR_FAULT  电平; 写 1 只清自测锁存 (源仍置时保持)
 //     [1]    PAR_FAULT_N (RO 反轨)
-//     [3:2]  保留 (读 0)
-//     [17:4] PERR13..PERR0 (W1C): 每位清除对应寄存器的粘滞,
+//     [16:2] PERR14..PERR0 (W1C): 每位清除对应寄存器的粘滞,
 //            mbus 域当拍生效, AXI 域经命令下发生效 (两域同步清除)
 //   0xB0 CFG_REGST (W, [3:0] 必须为 4'b1010, 否则整写忽略; 读回 0):
-//     [4]    REG_SELFTEST 脉冲: 对 [12:9] REGSEL 选中的组注入校验错
+//     [4]    REG_SELFTEST 脉冲: 对 [11:8] REGSEL 选中的组注入校验错
 //            (REGSEL 0..6 本域当拍注入, 7..12 经命令在 AXI 域注入,
 //             13 无注错, >13 忽略)
 //     [5]    PAR_SELFTEST 脉冲: 只置自测锁存 ("有 fault 无源",
@@ -64,7 +64,7 @@
 //   负载拼接顺序 (两域必须一致):
 //     {en(4b/站点), force, irqen, pos, clr, par_w1c, par_st_req, par_st_sel}
 //
-//   命令在途奇偶 (PERR14, STA_REGPAR bit18): apb2mbus 在 APB 侧对
+//   命令在途奇偶 (PERR14, STA_PAR bit16): apb2mbus 在 APB 侧对
 //   {paddr, pwrite, pwdata} 算 1 bit 偶校验 par, 与 payload 3FF 同深度
 //   同步输出; 本模块 ce 拍用收到的 {addr, wr, wdata} 重组比对, 失配 =
 //   APB->mbus 同步链/广播通路在途 1 bit 损坏 (错位写/错实例读的来源).
@@ -74,7 +74,7 @@
 //     写: 坏命令不落任何寄存器 (所有写使能与 cmd_t 翻转被 par_ok 门控);
 //     读: rdata 驱 0, 不交付错地址的数据;
 //   PERR14 为 mbus 本域粘滞 (自愈双副本, 同 par_lq 风格),
-//   STA_REGPAR bit18 W1C 当拍清 (不经 AXI 命令通道).
+//   STA_PAR bit16 W1C 当拍清 (不经 AXI 命令通道).
 //
 //   未保护 (设计取舍, 见 design_spec §12):
 //     - err_s1/fault_s1/irq_s1/irq_s2 同步首级与 irq 镜像 (1 拍瞬态窗口
@@ -174,14 +174,14 @@ module edc_regfile #(
    assign pos_range = (addr[7:0] >= 8'h10) && (addr[7:0] <= 8'h9F);
    logic w1c_wr;
    assign w1c_wr = wr_ok && (addr[7:0] == 8'hA0 || addr[7:0] == 8'hA4);
-   logic parwrc; // STA_REGPAR W1C
+   logic parwrc; // STA_PAR W1C
    assign parwrc = wr_ok && (addr[7:0] == 8'hAC);
    logic regst_w; // CFG_REGST
    assign regst_w = wr_ok && (addr[7:0] == 8'hB0);
    logic regst_key;
    assign regst_key = (wdata[3:0] == 4'b1010);
    logic [3:0] regsel;
-   assign regsel = wdata[12:9];
+   assign regsel = wdata[11:8];
    logic regst_st;
    assign regst_st = regst_w && regst_key && wdata[4] && (regsel <= 4'd12);
    logic regst_par;
@@ -257,7 +257,7 @@ module edc_regfile #(
    logic perr14_dup;
    assign perr14_dup = (r.perr14_q_n != ~r.perr14_q);
    logic perr14_clr;
-   assign perr14_clr = parwrc && wdata[18];
+   assign perr14_clr = parwrc && wdata[16];
    logic perr14_nxt;
    assign perr14_nxt = (r.perr14_q & ~perr14_clr) | par_cmd_bad | perr14_dup;
 
@@ -336,8 +336,8 @@ module edc_regfile #(
          8'hA0:   rdata_mux = {{(32-NSITES){1'b0}}, err_s2};
          8'hA4:   rdata_mux = {{(32-NSITES){1'b0}}, fault_s2};
          8'hA8:   rdata_mux = {{(32-NSITES){1'b0}}, cfg_irqen_r};
-         // [18]=PERR14, [17:4]=PERR13..PERR0, [1]=反轨, [0]=PAR_FAULT, [3:2] 保留
-         8'hAC:   rdata_mux = {12'b0, perr, 2'b00,
+         // [16:2]=PERR14..PERR0 (bit=2+组号), [1]=反轨, [0]=PAR_FAULT
+         8'hAC:   rdata_mux = {15'b0, perr,
                                reg_par_fault_n, reg_par_fault};
          8'hFC:   rdata_mux = 32'hEDC0_1000 | IDX;
          default: rdata_mux =
@@ -363,89 +363,89 @@ module edc_regfile #(
    // reg_wrap 实例 (mbus 域): cfg + clr_mask + sta 镜像
    // =========================================================================
    reg_wrap #(
-      .W (NSITES*4)
+      .W(NSITES*4)
    ) u_cfg_en (
-      .clk          (mbus_clk                    ),
-      .rst_n        (mbus_rstn                   ),
-      .wdata        (en_nxt                      ),
-      .wr           (wr_ok && en_range           ),
-      .rdata        (cfg_en_r                    ),
-      .selftest_key (regst_st && (regsel == 4'd0)),
-      .flt          (flt_ce                      ),
-      .flt_w1c      (parwrc && wdata[4]          )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (en_nxt                      ),
+      .wr          (wr_ok && en_range           ),
+      .rdata       (cfg_en_r                    ),
+      .selftest_key(regst_st && (regsel == 4'd0)),
+      .flt         (flt_ce                      ),
+      .flt_w1c     (parwrc && wdata[2]          )
    );
    reg_wrap #(
-      .W (NSITES)
+      .W(NSITES)
    ) u_cfg_force (
-      .clk          (mbus_clk                       ),
-      .rst_n        (mbus_rstn                      ),
-      .wdata        (wdata[NSITES-1:0]              ),
-      .wr           (wr_ok && addr[7:0] == 8'h0C     ),
-      .rdata        (cfg_force_r                    ),
-      .selftest_key (regst_st && (regsel == 4'd1)   ),
-      .flt          (flt_cf                         ),
-      .flt_w1c      (parwrc && wdata[5]             )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (wdata[NSITES-1:0]           ),
+      .wr          (wr_ok && addr[7:0] == 8'h0C ),
+      .rdata       (cfg_force_r                 ),
+      .selftest_key(regst_st && (regsel == 4'd1)),
+      .flt         (flt_cf                      ),
+      .flt_w1c     (parwrc && wdata[3]          )
    );
    reg_wrap #(
-      .W (NSITES)
+      .W(NSITES)
    ) u_cfg_irqen (
-      .clk          (mbus_clk                       ),
-      .rst_n        (mbus_rstn                      ),
-      .wdata        (wdata[NSITES-1:0]              ),
-      .wr           (wr_ok && addr[7:0] == 8'hA8     ),
-      .rdata        (cfg_irqen_r                    ),
-      .selftest_key (regst_st && (regsel == 4'd2)   ),
-      .flt          (flt_ci                         ),
-      .flt_w1c      (parwrc && wdata[6]             )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (wdata[NSITES-1:0]           ),
+      .wr          (wr_ok && addr[7:0] == 8'hA8 ),
+      .rdata       (cfg_irqen_r                 ),
+      .selftest_key(regst_st && (regsel == 4'd2)),
+      .flt         (flt_ci                      ),
+      .flt_w1c     (parwrc && wdata[4]          )
    );
    reg_wrap #(
-      .W (NSITES*64)
+      .W(NSITES*64)
    ) u_cfg_pos (
-      .clk          (mbus_clk                    ),
-      .rst_n        (mbus_rstn                   ),
-      .wdata        (pos_nxt                     ),
-      .wr           (wr_ok && pos_range          ),
-      .rdata        (cfg_pos_r                   ),
-      .selftest_key (regst_st && (regsel == 4'd3)),
-      .flt          (flt_cp                      ),
-      .flt_w1c      (parwrc && wdata[7]          )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (pos_nxt                     ),
+      .wr          (wr_ok && pos_range          ),
+      .rdata       (cfg_pos_r                   ),
+      .selftest_key(regst_st && (regsel == 4'd3)),
+      .flt         (flt_cp                      ),
+      .flt_w1c     (parwrc && wdata[5]          )
    );
    reg_wrap #(
-      .W (NSITES)
+      .W(NSITES)
    ) u_clr_mask (
-      .clk          (mbus_clk                    ),
-      .rst_n        (mbus_rstn                   ),
-      .wdata        (clr_nxt                     ),
-      .wr           (w1c_wr || ack_rel           ),
-      .rdata        (clr_mask_r                  ),
-      .selftest_key (regst_st && (regsel == 4'd4)),
-      .flt          (flt_cm                      ),
-      .flt_w1c      (parwrc && wdata[8]          )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (clr_nxt                     ),
+      .wr          (w1c_wr || ack_rel           ),
+      .rdata       (clr_mask_r                  ),
+      .selftest_key(regst_st && (regsel == 4'd4)),
+      .flt         (flt_cm                      ),
+      .flt_w1c     (parwrc && wdata[6]          )
    );
    // sta 镜像: 跟随型 (wr=1), 注错后下一拍自恢复
    reg_wrap #(
-      .W (NSITES)
+      .W(NSITES)
    ) u_err2 (
-      .clk          (mbus_clk                    ),
-      .rst_n        (mbus_rstn                   ),
-      .wdata        (r.err_s1                    ),
-      .wr           (1'b1                        ),
-      .rdata        (err_s2                      ),
-      .selftest_key (regst_st && (regsel == 4'd5)),
-      .flt          (flt_es2                     ),
-      .flt_w1c      (parwrc && wdata[9]          )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (r.err_s1                    ),
+      .wr          (1'b1                        ),
+      .rdata       (err_s2                      ),
+      .selftest_key(regst_st && (regsel == 4'd5)),
+      .flt         (flt_es2                     ),
+      .flt_w1c     (parwrc && wdata[7]          )
    );
    reg_wrap #(
-      .W (NSITES)
+      .W(NSITES)
    ) u_fault2 (
-      .clk          (mbus_clk                    ),
-      .rst_n        (mbus_rstn                   ),
-      .wdata        (r.fault_s1                  ),
-      .wr           (1'b1                        ),
-      .rdata        (fault_s2                    ),
-      .selftest_key (regst_st && (regsel == 4'd6)),
-      .flt          (flt_fs2                     ),
-      .flt_w1c      (parwrc && wdata[10]         )
+      .clk         (mbus_clk                    ),
+      .rst_n       (mbus_rstn                   ),
+      .wdata       (r.fault_s1                  ),
+      .wr          (1'b1                        ),
+      .rdata       (fault_s2                    ),
+      .selftest_key(regst_st && (regsel == 4'd6)),
+      .flt         (flt_fs2                     ),
+      .flt_w1c     (parwrc && wdata[8]          )
    );
 
    // =========================================================================
@@ -499,7 +499,7 @@ module edc_regfile #(
             8'hAC: begin
                // PERR W1C: 本域各组当拍直接清 (见 flt_w1c),
                // 掩码经命令下发到 AXI 域清 (一次性)
-               v.par_w1c_r = r.par_w1c_r | wdata[17:4];
+               v.par_w1c_r = r.par_w1c_r | wdata[16:2];
                v.cmd_t_r   = ~r.cmd_t_r;
                v.cmd_pend  = 1'b1;
             end

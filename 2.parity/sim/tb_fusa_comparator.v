@@ -13,10 +13,10 @@ integer errors;
 integer i;
 
 fusa_comparator #(.DATA_WIDTH(W)) u_std (
-    .error           (err_std),
-    .fault_injection (fi),
-    .data_golden     (golden),
-    .data_revise     (revise)
+    .error          (err_std),
+    .fault_injection(fi     ),
+    .data_golden    (golden ),
+    .data_revise    (revise )
 );
 
 // 期望: 注入期间(01/10)恒 1; 其余(00/11)不一致即 1

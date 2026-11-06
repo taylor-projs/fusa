@@ -35,18 +35,36 @@ module tb_equiv_regfile;
    wire                  a_irq, a_reg_par_fault, a_reg_par_fault_n;
 
    edc_regfile #(.IDX(IDX), .NSITES(NSITES)) u_ref (
-      .mbus_clk(clk), .mbus_rstn(rstn),
-      .ce(ce), .wr(wr), .addr(addr), .wdata(wdata),
-      .par(^{addr, wr, wdata}),      // 命令在途奇偶 (不接则写全被 par_ok 门控)
-      .rdata(a_rdata),
-      .cfg_en(a_cfg_en), .cfg_force(a_cfg_force), .cfg_irqen(a_cfg_irqen),
-      .cfg_pos(a_cfg_pos), .clr_mask(a_clr_mask), .cmd_t(a_cmd_t), .ack(ack),
-      .par_flt_axi(par_flt_axi), .par_w1c_mask(a_par_w1c_mask),
-      .par_st_req(a_par_st_req), .par_st_sel(a_par_st_sel), .par_pay(a_par_pay),
-      .err_axi(err_axi), .fault_axi(fault_axi), .irq_axi(irq_axi),
-      .esm_err(a_esm_err), .esm_err_n(a_esm_err_n),
-      .esm_fault(a_esm_fault), .esm_fault_n(a_esm_fault_n),
-      .irq(a_irq), .reg_par_fault(a_reg_par_fault), .reg_par_fault_n(a_reg_par_fault_n)
+      .mbus_clk       (clk               ),
+      .mbus_rstn      (rstn              ),
+      .ce             (ce                ),
+      .wr             (wr                ),
+      .addr           (addr              ),
+      .wdata          (wdata             ),
+      .par            (^{addr, wr, wdata}),  // 命令在途奇偶 (不接则写全被 par_ok 门控)
+      .rdata          (a_rdata           ),
+      .cfg_en         (a_cfg_en          ),
+      .cfg_force      (a_cfg_force       ),
+      .cfg_irqen      (a_cfg_irqen       ),
+      .cfg_pos        (a_cfg_pos         ),
+      .clr_mask       (a_clr_mask        ),
+      .cmd_t          (a_cmd_t           ),
+      .ack            (ack               ),
+      .par_flt_axi    (par_flt_axi       ),
+      .par_w1c_mask   (a_par_w1c_mask    ),
+      .par_st_req     (a_par_st_req      ),
+      .par_st_sel     (a_par_st_sel      ),
+      .par_pay        (a_par_pay         ),
+      .err_axi        (err_axi           ),
+      .fault_axi      (fault_axi         ),
+      .irq_axi        (irq_axi           ),
+      .esm_err        (a_esm_err         ),
+      .esm_err_n      (a_esm_err_n       ),
+      .esm_fault      (a_esm_fault       ),
+      .esm_fault_n    (a_esm_fault_n     ),
+      .irq            (a_irq             ),
+      .reg_par_fault  (a_reg_par_fault   ),
+      .reg_par_fault_n(a_reg_par_fault_n )
    );
 
    // ---------------- 被测 (struct 风格重构) ----------------
@@ -63,16 +81,35 @@ module tb_equiv_regfile;
    wire                  b_irq, b_reg_par_fault, b_reg_par_fault_n;
 
    edc_regfile_leons #(.IDX(IDX), .NSITES(NSITES)) u_dut (
-      .mbus_clk(clk), .mbus_rstn(rstn),
-      .ce(ce), .wr(wr), .addr(addr), .wdata(wdata), .rdata(b_rdata),
-      .cfg_en(b_cfg_en), .cfg_force(b_cfg_force), .cfg_irqen(b_cfg_irqen),
-      .cfg_pos(b_cfg_pos), .clr_mask(b_clr_mask), .cmd_t(b_cmd_t), .ack(ack),
-      .par_flt_axi(par_flt_axi), .par_w1c_mask(b_par_w1c_mask),
-      .par_st_req(b_par_st_req), .par_st_sel(b_par_st_sel), .par_pay(b_par_pay),
-      .err_axi(err_axi), .fault_axi(fault_axi), .irq_axi(irq_axi),
-      .esm_err(b_esm_err), .esm_err_n(b_esm_err_n),
-      .esm_fault(b_esm_fault), .esm_fault_n(b_esm_fault_n),
-      .irq(b_irq), .reg_par_fault(b_reg_par_fault), .reg_par_fault_n(b_reg_par_fault_n)
+      .mbus_clk       (clk              ),
+      .mbus_rstn      (rstn             ),
+      .ce             (ce               ),
+      .wr             (wr               ),
+      .addr           (addr             ),
+      .wdata          (wdata            ),
+      .rdata          (b_rdata          ),
+      .cfg_en         (b_cfg_en         ),
+      .cfg_force      (b_cfg_force      ),
+      .cfg_irqen      (b_cfg_irqen      ),
+      .cfg_pos        (b_cfg_pos        ),
+      .clr_mask       (b_clr_mask       ),
+      .cmd_t          (b_cmd_t          ),
+      .ack            (ack              ),
+      .par_flt_axi    (par_flt_axi      ),
+      .par_w1c_mask   (b_par_w1c_mask   ),
+      .par_st_req     (b_par_st_req     ),
+      .par_st_sel     (b_par_st_sel     ),
+      .par_pay        (b_par_pay        ),
+      .err_axi        (err_axi          ),
+      .fault_axi      (fault_axi        ),
+      .irq_axi        (irq_axi          ),
+      .esm_err        (b_esm_err        ),
+      .esm_err_n      (b_esm_err_n      ),
+      .esm_fault      (b_esm_fault      ),
+      .esm_fault_n    (b_esm_fault_n    ),
+      .irq            (b_irq            ),
+      .reg_par_fault  (b_reg_par_fault  ),
+      .reg_par_fault_n(b_reg_par_fault_n)
    );
 
    // ---------------- 逐拍比较 ----------------

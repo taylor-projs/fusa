@@ -6,10 +6,10 @@
 #   Xcelium: imc -load cov_merge.cvd -gui   (or  xrun -covmerge)
 RTL_A="../design/hang_prot_wskid.sv ../design/hang_prot_recover.sv \
 ../design/hang_prot_core.sv ../../common_modules/reg_wrap.sv ../design/hang_prot_regfile.sv \
-../design/hang_prot_gen_wrap.sv ../design/hang_prot_mcu2main_mon.sv"
+../design/hang_prot_top.sv ../design/hang_prot_mcu2main_top.sv"
 RTL_B="../design/hang_prot_wskid.sv ../design/hang_prot_bdry_in.sv \
 ../design/hang_prot_core.sv ../../common_modules/reg_wrap.sv ../design/hang_prot_regfile.sv \
-../design/hang_prot_main2mcu_mon.sv"
+../design/hang_prot_main2mcu_top.sv"
 COV=line+cond+fsm+tgl+assert
 
 # ---------- VCS ----------

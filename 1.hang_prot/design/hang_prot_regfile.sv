@@ -10,7 +10,7 @@
 //   at EVERY ce regardless of instance decode - a corrupted address cannot
 //   be trusted to select, so all leaves flag a broadcast-path corruption;
 //   cf. edc_regfile/cmm_regfile). Bad-parity command: writes blocked, read
-//   returns 0, PERR_CMD latched (SCMREGPARSTAT[14]). rdata combinational,
+//   returns 0, PERR_CMD latched (STA_PAR[12]). rdata combinational,
 //   0 when not selected / bad parity (distributed OR-bus at integration).
 //   There is NO wait / error channel on mbus: unaligned, out-of-range and
 //   RO-target writes are dropped silently (SW bug; the old APB pslverr
@@ -37,7 +37,6 @@
 //                                            [8]    TO_CLR      (pulse)
 //                                            [9]    SELFTEST    (pulse)
 //                                            [10]   FU_SELFTEST (pulse)
-//                                            [11]   PAR_SELFTEST (pulse)
 //                                            [12]   QSR_REL (pulse):
 //                                                   quiesce release of the
 //                                                   INBOUND boundary unit
@@ -46,12 +45,6 @@
 //                                                   with main held in reset,
 //                                                   then TO_CLR + W1C finish
 //                                                   the service sequence
-//                                            [20]   REG_SELFTEST (pulse):
-//                                                   per-register parity
-//                                                   injection, register
-//                                                   selected by [19:16]
-//                                                   REGSEL (0..8 =
-//                                                   0x4*k); readback 0
 //                                            action bits are write-pulse
 //                                            only, read back 0; reads show
 //                                            [3:0] = ena_rd code
@@ -77,7 +70,9 @@
 //                                            OTD_MAX mid-handshake) ->
 //                                            depth under-counts; do a
 //                                            quiesce + TO_CLR restart
-//   0x24  SCMREGPARSTAT W1C/R 0x00000000  register parity status:
+//   0x24  STA_PAR       W1C/R 0x00000002  register parity status (house
+//                                            standard layout, 倒数第 3;
+//                                            静息读 0x2):
 //                                            [0]    PAR_FAULT (level) ->
 //                                                   ESM dual rail
 //                                                   reg_par_fault/_n =
@@ -86,23 +81,42 @@
 //                                                   writing [0] clears
 //                                                   ONLY the latch
 //                                            [1]    PAR_FAULT_N (RO)
-//                                            [13:4] PERR9..PERR0 (W1C)
-//                                                   per-register parity
-//                                                   error, bit k =
-//                                                   register at 0x4*k
-//                                                   (4..6 = mbus image |
-//                                                   aclk shadow); each
-//                                                   bit clears its
-//                                                   register's own
+//                                            [12:2] PERR10..PERR0 (W1C)
+//                                                   per-group parity
+//                                                   error, bit = 2+组号,
+//                                                   group k = register
+//                                                   at 0x4*k (4..6 =
+//                                                   mbus image | aclk
+//                                                   shadow); each bit
+//                                                   clears its group's
 //                                                   reg_wrap sticky in
 //                                                   BOTH domains;
-//                                                   PERR9 = in-flight
+//                                                   group 9 = in-flight
 //                                                   write-latch parity
-//                                                   (any register)
-//                                            [14]   PERR_CMD (W1C): command
-//                                                   in-flight parity error
-//                                                   at a ce (par !=
-//                                                   ^{addr,wr,wdata})
+//                                                   (latch lane, no
+//                                                   injection target);
+//                                                   group 10 = CMD wrap
+//                                                   (W=1: command
+//                                                   in-flight parity
+//                                                   sticky body; its
+//                                                   own W1C bit IS the
+//                                                   wrap rewrite)
+//   0x28  CFG_REGST     W/R   -           register parity self-test
+//                                            control (倒数第 2, reads 0;
+//                                            house key [3:0] = 4'b1010 -
+//                                            NOT the SCMCNTRL [7:4] key
+//                                            position; wrong key = write
+//                                            dropped silently, like any
+//                                            other keyed violation here):
+//                                            [4]    REG_SELFTEST (pulse):
+//                                                   parity injection
+//                                                   into the [11:8]
+//                                                   REGSEL group (0..10;
+//                                                   9 = inflight latch,
+//                                                   no target, ignored)
+//                                            [5]    PAR_SELFTEST (pulse)
+//                                            [11:8] REGSEL
+//   0xFC  ID            R     0x4841_0001  "HA" v1 (殿后, house standard)
 //
 // REGISTER PARITY (FuSa): every register lives in ITS OWN clock domain
 //  as an independent reg_wrap instance (see reg_wrap.sv) = storage +
@@ -118,20 +132,22 @@
 //        2FF-synced into mbus_clk for aggregation and PERR readback
 //     c. in-flight write latch {wsel, wdata}: parity latched at
 //        wr_fire, checked through the CDC stability window -> latch
-//        bit PERR9 (transient window, sticky needed)
+//        lane PERR9 (STA_PAR bit 11; transient window, sticky needed)
 //     d. command in-flight parity (par pin): checked combinationally at
-//        every ce -> latch bit PERR_CMD (sticky, W1C bit [14])
+//        every ce -> group 10 CMD wrap (W=1 reg_wrap: the sticky body IS
+//        the wrap storage; its W1C bit [12] is a wrap rewrite that
+//        recomputes the parity)
 //  PAR_FAULT = OR of all per-register stickies + latches: level while
 //  any source is set. Each source is cleared at its OWN PERR bit; the
 //  W1C write reaches BOTH domains (mbus: same-cycle wdata decode;
 //  aclk: req_edge decode of the same write) so nothing de-synchronizes.
 //  Injection (selftest_key) is decoded per domain: mbus images on
-//  wr_fire, aclk shadows on req_edge - REG_SELFTEST/REGSEL (SCMCNTRL
-//  [20]/[19:16], keyed) selects the register; for regsel 4..6 BOTH the
-//  image and the shadow are injected (image self-restores next cycle
+//  wr_fire, aclk shadows on req_edge - REG_SELFTEST/REGSEL (CFG_REGST
+//  [4]/[11:8], house key 1010) selects the group; for regsel 4..6 BOTH
+//  the image and the shadow are injected (image self-restores next cycle
 //  since wr=1; shadow holds until the register is rewritten - the
 //  restore step of the test sequence).
-//  SCMCNTRL[11] PAR_SELFTEST (keyed pulse) sets the latch with NO PERR
+//  CFG_REGST[5] PAR_SELFTEST (keyed pulse) sets the latch with NO PERR
 //  source - "fault, no source" identifies the self-test pattern in the
 //  ESM service routine.
 //  Fail-visible notes: 2FF-sync metastability can rarely raise a
@@ -244,6 +260,9 @@ module hang_prot_regfile #(
     localparam int OTD_BW   = NUM_IA*OTD_W;
     localparam int FU_SRC_W = 4 + 3*NUM_M;
 
+    // ID register value (house standard: 0xFC, "HA" + version)
+    localparam logic [31:0] ID_VAL = 32'h4841_0001;
+
     // elaboration checks: everything must fit into 32-bit RDATA
     generate
         if (IDX > 255) begin : chk_idx
@@ -262,8 +281,8 @@ module hang_prot_regfile #(
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process, 双时钟域):
-    //   r_mb (mbus_clk 域): CDC 写锁存 + WR_DROPPED 粘滞 + SCMREGPARSTAT
-    //                       3-bit 锁存 (dual rail)
+    //   r_mb (mbus_clk 域): CDC 写锁存 + WR_DROPPED 粘滞 + STA_PAR
+    //                       锁存 lane (dual rail)
     //   r_a  (aclk 域)    : CDC ack toggle + 动作脉冲寄存器 + cfg_wr 延迟
     //   每域一个 comb (v = r; ...; rin = v) + 一个 seq (复位装载 / r <= rin)
     //--------------------------------------------------------------------------
@@ -273,13 +292,13 @@ module hang_prot_regfile #(
         logic [31:0] wdata_q;       // 在飞写: 数据
         logic        wpar_q;        // {wsel_q,wdata_q} 偶校验 (在飞检查)
         logic        wr_dropped_q;  // SCMIAFUSTAT[5] 粘滞
-        logic [2:0]  par_lq;        // {PERR_CMD, PERR9, PAR_SELFTEST} 锁存
-        logic [2:0]  par_lq_n;      // inverted duplicate rail
+        logic [1:0]  par_lq;        // {PERR9, PAR_SELFTEST} 锁存 lane
+        logic [1:0]  par_lq_n;      // inverted duplicate rail
     } reg_mb_t;
 
     localparam reg_mb_t REG_MB_RST = '{
         default  : '0,
-        par_lq_n : 3'b111
+        par_lq_n : 2'b11
     };
 
     reg_mb_t r_mb;
@@ -304,19 +323,22 @@ module hang_prot_regfile #(
 
     //--------------------------------------------------------------------------
     // mbus leaf decode (zero-wait, no wait/error channel; word-aligned,
-    // 10 registers 0x00..0x24)
+    // 11 registers 0x00..0x28 + ID at 0xFC)
     //--------------------------------------------------------------------------
     logic [3:0] wsel;
     logic       inst_ok;
     logic       align_ok;
+    logic       id_sel;
     logic       range_ok;
     logic       ro_reg;
     logic       addr_ok;
     assign wsel     =  addr[5:2];
     assign inst_ok  = (addr[15:8] == IDX[7:0]);
     assign align_ok = (addr[1:0] == 2'b00);
-    assign range_ok = (wsel <= 4'd9);   // 0x00..0x24
-    assign ro_reg   = (wsel == 4'd2) || (wsel == 4'd3);  // IASTAT/OTD
+    assign id_sel   = (addr[7:0] == 8'hFC);   // ID (house standard: 殿后)
+    assign range_ok = (wsel <= 4'd10) || id_sel;   // 0x00..0x28 + 0xFC
+    assign ro_reg   = (wsel == 4'd2) || (wsel == 4'd3)   // IASTAT/OTD
+                      || id_sel;                         // ID
     assign addr_ok  =  inst_ok && align_ok && range_ok;
 
     // command in-flight parity: checked on EVERY ce, regardless of the
@@ -351,10 +373,10 @@ module hang_prot_regfile #(
     // the metastability-absorbing s1 stays inside the cell, only the
     // resolved s2 is consumed (cdc_busy / wr_inflight below)
     sync_2dff #(.WIDTH(1)) u_ack_sync (
-        .clk  (mbus_clk ),
-        .rstn (mbus_rstn),
-        .d    (r_a.ack_t),
-        .q    (ack_t_s2 )
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (r_a.ack_t),
+        .q   (ack_t_s2 )
     );
 
     assign cdc_busy = (r_mb.req_t != ack_t_s2);
@@ -378,16 +400,16 @@ module hang_prot_regfile #(
     assign rstn_a = ~rst;
     logic req_t_s2, req_t_d;
     sync_2dff #(.WIDTH(1)) u_req_sync (
-        .clk  (aclk      ),
-        .rstn (rstn_a    ),
-        .d    (r_mb.req_t),
-        .q    (req_t_s2  )
+        .clk (aclk      ),
+        .rstn(rstn_a    ),
+        .d   (r_mb.req_t),
+        .q   (req_t_s2  )
     );
     sync_dff #(.WIDTH(1)) u_req_dly (
-        .clk  (aclk     ),
-        .rstn (rstn_a   ),
-        .d    (req_t_s2 ),
-        .q    (req_t_d  )
+        .clk (aclk    ),
+        .rstn(rstn_a  ),
+        .d   (req_t_s2),
+        .q   (req_t_d )
     );
     logic req_edge;
     assign req_edge = req_t_s2 ^ req_t_d;
@@ -432,10 +454,13 @@ module hang_prot_regfile #(
     // REG_SELFTEST both cross via the handshake, so every clear /
     // injection is applied in BOTH domains from one SW write
     logic par_wrc_a;
+    logic regst_wr_a;
     logic reg_st_a;
     assign par_wrc_a   = req_edge && (r_mb.wsel_q == 4'd9);
-    assign reg_st_a    = req_edge && (r_mb.wsel_q == 4'd4) && scmcntrl_key_ok
-                         && r_mb.wdata_q[20] && (r_mb.wdata_q[19:16] <= 4'd8);
+    assign regst_wr_a  = req_edge && (r_mb.wsel_q == 4'd10)
+                         && (r_mb.wdata_q[3:0] == 4'b1010);
+    assign reg_st_a    = regst_wr_a && r_mb.wdata_q[4]
+                         && (r_mb.wdata_q[11:8] <= 4'd10);
 
     //--------------------------------------------------------------------------
     // aclk 域组合进程: ack toggle + 动作脉冲 + cfg_wr 延迟 下一拍值
@@ -500,43 +525,43 @@ module hang_prot_regfile #(
     end
 
     reg_wrap #(
-        .W                (4                                    ),
-        .RESET            (4'b1111                              )
+        .W    (4      ),
+        .RESET(4'b1111)
     ) u_c_ena (                                   // SCMCNTRL.ENA shadow
-        .clk               (aclk                                 ),
-        .rst_n             (rstn_a                               ),
-        .wdata             (r_mb.wdata_q[3:0]                    ),
-        .wr                (cfg4_wr                              ),
-        .rdata             (ena_sh                               ),
-        .selftest_key      (reg_st_a && (r_mb.wdata_q[19:16] == 4'd4)),
-        .flt               (flt4_a                               ),
-        .flt_w1c           (par_wrc_a && r_mb.wdata_q[8]         )
+        .clk         (aclk                                    ),
+        .rst_n       (rstn_a                                  ),
+        .wdata       (r_mb.wdata_q[3:0]                       ),
+        .wr          (cfg4_wr                                 ),
+        .rdata       (ena_sh                                  ),
+        .selftest_key(reg_st_a && (r_mb.wdata_q[11:8] == 4'd4)),
+        .flt         (flt4_a                                  ),
+        .flt_w1c     (par_wrc_a && r_mb.wdata_q[6]            )
     );
     reg_wrap #(
-        .W                (16                                   ),
-        .RESET            (REQ2ACCEPT_RST                       )
+        .W    (16            ),
+        .RESET(REQ2ACCEPT_RST)
     ) u_c_thresh0 (                                   // SCMTHRESH0 shadow
-        .clk               (aclk                                 ),
-        .rst_n             (rstn_a                               ),
-        .wdata             (r_mb.wdata_q[15:0]                   ),
-        .wr                (cfg5_wr                              ),
-        .rdata             (thr_a_sh                             ),
-        .selftest_key      (reg_st_a && (r_mb.wdata_q[19:16] == 4'd5)),
-        .flt               (flt5_a                               ),
-        .flt_w1c           (par_wrc_a && r_mb.wdata_q[9]         )
+        .clk         (aclk                                    ),
+        .rst_n       (rstn_a                                  ),
+        .wdata       (r_mb.wdata_q[15:0]                      ),
+        .wr          (cfg5_wr                                 ),
+        .rdata       (thr_a_sh                                ),
+        .selftest_key(reg_st_a && (r_mb.wdata_q[11:8] == 4'd5)),
+        .flt         (flt5_a                                  ),
+        .flt_w1c     (par_wrc_a && r_mb.wdata_q[7]            )
     );
     reg_wrap #(
-        .W                (16                                   ),
-        .RESET            (REQ2RESP_RST                         )
+        .W    (16          ),
+        .RESET(REQ2RESP_RST)
     ) u_c_thresh1 (                                   // SCMTHRESH1 shadow
-        .clk               (aclk                                 ),
-        .rst_n             (rstn_a                               ),
-        .wdata             (r_mb.wdata_q[15:0]                   ),
-        .wr                (cfg6_wr                              ),
-        .rdata             (thr_r_sh                             ),
-        .selftest_key      (reg_st_a && (r_mb.wdata_q[19:16] == 4'd6)),
-        .flt               (flt6_a                               ),
-        .flt_w1c           (par_wrc_a && r_mb.wdata_q[10]        )
+        .clk         (aclk                                    ),
+        .rst_n       (rstn_a                                  ),
+        .wdata       (r_mb.wdata_q[15:0]                      ),
+        .wr          (cfg6_wr                                 ),
+        .rdata       (thr_r_sh                                ),
+        .selftest_key(reg_st_a && (r_mb.wdata_q[11:8] == 4'd6)),
+        .flt         (flt6_a                                  ),
+        .flt_w1c     (par_wrc_a && r_mb.wdata_q[8]            )
     );
 
     assign cfg_key            = 4'b1010;   // by construction, TI SCMCNTRL key
@@ -578,24 +603,59 @@ module hang_prot_regfile #(
     // first sync stage only (s1); the second stage IS the reg_wrap cell.
     // s1 = metastability absorption stage -> sync_dff cell wraps
     sync_dff #(.WIDTH(NUM_IA))   u_r2a_st_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(r2a_err_status), .q(r2a_st_s1));
+        .clk (mbus_clk      ),
+        .rstn(mbus_rstn     ),
+        .d   (r2a_err_status),
+        .q   (r2a_st_s1     )
+    );
     sync_dff #(.WIDTH(NUM_IA))   u_r2r_st_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(r2r_err_status), .q(r2r_st_s1));
+        .clk (mbus_clk      ),
+        .rstn(mbus_rstn     ),
+        .d   (r2r_err_status),
+        .q   (r2r_st_s1     )
+    );
     sync_dff #(.WIDTH(NUM_IA))   u_ia_act_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(ia_active),      .q(ia_act_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (ia_active),
+        .q   (ia_act_s1)
+    );
     sync_dff #(.WIDTH(OTD_BW))   u_otd_sync    (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(otd),            .q(otd_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (otd      ),
+        .q   (otd_s1   )
+    );
     sync_dff #(.WIDTH(16))       u_thr_a_sync  (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(thr_rd_r2a),     .q(thr_a_s1));
+        .clk (mbus_clk  ),
+        .rstn(mbus_rstn ),
+        .d   (thr_rd_r2a),
+        .q   (thr_a_s1  )
+    );
     sync_dff #(.WIDTH(16))       u_thr_r_sync  (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(thr_rd_r2r),     .q(thr_r_s1));
+        .clk (mbus_clk  ),
+        .rstn(mbus_rstn ),
+        .d   (thr_rd_r2r),
+        .q   (thr_r_s1  )
+    );
     sync_dff #(.WIDTH(4))        u_ena_sync    (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(ena_rd),         .q(ena_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (ena_rd   ),
+        .q   (ena_s1   )
+    );
     sync_dff #(.WIDTH(4))        u_rail_sync   (
-        .clk(mbus_clk), .rstn(mbus_rstn),
-        .d({err_event_n, err_event, fu_fault_n, fu_fault}),   .q(rail_s1));
+        .clk (mbus_clk                                      ),
+        .rstn(mbus_rstn                                     ),
+        .d   ({err_event_n, err_event, fu_fault_n, fu_fault}),
+        .q   (rail_s1                                       )
+    );
     sync_dff #(.WIDTH(FU_SRC_W)) u_fusrc_sync  (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(fu_src),         .q(fusrc_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (fu_src   ),
+        .q   (fusrc_s1 )
+    );
 
     //--------------------------------------------------------------------------
     // REGISTER PARITY (FuSa): every register is a reg_wrap instance in
@@ -612,10 +672,10 @@ module hang_prot_regfile #(
     // (per-bit independent, always coherent) - sync cell wrap
     logic flt4_s2, flt5_s2, flt6_s2;
     sync_2dff #(.WIDTH(3)) u_flt_sync (
-        .clk  (mbus_clk ),
-        .rstn (mbus_rstn),
-        .d    ({flt4_a , flt5_a , flt6_a }),
-        .q    ({flt4_s2, flt5_s2, flt6_s2})
+        .clk (mbus_clk                   ),
+        .rstn(mbus_rstn                  ),
+        .d   ({flt4_a , flt5_a , flt6_a }),
+        .q   ({flt4_s2, flt5_s2, flt6_s2})
     );
 
     // (c) in-flight write-latch parity: {wsel_q, wdata_q} are stable from
@@ -629,155 +689,180 @@ module hang_prot_regfile #(
     assign wpar_err    = wr_inflight
                          && (((^r_mb.wsel_q) ^ (^r_mb.wdata_q)) != r_mb.wpar_q);
 
-    // SCMREGPARSTAT W1C decode (mbus side; aclk side = par_wrc_a above):
-    // wdata[12:4] clear PERR0..8 at their source register, wdata[13]
-    // clears PERR9, wdata[14] clears PERR_CMD, wdata[0] clears the
-    // PAR_SELFTEST latch
+    // STA_PAR W1C decode (mbus side; aclk side = par_wrc_a above):
+    // wdata[10:2] clear PERR0..8 at their source register, wdata[11]
+    // clears PERR9 (inflight lane), wdata[12] clears PERR10 (CMD wrap
+    // rewrite), wdata[0] clears the PAR_SELFTEST latch
     logic par_wrc;
     assign par_wrc = wr_fire && (wsel == 4'd9);
 
-    // per-register parity INJECTION decode (mbus images; aclk shadows =
-    // reg_st_a above): keyed REG_SELFTEST/REGSEL, one wr_fire pulse
-    // flips the selected wrapper's parity bit. Image wrappers are wr=1
-    // every cycle, so the injected bad parity self-restores on the NEXT
-    // cycle (par_err is high exactly 1 cycle, the sticky latches it) -
-    // after W1C the fault stays clear without re-writing the register.
+    // per-group parity INJECTION decode (mbus images; aclk shadows =
+    // reg_st_a above): keyed REG_SELFTEST/REGSEL (CFG_REGST 0x28, house
+    // key 1010), one wr_fire pulse flips the selected wrapper's parity
+    // bit. Image wrappers are wr=1 every cycle, so the injected bad
+    // parity self-restores on the NEXT cycle (par_err is high exactly
+    // 1 cycle, the sticky latches it) - after W1C the fault stays clear
+    // without re-writing the register.
+    logic [3:0] regsel;
+    logic regst_wr;
     logic reg_selftest;
-    assign reg_selftest = wr_fire && (wsel == 4'd4)
-                          && (wdata[7:4] == 4'b1010) && wdata[20]
-                          && (wdata[19:16] <= 4'd8);
+    assign regsel      = wdata[11:8];
+    assign regst_wr    = wr_fire && (wsel == 4'd10)
+                         && (wdata[3:0] == 4'b1010);
+    assign reg_selftest = regst_wr && wdata[4] && (regsel <= 4'd10);
 
     //---- mbus-domain image wrappers (r2 = second sync stage + parity) --
     reg_wrap #(
-        .W                (NUM_IA                               )
+        .W(NUM_IA)
     ) u_r_iaerr0 (                                   // 0x00 SCMIAERR0STAT
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (r2a_st_s1                            ),
-        .wr                (1'b1                                 ),
-        .rdata             (r2a_st_s2                            ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd0)),
-        .flt               (r0_flt                               ),
-        .flt_w1c           (par_wrc && wdata[4]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (r2a_st_s1                       ),
+        .wr          (1'b1                            ),
+        .rdata       (r2a_st_s2                       ),
+        .selftest_key(reg_selftest && (regsel == 4'd0)),
+        .flt         (r0_flt                          ),
+        .flt_w1c     (par_wrc && wdata[2]             )
     );
     reg_wrap #(
-        .W                (NUM_IA                               )
+        .W(NUM_IA)
     ) u_r_iaerr1 (                                   // 0x04 SCMIAERR1STAT
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (r2r_st_s1                            ),
-        .wr                (1'b1                                 ),
-        .rdata             (r2r_st_s2                            ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd1)),
-        .flt               (r1_flt                               ),
-        .flt_w1c           (par_wrc && wdata[5]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (r2r_st_s1                       ),
+        .wr          (1'b1                            ),
+        .rdata       (r2r_st_s2                       ),
+        .selftest_key(reg_selftest && (regsel == 4'd1)),
+        .flt         (r1_flt                          ),
+        .flt_w1c     (par_wrc && wdata[3]             )
     );
     reg_wrap #(
-        .W                (NUM_IA                               )
+        .W(NUM_IA)
     ) u_r_iastat (                                   // 0x08 SCMIASTAT (RO)
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (ia_act_s1                            ),
-        .wr                (1'b1                                 ),
-        .rdata             (ia_act_s2                            ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd2)),
-        .flt               (r2_flt                               ),
-        .flt_w1c           (par_wrc && wdata[6]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (ia_act_s1                       ),
+        .wr          (1'b1                            ),
+        .rdata       (ia_act_s2                       ),
+        .selftest_key(reg_selftest && (regsel == 4'd2)),
+        .flt         (r2_flt                          ),
+        .flt_w1c     (par_wrc && wdata[4]             )
     );
     reg_wrap #(
-        .W                (OTD_BW                               )
+        .W(OTD_BW)
     ) u_r_otd (                                   // 0x0C SCMOTD (RO)
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (otd_s1                               ),
-        .wr                (1'b1                                 ),
-        .rdata             (otd_s2                               ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd3)),
-        .flt               (r3_flt                               ),
-        .flt_w1c           (par_wrc && wdata[7]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (otd_s1                          ),
+        .wr          (1'b1                            ),
+        .rdata       (otd_s2                          ),
+        .selftest_key(reg_selftest && (regsel == 4'd3)),
+        .flt         (r3_flt                          ),
+        .flt_w1c     (par_wrc && wdata[5]             )
     );
     reg_wrap #(
-        .W                (4                                    )
+        .W(4)
     ) u_r_cntrl (                                   // 0x10 SCMCNTRL.ENA image
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (ena_s1                               ),
-        .wr                (1'b1                                 ),
-        .rdata             (ena_s2                               ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd4)),
-        .flt               (r4_flt                               ),
-        .flt_w1c           (par_wrc && wdata[8]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (ena_s1                          ),
+        .wr          (1'b1                            ),
+        .rdata       (ena_s2                          ),
+        .selftest_key(reg_selftest && (regsel == 4'd4)),
+        .flt         (r4_flt                          ),
+        .flt_w1c     (par_wrc && wdata[6]             )
     );
     reg_wrap #(
-        .W                (16                                   )
+        .W(16)
     ) u_r_thresh0 (                                   // 0x14 SCMTHRESH0 image
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (thr_a_s1                             ),
-        .wr                (1'b1                                 ),
-        .rdata             (thr_a_s2                             ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd5)),
-        .flt               (r5_flt                               ),
-        .flt_w1c           (par_wrc && wdata[9]                 )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (thr_a_s1                        ),
+        .wr          (1'b1                            ),
+        .rdata       (thr_a_s2                        ),
+        .selftest_key(reg_selftest && (regsel == 4'd5)),
+        .flt         (r5_flt                          ),
+        .flt_w1c     (par_wrc && wdata[7]             )
     );
     reg_wrap #(
-        .W                (16                                   )
+        .W(16)
     ) u_r_thresh1 (                                   // 0x18 SCMTHRESH1 image
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (thr_r_s1                             ),
-        .wr                (1'b1                                 ),
-        .rdata             (thr_r_s2                             ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd6)),
-        .flt               (r6_flt                               ),
-        .flt_w1c           (par_wrc && wdata[10]                )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (thr_r_s1                        ),
+        .wr          (1'b1                            ),
+        .rdata       (thr_r_s2                        ),
+        .selftest_key(reg_selftest && (regsel == 4'd6)),
+        .flt         (r6_flt                          ),
+        .flt_w1c     (par_wrc && wdata[8]             )
     );
     reg_wrap #(
-        .W                (4                                    )
+        .W(4)
     ) u_r_fustat (                                   // 0x1C SCMIAFUSTAT rails
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (rail_s1                              ),
-        .wr                (1'b1                                 ),
-        .rdata             (rail_s2                              ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd7)),
-        .flt               (r7_flt                               ),
-        .flt_w1c           (par_wrc && wdata[11]                )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (rail_s1                         ),
+        .wr          (1'b1                            ),
+        .rdata       (rail_s2                         ),
+        .selftest_key(reg_selftest && (regsel == 4'd7)),
+        .flt         (r7_flt                          ),
+        .flt_w1c     (par_wrc && wdata[9]             )
     );
     reg_wrap #(
-        .W                (FU_SRC_W                             )
+        .W(FU_SRC_W)
     ) u_r_fusrc (                                   // 0x20 SCMIAFUSRC image
-        .clk               (mbus_clk                              ),
-        .rst_n             (mbus_rstn                             ),
-        .wdata             (fusrc_s1                             ),
-        .wr                (1'b1                                 ),
-        .rdata             (fusrc_s2                             ),
-        .selftest_key      (reg_selftest && (wdata[19:16] == 4'd8)),
-        .flt               (r8_flt                               ),
-        .flt_w1c           (par_wrc && wdata[12]                )
+        .clk         (mbus_clk                        ),
+        .rst_n       (mbus_rstn                       ),
+        .wdata       (fusrc_s1                        ),
+        .wr          (1'b1                            ),
+        .rdata       (fusrc_s2                        ),
+        .selftest_key(reg_selftest && (regsel == 4'd8)),
+        .flt         (r8_flt                          ),
+        .flt_w1c     (par_wrc && wdata[10]            )
+    );
+
+    // group 10 CMD wrap (W=1): command in-flight parity sticky body -
+    // par_bad sets it, its own W1C bit (STA_PAR[12]) is a wrap rewrite
+    // that recomputes the parity
+    logic r10_flt, cmd_r;
+    reg_wrap #(
+        .W    (1   ),
+        .RESET(1'b0)
+    ) u_w_cmd (
+        .clk         (mbus_clk                         ),
+        .rst_n       (mbus_rstn                        ),
+        .wdata       (par_bad                          ),
+        .wr          (par_bad || (par_wrc && wdata[12])),
+        .rdata       (cmd_r                            ),
+        .selftest_key(reg_selftest && (regsel == 4'd10)),
+        .flt         (r10_flt                          ),
+        .flt_w1c     (par_wrc && wdata[12]             )
     );
 
     //--------------------------------------------------------------------------
-    // SCMREGPARSTAT (0x24) itself: the wrapper stickies ARE the PERR
-    // bits. Only the PAR_SELFTEST latch, PERR9 (in-flight write-path
-    // parity) and PERR_CMD (mbus command parity) are stored here, as a
-    // 3-bit latch with inverted duplicates (heal-to-SET - a parity
-    // monitor cannot meaningfully parity-protect its own status bits):
-    //   par_lq = {PERR_CMD, PERR9 (wpar), PAR_SELFTEST}
-    //   bit2 set by any ce with bad command parity, cleared by wdata[14];
+    // STA_PAR (0x24) itself: the wrapper stickies ARE the PERR bits.
+    // Only the PAR_SELFTEST latch and PERR9 (in-flight write-path
+    // parity) are stored here, as a 2-bit latch with inverted duplicates
+    // (heal-to-SET - a parity monitor cannot meaningfully parity-protect
+    // its own status bits); PERR_CMD is the group-10 W=1 wrap body:
+    //   par_lq = {PERR9 (wpar), PAR_SELFTEST}
     //   bit1 set by any in-flight latch parity error, cleared by
-    //   wdata[13]; bit0 set by PAR_SELFTEST, cleared by wdata[0]
+    //   wdata[11]; bit0 set by PAR_SELFTEST, cleared by wdata[0]
     // "fault, no source" after a self-test is the ESM service signature.
     //--------------------------------------------------------------------------
     logic selftest_pls;
-    assign selftest_pls = wr_fire && (wsel == 4'd4) && (wdata[7:4] == 4'b1010)
-                          && wdata[11];
+    assign selftest_pls = regst_wr && wdata[5];
 
-    logic [2:0] par_l_dup_f;
+    logic [1:0] par_l_dup_f;
     assign par_l_dup_f = (r_mb.par_lq_n != ~r_mb.par_lq);
+    logic [1:0] par_l_next;
+    assign par_l_next  = ((r_mb.par_lq
+                           & ~(par_wrc ? {wdata[11], wdata[0]} : 2'b00))
+                          | {wpar_err, selftest_pls}
+                          | (|par_l_dup_f ? 2'b11 : 2'b00));
 
     //--------------------------------------------------------------------------
-    // mbus 域组合进程: CDC 写锁存 + WR_DROPPED 粘滞 + SCMREGPARSTAT 锁存
+    // mbus 域组合进程: CDC 写锁存 + WR_DROPPED 粘滞 + STA_PAR 锁存
     //   下一拍值 (默认保持; 原 mbus_cdc_ff / wr_drop_ff / par_latch_ff 三个
     //   always_ff 合并, 字段互不相交, NBA 语义保持)
     //--------------------------------------------------------------------------
@@ -801,16 +886,10 @@ module hang_prot_regfile #(
             v_mb.wr_dropped_q = 1'b0;
         end
 
-        // SCMREGPARSTAT 3-bit 锁存 (dual rail): W1C clear / 新事件 set /
-        // dup 失配自愈到 SET (heal-to-SET, 事件绝不静默丢失)
-        if (par_wrc) begin
-            v_mb.par_lq = r_mb.par_lq & ~{wdata[14], wdata[13], wdata[0]};
-        end
-        v_mb.par_lq   = v_mb.par_lq | {par_bad, wpar_err, selftest_pls};
-        if (par_l_dup_f != '0) begin
-            v_mb.par_lq = v_mb.par_lq | 3'b111;
-        end
-        v_mb.par_lq_n = ~v_mb.par_lq;
+        // STA_PAR 锁存 lane {PERR9, PAR_SELFTEST} (dual rail): W1C clear /
+        // 新事件 set / dup 失配自愈到 SET (heal-to-SET, 事件绝不静默丢失)
+        v_mb.par_lq   = par_l_next;
+        v_mb.par_lq_n = ~par_l_next;
 
         rin_mb = v_mb;
     end
@@ -828,10 +907,10 @@ module hang_prot_regfile #(
 
     // ESM event: level, dual rail. Level = OR of all wrapper stickies -
     // mbus images r0..r8 (r4/r5/r6 are readback images, their config
-    // twins are the aclk shadows) + synced aclk shadows + the latch.
-    // Each source clears at its own PERR bit in BOTH domains, so the
-    // event stays up exactly as long as an uncleared source exists
-    // (single source of truth).
+    // twins are the aclk shadows) + synced aclk shadows + the CMD wrap
+    // + the latch. Each source clears at its own PERR bit in BOTH
+    // domains, so the event stays up exactly as long as an uncleared
+    // source exists (single source of truth).
     logic perr4;
     logic perr5;
     logic perr6;
@@ -840,7 +919,7 @@ module hang_prot_regfile #(
     assign perr6 = r6_flt | flt6_s2;   // 0x18: image + THRESH1 shadow
     assign reg_par_fault   = r0_flt | r1_flt | r2_flt | r3_flt
                               | perr4 | perr5 | perr6
-                              | r7_flt | r8_flt
+                              | r7_flt | r8_flt | r10_flt | cmd_r
                               | (|r_mb.par_lq);
     assign reg_par_fault_n = ~reg_par_fault;
 
@@ -863,11 +942,18 @@ module hang_prot_regfile #(
                 4'd6:    rdata = {16'b0, thr_r_s2};
                 4'd7:    rdata = {26'b0, r_mb.wr_dropped_q, cdc_busy, rail_s2};
                 4'd8:    rdata = {{(32-FU_SRC_W){1'b0}}, fusrc_s2};
-                4'd9:    rdata = {17'b0, r_mb.par_lq[2], r_mb.par_lq[1], r8_flt, r7_flt,
-                                  perr6, perr5, perr4, r3_flt, r2_flt, r1_flt,
-                                  r0_flt, 2'b00, reg_par_fault_n,
-                                  reg_par_fault};
-                default: rdata = 32'h0;
+                // STA_PAR: [1:0] fault rails · [12:2] PERR group 0..10
+                // (bit = 2+组号; group 9 = in-flight latch lane,
+                //  group 10 = CMD W=1 wrap body merged with its flt).
+                // NB no pad term: PERR0 lands on bit 2 (19+11+2 = 32)
+                4'd9:    rdata = {19'b0, r10_flt | cmd_r, r_mb.par_lq[1],
+                                  r8_flt, r7_flt, perr6, perr5, perr4,
+                                  r3_flt, r2_flt, r1_flt, r0_flt,
+                                  reg_par_fault_n, reg_par_fault};
+                // ID (house standard: 殿后 0xFC) - wsel 4'd15 only
+                // reaches the read mux when id_sel matched (addr[7:0]==FC)
+                4'd15:   rdata = ID_VAL;
+                default: rdata = 32'h0;   // CFG_REGST (WO) + holes read 0
             endcase
         end
     end

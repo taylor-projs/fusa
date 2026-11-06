@@ -48,10 +48,10 @@ module sync_dff #(
    generate
       for (gi = 0; gi < WIDTH; gi = gi + 1) begin : g_bit
          `SYNC_DFF_TECH_CELL u_tech_cell (
-            .CK (clk   ),
-            .RN (rstn  ),
-            .D  (d[gi] ),
-            .Q  (q[gi] )
+            .CK(clk  ),
+            .RN(rstn ),
+            .D (d[gi]),
+            .Q (q[gi])
          );
       end
    endgenerate

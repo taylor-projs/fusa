@@ -1,7 +1,8 @@
 # ia_timeo_gen_regfile 寄存器说明
 
 **模块**：`ia_bus_timeo_regfile`（[ia_bus_timeo_regfile.sv](../rtl/ia_bus_timeo_regfile.sv)）+ 每寄存器 `reg_wrap` 实例（[reg_wrap.sv](../../common_modules/reg_wrap.sv)）**参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM 寄存器模型
-**文档版本**：v1.1（2026-10-29）——配置接口由 APB3 更换为 mbus leaf（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道）
+**文档版本**：v1.2（2026-11-06）——寄存器地图统一到 house standard：SCMREGPARSTAT 更名 STA_PAR（字段重排 bit = 2+组号）、自检键从 SCMCNTRL 拆出独立 CFG_REGST 0x28（house key 1010）、新增 ID 0xFC 殿后
+**前版**：v1.1（2026-10-29）——配置接口由 APB3 更换为 mbus leaf（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道）
 
 ---
 
@@ -13,7 +14,7 @@
 2. 完成 `mbus_clk`（mbus 域）与 `aclk`（监控域 = 顶层 `ia_bus_aclk`）之间的时钟域 crossing
 3. 产生监控核所需的单拍脉冲（`to_clear` / `selftest_key` / `fu_selftest`）与 W1C 清零向量
 4. 将监控核的状态、深度、阈值回读、双轨事件同步回 mbus 域供软件读取
-5. 对 9 个 SW 可见寄存器做逐寄存器偶校验（parity），独立双轨事件 `reg_par_fault`/`reg_par_fault_n` 上报 ESM（见 §5）
+5. 对每个 SW 可见寄存器（mbus 镜像 + aclk 影子 + CMD wrap）做逐寄存器偶校验（parity），独立双轨事件 `reg_par_fault`/`reg_par_fault_n` 上报 ESM（见 §5）
 6. 对每条 mbus 命令做在途奇偶检查（`par`），坏奇偶写被阻断、读门控为 0，并锁存 `PERR_CMD`（见 §3.4）
 
 `mbus_clk` 与 `aclk` **无相位/频率关系约束**（可异步、可同频异相）。
@@ -58,8 +59,10 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 
 ## 3. 寄存器映射
 
-实例号由 SoC 集成决定（`addr[15:8]` 须等于参数 `IDX`）；偏移单位为字节（`addr[7:0]`），10 个 32 位寄存器，地址空间 0x00–0x24。
+实例号由 SoC 集成决定（`addr[15:8]` 须等于参数 `IDX`）；偏移单位为字节（`addr[7:0]`），11 个 32 位寄存器（0x00–0x28）+ ID 殿后 0xFC。
 所有访问必须字对齐；非对齐/越界/写只读访问被**静默忽略**（mbus 无错误通道），坏奇偶访问被阻断并锁存 `PERR_CMD`（§3.4）。
+
+寄存器地图位置（house standard，与 fusa 全家族一致）：**STA_PAR 倒数第 3（0x24）、CFG_REGST 倒数第 2（0x28）、ID 殿后 0xFC**。CFG_REGST 用 house key `wdata[3:0]=4'b1010`（独立于 SCMCNTRL [7:4] 的本地 key 空间），错 key 写被静默丢弃（本设计无 REG_PROT 锁存类，与其它 keyed 违例同样处理）。
 
 | 偏移 | 名称 | 访问 | 复位值 | 字段说明 |
 |---|---|---|---|---|
@@ -72,7 +75,9 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | 0x18 | `SCMTHRESH1` | W/R | 0x00000000FF | `[15:0]` REQ2RESP_MAX（req2resp 阈值） |
 | 0x1C | `SCMIAFUSTAT` | **W1C/R** | 0x00000000 | `[0]` FU_FAULT（W1C）；`[1]` FU_FAULT_N、`[2]` ERR_EVENT、`[3]` ERR_EVENT_N（只读双轨）；`[4]` CFG_BUSY（RO，CDC 写在途）；`[5]` WR_DROPPED（W1C，见 §3.2） |
 | 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | `[4+3*NUM_M-1:0]` 完整性故障源，见 §3.3 |
-| 0x24 | `SCMREGPARSTAT` | **W1C/R** | 0x00000000 | `[0]` PAR_FAULT（W1C，→ESM 双轨）；`[1]` PAR_FAULT_N（RO）；`[13:4]` PERR9..PERR0 每寄存器奇偶错误（W1C）；`[14]` PERR_CMD mbus 命令奇偶错误（W1C），见 §3.4 |
+| 0x24 | `STA_PAR` | **W1C/R** | 0x00000002 | 寄存器奇偶状态（house standard 字段布局）：`[0]` PAR_FAULT / `[1]` PAR_FAULT_N / `[12:2]` PERR（bit = 2+组号），见 §3.4。静息读 0x2 |
+| 0x28 | `CFG_REGST` | **WO** | — | 寄存器奇偶自检控制（house standard）：key[3:0]=1010 + `[4]` REG_SELFTEST + REGSEL[11:8] + `[5]` PAR_SELFTEST，见 §3.5。读恒 0；错 key 写静默丢弃 |
+| 0xFC | `ID` | R | 0x4941_0001 | `"IA"` v1（house standard 殿后）。仅 `addr[7:0]==8'hFC` 精确译码（0x3C/0x7C/0xBC 落在 wsel 15 越界读 0） |
 
 ### 3.1 SCMCNTRL 字段（0x10）
 
@@ -83,9 +88,8 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | [8] | TO_CLR | W（脉冲） | 1-aclk-拍脉冲，重启实时计数器。**动作写必须保 ENA=0xF**（见 §5.2） |
 | [9] | SELFTEST | W（脉冲） | 强制比较器触发，证明 err_event 上报链路（含双轨） |
 | [10] | FU_SELFTEST | W（脉冲） | 强制 fu_fault 但不锁存 fu_src，证明监控故障上报链路 |
-| [11] | PAR_SELFTEST | W（脉冲） | 强制 PAR_FAULT 但不置任何 PERR 位，证明寄存器奇偶上报链路（写 0x8A0） |
-| [20] | REG_SELFTEST | W（脉冲） | 逐寄存器奇偶注入：翻转所选寄存器的奇偶位（数据不动），经存储+比较器+sticky+ESM 完整链路上报；寄存器由 [19:16] REGSEL 选择（0–8） |
-| [19:16] | REGSEL | W | REG_SELFTEST 的目标寄存器号（0–8 = 偏移 0x4*k），>8 时注入被忽略 |
+
+（v1.2 起 PAR_SELFTEST/REG_SELFTEST/REGSEL 从 SCMCNTRL 移除，由 CFG_REGST 0x28 承担，见 §3.5。）
 
 脉冲位只在写当拍起作用，读回恒 0；ENA 回读显示监控侧 `ena_rd` 有效码字。
 KEY 只写不读（读 0）。
@@ -118,16 +122,26 @@ mbus 零等待语义下写不再阻塞总线：CFG_BUSY=1 期间到达的有效�
 
 写入非零值同时清除 FU_FAULT 与全部故障源位；仍然存活的故障源下一拍重新置位。
 
-### 3.4 SCMREGPARSTAT 字段（0x24）
+### 3.4 STA_PAR 字段（0x24，house standard 布局）
 
 | 位 | 名称 | 属性 | 说明 |
 |---|---|---|---|
 | [0] | PAR_FAULT | R（电平） | 寄存器奇偶故障 = 全部 PERR 位与自检锁存的 OR；直连 ESM 双轨 `reg_par_fault`/`reg_par_fault_n`。写 [0] 仅清除自检锁存，各 PERR 位在其 own bit 清除 |
 | [1] | PAR_FAULT_N | R | PAR_FAULT 双轨补码 |
-| [13:4] | PERR9..PERR0 | W1C/R | 每寄存器奇偶错误（各自 reg_wrap 的 sticky），bit k = 偏移 0x4*k 的寄存器（4..6 = mbus 镜像 | aclk 影子两处 sticky 汇总）；PERR9 = 在途写锁存奇偶（任意寄存器） |
-| [14] | PERR_CMD | W1C/R | mbus 命令在途奇偶错误：`ce` 当拍 `par != ^{addr, wr, wdata}`（**每次 ce 都检查，与实例号译码无关**——错误实例号+坏奇偶同样锁存，因为实例号本身可能已被翻转）。坏奇偶写被阻断（不执行任何副作用），坏奇偶读门控为 0 |
+| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，**bit = 2+组号**（house standard）。组 k = 偏移 0x4*k 的寄存器（4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总）；组 9 = 在途写锁存奇偶（latch lane，任意寄存器，无注错目标）；组 10 = PERR_CMD mbus 命令奇偶（W=1 wrap：sticky 体即 wrap 存储，写 bit[12] 是一次重写、重算奇偶）。组 10 详解：`ce` 当拍 `par != ^{addr, wr, wdata}`（**每次 ce 都检查，与实例号译码无关**——错误实例号+坏奇偶同样锁存，因为实例号本身可能已被翻转）。坏奇偶写被阻断（不执行任何副作用），坏奇偶读门控为 0 |
 
-每个 PERR 位（bit k = 0..8）清除对应 `reg_wrap` 实例的故障 sticky；故障仍存活时重新置位（T6 语义）。各 sticky 内部带反相副本（失配自愈为置位，见 §5.2）。
+每个 PERR 位清除对应组在**两个域**的 sticky（mbus 镜像同拍、aclk 影子经握手 req_edge 拍）；故障仍存活时重新置位（T6 语义）。各 sticky 内部带反相副本（失配自愈为置位，见 §5.2）。
+
+### 3.5 CFG_REGST 字段（0x28，house standard）
+
+| 位 | 名称 | 属性 | 说明 |
+|---|---|---|---|
+| [3:0] | KEY | W | 必须为 `4'b1010`（house key），否则整个写被静默丢弃（无副作用、无锁存；本设计无 REG_PROT 类） |
+| [4] | REG_SELFTEST | W（脉冲） | 逐组奇偶注入：翻转所选组的奇偶位（数据不动），经存储+比较器+sticky+ESM 完整链路上报 |
+| [5] | PAR_SELFTEST | W（脉冲） | 强制 PAR_FAULT 但不置任何 PERR 位（无源注错），证明奇偶→ESM 上报链路（写 0x2A） |
+| [11:8] | REGSEL | W | REG_SELFTEST 的目标组号（0–10 = 偏移 0x4*k 的寄存器，10 = CMD wrap；9 = 在途锁存 lane、无注错目标、忽略），>10 时注入被忽略 |
+
+读恒 0（WO）；典型写值：组 k 注入 `0x1A \| (k << 8)`、PAR_SELFTEST `0x2A`。
 
 ---
 
@@ -183,19 +197,19 @@ ack_t ◄──toggle── 回 ack              │
 |---|---|---|---|
 | u_r_iaerr0..u_r_otd, u_r_fustat, u_r_fusrc | mbus_clk | 0x00/0x04/0x08/0x0C/0x1C/0x20 的 s2 镜像（SW 实际读到的值） | wr=1 跟随 s1，flt 同域直接用 |
 | u_c_ena/u_c_thresh0/u_c_thresh1 | **aclk** | SCMCNTRL.ENA / SCMTHRESH0 / SCMTHRESH1 配置影子 | 经 CDC 握手写入（req_edge 译码、数据稳定跨域）；cfg_ena/cfg_req2accept_max/cfg_req2resp_max 即其 rdata；**flt 2FF 同步回 mbus 域**聚合 |
-| （latch） | mbus_clk | 在途写锁存 {wsel, wdata} 奇偶 | 瞬态窗口，锁存为 PERR9 |
-| （命令奇偶） | mbus_clk | 每次 `ce` 的 `par != ^{addr, wr, wdata}` 检查 | 锁存为 PERR_CMD（§3.4） |
+| u_w_cmd | mbus_clk | 命令奇偶 sticky 体（组 10，W=1 wrap） | wdata=`par_bad`、wr=`par_bad \|\| W1C bit[12]`：坏命令奇偶写 1 进 wrap（即 PERR_CMD 置位），其 W1C 位本身是一次 wrap 重写 |
+| （latch） | mbus_clk | 在途写锁存 {wsel, wdata} 奇偶 | 瞬态窗口，锁存为组 9（STA_PAR bit 11） |
 
-0x10/0x14/0x18 的读回显示（监控有效值回读）仍是 mbus 侧镜像 u_r_cntrl/u_r_thresh0/u_r_thresh1——PERR4/5/6 = 镜像 flt | 同步后的影子 flt（同一寄存器在两个域的存储各自检查，一个 PERR 位汇总）。
+0x10/0x14/0x18 的读回显示（监控有效值回读）仍是 mbus 侧镜像 u_r_cntrl/u_r_thresh0/u_r_thresh1——组 4/5/6 的 PERR 位 = 镜像 flt + 同步后的影子 flt（同一寄存器在两个域的存储各自检查，一个 PERR 位汇总）。
 
 ### 5.2 注错、清除与上报
 
-- **注错（selftest_key）在本域译码**：mbus 镜像在 wr_fire 拍、aclk 影子在 req_edge 拍，各自由 SCMCNTRL REG_SELFTEST/REGSEL（带 key）选择目标。regsel 4..6 时镜像与影子**同时注入**：镜像侧 wr=1 下一拍自动恢复（par_err 恰 1 拍）；影子侧保持到该寄存器被重写（测试序列的恢复步骤）
+- **注错（selftest_key）在本域译码**：mbus 镜像在 wr_fire 拍、aclk 影子在 req_edge 拍，各自由 CFG_REGST REG_SELFTEST/REGSEL（house key 1010）选择目标。regsel 4..6 时镜像与影子**同时注入**：镜像侧 wr=1 下一拍自动恢复（par_err 恰 1 拍）；影子侧保持到该寄存器被重写（测试序列的恢复步骤）；regsel 10 注入 u_w_cmd（wr 非恒 1，保持到 W1C 重写）
 - **W1C 一次写、两域同清**：写 0x24 时 mbus 侧同拍清镜像 sticky，同一写经 CDC 后 aclk 侧 req_edge 清影子 sticky——任何清除/注入都源自同一次 SW 写，两域不会失同步
 - **PAR_FAULT = 所有 sticky + 锁存的 OR**（电平）：任一源未清除则事件保持，单一事实来源
 - 各 sticky 与 2 位锁存内部带反相副本：失配自愈为置位——被 SEU 清掉的故障会重新上报
-- `PAR_SELFTEST`（SCMCNTRL[11]，带 key，写 0x8A0）只置锁存、不置任何 PERR——ESM 服务程序以"fault 无 source"识别自检模式
-- `REG_SELFTEST`（SCMCNTRL[20] + [19:16] REGSEL，带 key，写 `0x11A0 | (k << 16)`）：逐寄存器奇偶注入，SW 序列：注入 → 读 PERR 位验证 → 重写该寄存器（影子侧恢复）→ W1C → 确认 fault 保持清除，端到端证明该寄存器全链
+- `PAR_SELFTEST`（CFG_REGST[5]，house key，写 0x2A）只置锁存、不置任何 PERR——ESM 服务程序以"fault 无 source"识别自检模式
+- `REG_SELFTEST`（CFG_REGST[4] + [11:8] REGSEL，house key，写 `0x1A \| (k << 8)`，k=0..10）：逐组奇偶注入，SW 序列：注入 → 读 PERR 位（bit 2+k）验证 → 重写该寄存器（影子侧恢复）→ W1C → 确认 fault 保持清除，端到端证明该寄存器全链
 
 ### 5.3 已知行为与残余风险
 
@@ -246,9 +260,9 @@ if (read SCMIAFUSTAT bit[5] WR_DROPPED) -> 错误处理      // 不应发生; �
    write SCMIAFUSRC    = 0x7FF...  // 非零写同时清 FU_FAULT+FUSRC
 
 6. 奇偶自检 (周期性, 证明 reg_par_fault -> ESM 链路):
-   write SCMCNTRL      = 0x8A0     // KEY=0xA, ENA=0xF, PAR_SELFTEST=1
-   // ESM 应收到 reg_par_fault; 读回 SCMREGPARSTAT = 0x1 (仅 bit0)
-   write SCMREGPARSTAT = 0x1       // 清除
+   write CFG_REGST = 0x2A          // house key 1010 + PAR_SELFTEST
+   // ESM 应收到 reg_par_fault; 读回 STA_PAR = 0x1 (仅 bit0)
+   write STA_PAR   = 0x1           // 清除 (读回 0x2 静息)
 ```
 
 ### 6.2 动作写必须带 ENA=0xF
@@ -282,9 +296,10 @@ SCMCNTRL 的 ENA 字段在**每一次**带 key 的写中都会被监控采样。
 | 脉冲位自动回零 | TO_CLR/SELFTEST/FU_SELFTEST | 电平位冻结监控的 latent fault 防护 |
 | 双轨 ESM | err_event(_n)、fu_fault(_n) | 传输故障检测 |
 | 周期回读 | 阈值/使能回读寄存器 | SPNU575 配置周期性校验 |
-| 寄存器奇偶 | s2 镜像 + aclk 影子 + 在途写锁存，逐周期检查 | SW 可见寄存器存储损坏 → 独立 ESM 事件 |
-| 奇偶状态反相副本 | SCMREGPARSTAT 自身 | SEU 清除的奇偶故障自愈为置位，重新上报 |
-| PAR_SELFTEST | SCMCNTRL[11]，keyed 脉冲 | 证明奇偶→ESM 链路（含双轨） |
+| 寄存器奇偶 | s2 镜像 + aclk 影子 + CMD wrap + 在途写锁存，逐周期检查 | SW 可见寄存器存储损坏 → 独立 ESM 事件 |
+| 奇偶状态反相副本 | STA_PAR 锁存 lane 自身 | SEU 清除的奇偶故障自愈为置位，重新上报 |
+| PAR_SELFTEST | CFG_REGST[5]，house key 脉冲 | 证明奇偶→ESM 链路（含双轨） |
+| REG_SELFTEST | CFG_REGST[4] + REGSEL[11:8]，house key | 逐组注入，端到端证明每组全链 |
 
 **已知限制（文档化的残余风险）**：
 

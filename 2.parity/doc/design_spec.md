@@ -304,7 +304,7 @@ rdat 2FF (s1/s2) -> prdata
 | 0xA0 | STA_ERR | RW1C [17:0] | err 轨粘滞（含注错） |
 | 0xA4 | STA_FAULT | RW1C [17:0] | fault 轨粘滞（organic） |
 | 0xA8 | CFG_IRQEN | RW [17:0] | err 轨中断使能 |
-| 0xAC | STA_REGPAR | RW1C/R | 寄存器奇偶状态（§8.6） |
+| 0xAC | STA_PAR | RW1C/R | 寄存器奇偶状态（§8.6） |
 | 0xB0 | CFG_REGST | W (key=0xA) | 寄存器奇偶自测控制（§8.6），读回 0 |
 | 0xFC | ID | RO | `32'hEDC0_1000 \| IDX` |
 
@@ -367,8 +367,8 @@ reg_wrap (每寄存器, mbus 域或 AXI 域):
    selftest_key 脉冲         -> 只翻校验位, data_q 永不污染 (自测注错)
 ```
 
-保护对象与 PERR 编号（STA_REGPAR bit = 4 + 组号，共 15 组，PERR14
-即 bit18）：
+保护对象与 PERR 编号（STA_PAR bit = 2 + 组号，共 15 组，PERR14
+即 bit16）：
 
 | PERR | 对象（域） | 说明 |
 | --- | --- | --- |
@@ -380,7 +380,7 @@ reg_wrap (每寄存器, mbus 域或 AXI 域):
 | 7..10 | inj_en_q / inj_force_q / irqen_q / inj_pos_q 影子（AXI） | |
 | 11/12 | err_st / fault_st 粘滞（AXI） | |
 | 13 | 在途负载奇偶（AXI 域检查，2FF 回读） | 跨域命令负载整体奇偶 |
-| 14 | 命令在途奇偶（mbus 域，ce 拍检查；STA_REGPAR **bit18**） | APB→mbus 命令链在途损坏 |
+| 14 | 命令在途奇偶（mbus 域，ce 拍检查；STA_PAR **bit16**） | APB→mbus 命令链在途损坏 |
 
 - **命令在途奇偶（PERR14）**：`apb2mbus` 在 APB 侧对
   `{paddr, pwrite, pwdata}` 算 1 bit 偶校验，与 payload 3FF 同深度同步
@@ -400,13 +400,13 @@ reg_wrap (每寄存器, mbus 域或 AXI 域):
   `cmd_pulse` 拍与同步后的负载重组异或比对——多 bit 负载在同步链上的
   在途损坏被 1bit 奇偶检出（准静态假设之外的一层防线）；
 - PERR14 为 mbus 本域粘滞（自愈双副本，同 PAR_FAULT 锁存风格），
-  STA_REGPAR bit18 W1C 当拍清（不经 AXI 命令通道）；REGST 无法注入
+  STA_PAR bit16 W1C 当拍清（不经 AXI 命令通道）；REGST 无法注入
   PERR14（源端无注入点），tb 用 force 翻转 apb2mbus 地址同步链 1 bit
   验证（用例 T13）；
 - **双轨 ESM**：`esm_err/_n`、`esm_fault/_n`、`reg_par_fault/_n` 三对双轨
   输出（mbus 域）；顶层真轨 OR / 反轨 AND 汇聚，ESM 侧校验互补性，
   输出/汇聚通路自身 stuck-at 可检出。`irq` 为冗余通知级，保持单轨；
-- **逐源清除**：STA_REGPAR (0xAC) W1C，mbus 域当拍清 + AXI 域经命令
+- **逐源清除**：STA_PAR (0xAC) W1C，mbus 域当拍清 + AXI 域经命令
   下发清（两域同步，不脱同步）；bit0 只清自测锁存；
 - **自测**：CFG_REGST (0xB0) 带 key（[3:0]=0xA，防误触发），REG_SELFTEST
   按 REGSEL 注入指定组的校验错（0..6 本域，7..12 经命令在 AXI 域）；
@@ -589,12 +589,12 @@ nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`
 
 6. **寄存器奇偶保护 + 双轨 ESM + 编码使能**（本轮，参照 hang_prot
    reg_wrap）：cfg/sta 镜像与 AXI 影子/sticky 全部换成 reg_wrap
-   （存储+偶校验+自愈粘滞+自测注错）；新增 STA_REGPAR (0xAC) / CFG_REGST
+   （存储+偶校验+自愈粘滞+自测注错）；新增 STA_PAR (0xAC) / CFG_REGST
    (0xB0，key=0xA)、在途负载奇偶 PERR13；esm_err/esm_fault/
    reg_par_fault 改双轨输出（顶层真轨 OR / 反轨 AND）；注错使能改
    每站点 4bit 编码（1111/0000，非法码 fail-safe 关），INJ_EN 扩为
    0x00/0x04/0x08 三个字，后续寄存器整体 +8 平移。本轮调试中踩的坑：
-   ① STA_REGPAR 读回拼接顺序（保留位应放在 PERR 与 fault 对之间）；
+   ① STA_PAR 读回拼接顺序（旧布局 4+组号时期的保留位问题; 2026-11-06 统一为 2+组号后已无保留位）；
    ② tb 自测写值忘编 key（0xA）；③ 期望值没扣除反轨 bit1 的常 1。
    均已修复，T11/T12 全 PASS。
 
@@ -602,8 +602,8 @@ nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`
    通路）：apb2mbus 增加与 payload 3FF 同深度的 `par` 链（源端组合
    生成 `^{paddr, pwrite, pwdata}`）；每个 edc_regfile ce 拍重组比对，
    失配 → 全部写使能与 cmd_t 翻转被 `par_ok` 门控（fail-safe 拒写）、
-   rdata 驱 0、置 PERR14（mbus 本域自愈双副本粘滞，STA_REGPAR bit18
-   W1C 当拍清）。要点：PERR 位号公式 4+n 对 n=14 自然落在 bit18，
+   rdata 驱 0、置 PERR14（mbus 本域自愈双副本粘滞，STA_PAR bit16
+   W1C 当拍清）。要点：PERR 位号公式 2+n 对 n=14 自然落在 bit16，
    既有 PERR0..13 位位置不变，软件兼容；检查不 gate sel（公共通路
    损坏全实例置位、局部损坏单实例置位，置位模式即诊断信息）。
    tb 新增 T13（force apb2mbus 地址同步链 1 bit：写偏移位验证门控、

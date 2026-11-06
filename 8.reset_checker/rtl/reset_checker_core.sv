@@ -134,8 +134,8 @@ module reset_checker_core (
     logic m_s;
 
     rst_sync #(
-        .SYNC_LVL_NUM (2     ),               // 一级亚稳吸收 + 一级解析
-        .DEF_VAL      (1'b0  )                // 低有效: 断言 0 / 释放 1
+        .SYNC_LVL_NUM(2   ),  // 一级亚稳吸收 + 一级解析
+        .DEF_VAL     (1'b0)  // 低有效: 断言 0 / 释放 1
     ) u_rst_p (
         .clk      (mbus_clk ),
         .rstn     (p_g      ),
@@ -144,8 +144,8 @@ module reset_checker_core (
     );
 
     rst_sync #(
-        .SYNC_LVL_NUM (2     ),
-        .DEF_VAL      (1'b0  )
+        .SYNC_LVL_NUM(2   ),
+        .DEF_VAL     (1'b0)
     ) u_rst_m (
         .clk      (mbus_clk ),
         .rstn     (m_g      ),
@@ -177,13 +177,13 @@ module reset_checker_core (
     assign rstn_pair = scan_mode ? reset_p : (p_s ^ m_s);
 
     rst_sync #(
-        .SYNC_LVL_NUM (2     ),
-        .DEF_VAL      (1'b0  )
+        .SYNC_LVL_NUM(2   ),
+        .DEF_VAL     (1'b0)
     ) u_rst_pair (
-        .clk      (mbus_clk    ),
-        .rstn     (rstn_pair   ),
-        .scan_mode(scan_mode   ),
-        .rstn_s   (rstn_pair_g )
+        .clk      (mbus_clk   ),
+        .rstn     (rstn_pair  ),
+        .scan_mode(scan_mode  ),
+        .rstn_s   (rstn_pair_g)
     );
 
     //=========================================================================

@@ -26,7 +26,7 @@ architecture at elaboration.
 | `NDEAD_RST` | top, regfile | 4095 | ref cycles | reset value of CHi_DEAD (no-edge timeout). Deliberately loose (max) — SW programs ≈ 2× the slowest legal edge interval (§4). |
 | `N_DEB` | top, core | 3 | windows | FAIL_FREQ debounce: consecutive bad windows before `fail_lvl`. Trades detection time (N_DEB windows) against transient tolerance (N_DEB−1 bad windows absorbed). 2-bit counter → max 3. |
 | `DUT_PSC` | top | {N_DUT{4'd3}} | 4 bits/ch | per-channel prescaler tap, packed `[4i+:4]` → PSC of channel i; square wave = clk_dut / 2^(PSC+1). Rule: smallest PSC with f_dut/2^(PSC+1) ≤ f_ref/4, then check E·1.05 < 2^CNT_W (§4). |
-| `WKEY` | top, regfile | 4'h5 | — | keyed-write key in `wdata[31:28]` for GCTRL/FORCE/REGST/CH space; wrong key → write rejected + REG_PROT. |
+| `WKEY` | top, regfile | 4'h5 | — | keyed-write key in `wdata[31:28]` for GCTRL/FORCE/CH space (CFG_REGST uses its own 1010 key); wrong key → write rejected + REG_PROT. |
 | `HANG_TO` | top, regfile | 1024 | mbus cycles | config CDC req/ack watchdog expire → CFG_HANG. Must be ≫ worst-case handshake latency (~6 ref cycles); 1024 @ 48 MHz ≈ 21 µs. |
 | `WIN_ALIVE_MAX` | top, regfile | 131072 | mbus cycles | window-alive watchdog expire → REF_STALE. Must exceed one window in mbus cycles; 131072 @ 48 MHz ≈ 2.7 ms ≈ 2 windows @ 24 MHz ref. |
 | `IDX` | top, regfile | 0 | — | mbus instance id; the leaf responds when `addr[15:8] == IDX`. |
@@ -159,7 +159,7 @@ itself, or the configuration channel.** Each class has its own output rail
 |-------|------|----------|-------|
 | **safety alarm** | `cmm_err/_n` | FAIL_FREQ (out of band), DEAD (clock stopped) | the monitored clock is out of spec → direct safety-goal violation, needs system reaction |
 | **integrity fault** | `cmm_fu/_n` | FU_CNT (counter/shadow pair), FU_CMP (comparators disagree), FU_PSC, FU_WIN, HIERR (EN codeword), FSM (illegal state), REG_PROT, CFG-shadow parity | the monitor itself may be blind (latent fault) → needs service/repair; a counter pair break always reports here, never as FAIL_FREQ (FU pre-empts: the FSM leaves RUN before the debounce accumulates) |
-| **config channel** | `cfg_hang/_n`, `reg_par_fault/_n` | CFG_HANG, REF_STALE, WR_DROPPED (FUSTAT[8/9/7]); PERR groups, PERR_CMD, PAR_SELFTEST, inflight (REGPAR) | configuration is untrustworthy: writes may not have landed, storage may be flipped |
+| **config channel** | `cfg_hang/_n`, `reg_par_fault/_n` | CFG_HANG, REF_STALE, WR_DROPPED (FUSTAT[8/9/7]); PERR groups, PERR_CMD, PAR_SELFTEST, inflight (STA_PAR) | configuration is untrustworthy: writes may not have landed, storage may be flipped |
 
 Hold/clear semantics (everything lands in sticky, dual-rail, heal-to-SET
 latches; outputs are levels driven straight from the stickies):
@@ -169,7 +169,7 @@ latches; outputs are levels driven straight from the stickies):
 | FAIL_FREQ / DEAD | until W1C + TST_CLR; while the fault persists a W1C re-sets within ~1 window (DEAD re-issues every NDEAD cycles) | ERRSTAT / SRCSTAT W1C |
 | FU_CNT/CMP/PSC, FU_WIN, HIERR, FSM, REG_PROT | same, via FUSRC0/1 / FUSTAT stickies; instantaneous re-report while the physical fault persists | FUSRC0/1, FUSTAT W1C |
 | CFG_HANG / REF_STALE / WR_DROPPED | mbus-domain sticky; saturated watchdogs re-fire until the cause is gone | FUSTAT W1C (REF_STALE: wait ~1 window after recovery) |
-| REG_PAR_FAULT / PERR_CMD / PAR_SELFTEST | reg_wrap flt sticky; an SEU clear self-heals back to SET | REGPAR W1C |
+| REG_PAR_FAULT / PERR_CMD / PAR_SELFTEST | reg_wrap flt sticky; an SEU clear self-heals back to SET | STA_PAR W1C |
 | all output rails | level, sticky lifetime | follow the stickies |
 
 ---
@@ -180,7 +180,7 @@ latches; outputs are levels driven straight from the stickies):
 
 Instance selected by `mbus_addr[15:8] == IDX`; byte offsets below. Every
 register is a parity-protected storage cell (`reg_wrap`): storage + even
-parity, a storage parity error raises the REGPAR group bit (§6.4). Access
+parity, a storage parity error raises the STA_PAR PERR group bit (§6.4). Access
 tags: **fwd** = write forwarded to `clk_ref` through the CDC handshake
 (rule 3) · **W1C** = write-1-to-clear, write 0 has no effect · **keyed** =
 `wdata[31:28]` must equal WKEY else the write is rejected + REG_PROT.
@@ -198,10 +198,10 @@ tags: **fwd** = write forwarded to `clk_ref` through the CDC handshake
 | 0x20 | FUSRC0 | W1C fwd | | ref sticky + mbus image | 0 | ch 0..7, nibble per channel: bit0 cnt · bit1 cmp · bit2 cfgpar · bit3 psc |
 | 0x24 | FUSRC1 | W1C fwd | | ref sticky + mbus image | 0 | ch 8..15, same nibble layout |
 | 0x28 | FORCE | RW fwd | ✓ | mbus → ref | 0 | test/diagnostic: [N_DUT-1:0] per-ch verdict force · [16] hang · [17] stale · [18] inj_psc · [19] inj_cmp · [20] inj_cnt (inj targets channel DBGSEL); bit16=0 write is the busy-escape path |
-| 0x2C | REGPAR | W1C local | | mbus | `0x0000_0002` | [0] reg_par_fault · [1] _n (rail pair, read-only) · [3:2] rsvd · [15:4] PERR group 0..11 · [16] PERR_CMD · [17] PAR_SELFTEST |
-| 0x30 | REGST | WO fwd | ✓ | — | — | parity self-test/injection: [8]=1 with [4:0]≤10 → inject mbus wrap group; [4:0]=16+i → inject ref-domain shadow of ch i; [9]=1 → no-source signature (ESM service test) |
-| 0x34 | DBG0 | RO | | ref synced | — | [11:0] last window count (shadow) · [27:16] no-edge counter — channel selected by DBGSEL |
-| 0x38 | DBG1 | RO | | ref synced | — | [11:0] live edge count · [31:16] win_cnt — channel selected by DBGSEL |
+| 0x2C | DBG0 | RO | | ref synced | — | [11:0] last window count (shadow) · [27:16] no-edge counter — channel selected by DBGSEL |
+| 0x30 | DBG1 | RO | | ref synced | — | [11:0] live edge count · [31:16] win_cnt — channel selected by DBGSEL |
+| 0x34 | STA_PAR | W1C local | | mbus | `0x0000_0002` | [0] PAR_FAULT level (W1C clears ONLY the selftest latch) · [1] _n (rail pair, read-only) · [14:2] PERR group 0..12 (bit = 2+group) |
+| 0x38 | CFG_REGST | WO fwd | ✓ | — | — | key[3:0]=1010 · [4]=1 + REGSEL[12:8] 0..12 → inject mbus wrap group · REGSEL 16+i → inject ref-domain shadow of ch i · [5]=1 → no-source signature (ESM service test); bad key → REG_PROT |
 | 0x40+12i | CHi_LO | RW fwd | ✓ | mbus → ref | `WIN_LO_RST` | [CNT_W-1:0] window count low bound, channel i |
 | 0x44+12i | CHi_HI | RW fwd | ✓ | mbus → ref | `WIN_HI_RST` | window count high bound, channel i |
 | 0x48+12i | CHi_DEAD | RW fwd | ✓ | mbus → ref | `NDEAD_RST` | no-edge timeout [ref cycles], channel i |
@@ -209,18 +209,25 @@ tags: **fwd** = write forwarded to `clk_ref` through the CDC handshake
 ¹ nominal directly after reset (fsm=ARM, nerrn=1, any_en=1 with EN defaults
 all-enabled), before the first window fires.
 
-REGPAR PERR group index (bit 4+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE ·
+寄存器地图位置 (house standard): STA_PAR 倒数第 3、CFG_REGST 倒数第 2
+(固定段内; 通道数组区 0x40+ 不参与倒数, ID 留 0x00)。CFG_REGST 的 key 是
+house key `wdata[3:0]=4'b1010`, **不在 WKEY[31:28] 空间**。
+
+STA_PAR PERR group index (bit 2+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE ·
 4 CLO · 5 CHI · 6 CDEAD · 7 ERRSTAT image · 8 SRCSTAT image · 9 FUSRC image ·
-10 FUSTAT image · 11 in-flight payload (bit 15). Groups 0..6 are config
+10 FUSTAT image · 11 in-flight payload (latch lane, bit 13, no injection
+target) · 12 CMD command in-flight parity (W=1 wrap, bit 14: the W1C write
+IS the wrap rewrite). Groups 0..6 are config
 (rewrite-restore), 7..10 are continuously refreshed images (W1C suffices),
-11/PERR_CMD are command-path events.
+11/12 are command-path events.
 
 Universal rules (violations are flagged, not silently ignored):
 
 1. **Command parity**: the master drives `par = ^{addr[15:0], wr, wdata}` on
    every command. Bad parity → write blocked, read returns 0, PERR_CMD sets.
-2. **Keyed registers** (GCTRL, FORCE, REGST, CH space): `wdata[31:28] = 4'h5`,
-   else the whole write is rejected + REG_PROT.
+2. **Keyed registers** (GCTRL, FORCE, CH space): `wdata[31:28] = 4'h5`,
+   else the whole write is rejected + REG_PROT. CFG_REGST (0x38) uses the
+   house key `wdata[3:0] = 4'hA` instead (wrong key = same event).
 3. **CDC busy discipline**: config writes cross a one-at-a-time handshake.
    Poll `GSTAT[6] == 0` before each forwarded write; a write while busy is
    dropped + WR_DROPPED.
@@ -247,15 +254,15 @@ default thresholds — program the real ones before they can false-alarm:
    (an enabled channel with no clock reports DEAD)
 5. TST_CLR: wr GCTRL = KEY | {dbgsel, 1'b0, refsel} | 0x2    [one-shot]
 6. wait ≥ 2 windows
-7. rd ERRSTAT / SRCSTAT / FUSTAT / REGPAR → expect all 0
+7. rd ERRSTAT / SRCSTAT / FUSTAT / STA_PAR → expect 0x2 (only the _n rail bit)
    rd GSTAT → alarm=0, fu=0, active=1, fsm=010(RUN)
 8. Boot self-test (recommended; latent-fault coverage, see TB phases 6/7/10):
    a. threshold self-test ch0: wr CH0_LO = KEY | (E+100) → wait N_DEB+2 windows
       → ERRSTAT[0]=1 proves the full alarm path → restore CH0_LO
       → W1C ERRSTAT bit0 → TST_CLR → wait 2 windows → verify clean
-   b. parity self-test: wr REGST = KEY | (1<<8) | group → REGPAR[group+4]=1
-      → W1C REGPAR; and the no-source signature: REGST = KEY | (1<<9)
-      → REGPAR[17]=1 + reg_par_fault rail → W1C
+   b. parity self-test: wr CFG_REGST = (group<<8) | 0x1A → STA_PAR[group+2]=1
+      → W1C STA_PAR; and the no-source signature: CFG_REGST = 0x2A
+      → STA_PAR[0]=1 (fault, no source) → W1C bit0
 ```
 
 ### 6.2 FAIL_FREQ flow — single channel i
@@ -308,10 +315,10 @@ Trigger: GSTAT[1]=1.
 Trigger: GSTAT[10] (reg_par_fault) and/or GSTAT[11] (cfg_hang).
 
 ```
-A. reg_par_fault: rd REGPAR
-   - [16] PERR_CMD     : a command arrived with bad parity and was blocked
+A. reg_par_fault: rd STA_PAR
+   - [14] PERR_CMD     : a command arrived with bad parity and was blocked
                          (no state changed). Audit the master's parity
-                         generation. W1C REGPAR bit 16.
+                         generation. W1C STA_PAR bit 14.
    - [17] PAR_SELFTEST : self-test signature, not a fault. W1C bit 17.
    - [15:4] group k    : parity error in register group k:
                          0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE · 4 CLO · 5 CHI
@@ -370,7 +377,7 @@ integrity (FU) → measurement alarms** — each layer trusts the one before it.
 1. repair per §6.4 first
 2. then RE-VERIFY every channel's config: read back CHi_LO/HI/DEAD and
    ENLO/ENHI, compare against the golden copy, rewrite any mismatch
-3. W1C REGPAR / FUSTAT, TST_CLR, verify clean for ≥ 2 windows
+3. W1C STA_PAR / FUSTAT, TST_CLR, verify clean for ≥ 2 windows
 ```
 
 ---

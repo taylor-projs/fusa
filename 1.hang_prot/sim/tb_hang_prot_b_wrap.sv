@@ -77,7 +77,8 @@
 //   P26 DECERR windows (a-TB P30 resp part): island R/B 2'b11, strict
 //       collector (resp bit0 pass-through toggle)
 //   P27 mbus addr high-bit sweeps + reg_wrap dup-rail deposits (a-TB
-//       P31a/b port): par_lq_n[2:1], u_r_iaerr1..u_r_fusrc/u_c_ena..u_c_thresh1 flt_q_n, W1C
+//       P31a/b port): par_lq_n[1], u_r_iaerr1..u_r_fusrc/u_w_cmd/
+//       u_c_ena..u_c_thresh1 flt_q_n, W1C
 //   P28 rd_r2a_cf (a-TB P31c port): parked reads + stalled 5th AR +
 //       rd_cnt_a_n rail deposit -> forced fire -> BLOCK -> QSR
 //   P29 long-AW (a-TB P31d port, no wedge): len=255 latches
@@ -171,77 +172,106 @@ module tb_hang_prot_b_wrap;
     //------------------------------------------------------------------------
     // DUT
     //------------------------------------------------------------------------
-    hang_prot_main2mcu_mon #(
-        .OTD_MAX        (OTD_MAX),
-        .REQ2ACCEPT_RST (16'd32),
-        .REQ2RESP_RST   (16'd24),
-        .IDX            (0),
-        .AXI_ID_W       (4),
-        .N_AR_CLASS     (2),          // cls = m_arid[0]
-        .AR_CLS_LSB     (0),
-        .AR_ID_REMAP    (4'h8),       // low 1 bit 0: s_arid = 8|cls
-        .AW_ID_REMAP    (4'hC),
-        .AXI_ADDR_W     (32),
-        .AXI_DATA_W     (32),
-        .WSKID_BEATS    (WSKID_BEATS)
+    hang_prot_main2mcu_top #(
+        .OTD_MAX       (OTD_MAX    ),
+        .REQ2ACCEPT_RST(16'd32     ),
+        .REQ2RESP_RST  (16'd24     ),
+        .IDX           (0          ),
+        .AXI_ID_W      (4          ),
+        .N_AR_CLASS    (2          ),  // cls = m_arid[0]
+        .AR_CLS_LSB    (0          ),
+        .AR_ID_REMAP   (4'h8       ),  // low 1 bit 0: s_arid = 8|cls
+        .AW_ID_REMAP   (4'hC       ),
+        .AXI_ADDR_W    (32         ),
+        .AXI_DATA_W    (32         ),
+        .WSKID_BEATS   (WSKID_BEATS)
     ) u_dut (
-        .mbus_clk      (mbus_clk),
-        .mbus_rstn     (mbus_rstn),
-        .mbus_ce       (mbus_ce),
-        .mbus_wr       (mbus_wr),
-        .mbus_addr     (mbus_addr),
-        .mbus_wdata    (mbus_wdata),
-        .mbus_par      (mbus_par),
-        .mbus_rdata    (mbus_rdata),
+        .mbus_clk  (mbus_clk  ),
+        .mbus_rstn (mbus_rstn ),
+        .mbus_ce   (mbus_ce   ),
+        .mbus_wr   (mbus_wr   ),
+        .mbus_addr (mbus_addr ),
+        .mbus_wdata(mbus_wdata),
+        .mbus_par  (mbus_par  ),
+        .mbus_rdata(mbus_rdata),
 
-        .ia_bus_aclk   (aclk),
-        .rst           (rst),
-        .scan_mode     (scan_mode),
+        .ia_bus_aclk(aclk     ),
+        .rst        (rst      ),
+        .scan_mode  (scan_mode),
 
-        .m_arvalid (m_arvalid), .m_arready (m_arready),
-        .m_arid    (m_arid),    .m_araddr  (m_araddr),
-        .m_arlen   (m_arlen),   .m_arsize  (m_arsize),
-        .m_arburst (m_arburst), .m_arprot  (m_arprot),
-        .m_rvalid  (m_rvalid),  .m_rready  (m_rready),
-        .m_rid     (m_rid),     .m_rdata   (m_rdata),
-        .m_rresp   (m_rresp),   .m_rlast   (m_rlast),
-        .m_awvalid (m_awvalid), .m_awready (m_awready),
-        .m_awid    (m_awid),    .m_awaddr  (m_awaddr),
-        .m_awlen   (m_awlen),   .m_awsize  (m_awsize),
-        .m_awburst (m_awburst), .m_awprot  (m_awprot),
-        .m_wvalid  (m_wvalid),  .m_wready  (m_wready),
-        .m_wdata   (m_wdata),   .m_wstrb   (m_wstrb),
-        .m_wlast   (m_wlast),
-        .m_bvalid  (m_bvalid),  .m_bready  (m_bready),
-        .m_bid     (m_bid),     .m_bresp   (m_bresp),
+        .m_arvalid(m_arvalid),
+        .m_arready(m_arready),
+        .m_arid   (m_arid   ),
+        .m_araddr (m_araddr ),
+        .m_arlen  (m_arlen  ),
+        .m_arsize (m_arsize ),
+        .m_arburst(m_arburst),
+        .m_arprot (m_arprot ),
+        .m_rvalid (m_rvalid ),
+        .m_rready (m_rready ),
+        .m_rid    (m_rid    ),
+        .m_rdata  (m_rdata  ),
+        .m_rresp  (m_rresp  ),
+        .m_rlast  (m_rlast  ),
+        .m_awvalid(m_awvalid),
+        .m_awready(m_awready),
+        .m_awid   (m_awid   ),
+        .m_awaddr (m_awaddr ),
+        .m_awlen  (m_awlen  ),
+        .m_awsize (m_awsize ),
+        .m_awburst(m_awburst),
+        .m_awprot (m_awprot ),
+        .m_wvalid (m_wvalid ),
+        .m_wready (m_wready ),
+        .m_wdata  (m_wdata  ),
+        .m_wstrb  (m_wstrb  ),
+        .m_wlast  (m_wlast  ),
+        .m_bvalid (m_bvalid ),
+        .m_bready (m_bready ),
+        .m_bid    (m_bid    ),
+        .m_bresp  (m_bresp  ),
 
-        .s_arvalid (s_arvalid), .s_arready (s_arready),
-        .s_arid    (s_arid),    .s_araddr  (s_araddr),
-        .s_arlen   (s_arlen),   .s_arsize  (s_arsize),
-        .s_arburst (s_arburst), .s_arprot  (s_arprot),
-        .s_rvalid  (s_rvalid),  .s_rready  (s_rready),
-        .s_rid     (s_rid),     .s_rdata   (s_rdata),
-        .s_rresp   (s_rresp),   .s_rlast   (s_rlast),
-        .s_awvalid (s_awvalid), .s_awready (s_awready),
-        .s_awid    (s_awid),    .s_awaddr  (s_awaddr),
-        .s_awlen   (s_awlen),   .s_awsize  (s_awsize),
-        .s_awburst (s_awburst),
-        .s_wvalid  (s_wvalid),  .s_wready  (s_wready),
-        .s_wdata   (s_wdata),   .s_wstrb   (s_wstrb),
-        .s_wlast   (s_wlast),
-        .s_bvalid  (s_bvalid),  .s_bready  (s_bready),
-        .s_bid     (s_bid),     .s_bresp   (s_bresp),
+        .s_arvalid(s_arvalid),
+        .s_arready(s_arready),
+        .s_arid   (s_arid   ),
+        .s_araddr (s_araddr ),
+        .s_arlen  (s_arlen  ),
+        .s_arsize (s_arsize ),
+        .s_arburst(s_arburst),
+        .s_arprot (s_arprot ),
+        .s_rvalid (s_rvalid ),
+        .s_rready (s_rready ),
+        .s_rid    (s_rid    ),
+        .s_rdata  (s_rdata  ),
+        .s_rresp  (s_rresp  ),
+        .s_rlast  (s_rlast  ),
+        .s_awvalid(s_awvalid),
+        .s_awready(s_awready),
+        .s_awid   (s_awid   ),
+        .s_awaddr (s_awaddr ),
+        .s_awlen  (s_awlen  ),
+        .s_awsize (s_awsize ),
+        .s_awburst(s_awburst),
+        .s_wvalid (s_wvalid ),
+        .s_wready (s_wready ),
+        .s_wdata  (s_wdata  ),
+        .s_wstrb  (s_wstrb  ),
+        .s_wlast  (s_wlast  ),
+        .s_bvalid (s_bvalid ),
+        .s_bready (s_bready ),
+        .s_bid    (s_bid    ),
+        .s_bresp  (s_bresp  ),
 
-        .err_event       (err_event),
-        .err_event_n     (err_event_n),
-        .fu_fault        (fu_fault),
-        .fu_fault_n      (fu_fault_n),
-        .reg_par_fault   (reg_par_fault),
-        .reg_par_fault_n (reg_par_fault_n),
-        .skid_fault      (skid_fault),
-        .skid_fault_n    (skid_fault_n),
-        .block_active    (block_active),
-        .wskid_st        (wskid_st)
+        .err_event      (err_event      ),
+        .err_event_n    (err_event_n    ),
+        .fu_fault       (fu_fault       ),
+        .fu_fault_n     (fu_fault_n     ),
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n),
+        .skid_fault     (skid_fault     ),
+        .skid_fault_n   (skid_fault_n   ),
+        .block_active   (block_active   ),
+        .wskid_st       (wskid_st       )
     );
 
 `ifdef DUMP_NONE
@@ -1313,14 +1343,31 @@ module tb_hang_prot_b_wrap;
             $display("[%0t] ERR: P10 FUSRC %h != 0", $time, rd_val);
             errors++;
         end
-        mb_rd(8'h24, rd_val);                    // SCMPARSTAT: {n,p} = no fault
+        mb_rd(8'h24, rd_val);                    // STA_PAR: {n,p} = no fault
         if (rd_val[1:0] !== 2'b10) begin
             $display("[%0t] ERR: P10 PARSTAT %h[1:0] != 2'b10", $time, rd_val);
             errors++;
         end
-        mb_rd(8'h28, rd_val);                    // OOR: range gate -> 0
+        mb_rd(8'h28, rd_val);                    // CFG_REGST is WO -> reads 0
+        if (rd_val !== 32'h0) begin
+            $display("[%0t] ERR: P10 CFG_REGST read %h != 0", $time, rd_val);
+            errors++;
+        end
+        mb_rd(8'h2C, rd_val);                    // OOR: range gate -> 0
         if (rd_val !== 32'h0) begin
             $display("[%0t] ERR: P10 OOR read %h != 0", $time, rd_val);
+            errors++;
+        end
+        mb_rd(8'hFC, rd_val);                    // ID@0xFC (exact decode)
+        if (rd_val !== 32'h4841_0001) begin
+            $display("[%0t] ERR: P10 ID %h != 48410001", $time, rd_val);
+            errors++;
+        end
+        mb_wr(8'hFC, 32'hDEAD_BEEF);             // ID is RO: write dropped
+        repeat (4) @(negedge mbus_clk);
+        mb_rd(8'hFC, rd_val);
+        if (rd_val !== 32'h4841_0001) begin
+            $display("[%0t] ERR: P10 ID write not dropped", $time);
             errors++;
         end
         scn_sample();
@@ -1694,13 +1741,20 @@ module tb_hang_prot_b_wrap;
             errors++;
         end
 
-        // (c) per-wrapper parity-injection sweep ------------------------------
-        for (k = 0; k <= 8; k = k + 1) begin
-            mb_wr_wait(16'h0010, 32'h0010_00AF | (k << 16)); // inject wrap k
+        // (c) per-wrapper parity-injection sweep (CFG_REGST, house standard) ----
+        for (k = 0; k <= 10; k = k + 1) begin
+            mb_wr_wait(16'h0028, 32'h001A | (k << 8));  // inject group k
             repeat (8) @(negedge mbus_clk);
             mb_rd(16'h0024, rd_val);
-            if (rd_val[4+k] !== 1'b1) begin
-                $display("[%0t] ERR: P18 PERR%0d not set (SCMREGPARSTAT %h)",
+            if (k == 9) begin
+                if (rd_val !== 32'h0000_0002) begin
+                    $display("[%0t] ERR: P18 k=9 not a no-op (STA_PAR %h)",
+                             $time, rd_val);
+                    errors++;
+                end
+            end
+            else if (rd_val[2+k] !== 1'b1) begin
+                $display("[%0t] ERR: P18 PERR%0d not set (STA_PAR %h)",
                          $time, k, rd_val);
                 errors++;
             end
@@ -1709,13 +1763,15 @@ module tb_hang_prot_b_wrap;
             if (k == 4)      mb_wr_wait(16'h0010, 32'h0000_00AF);
             else if (k == 5) mb_wr_wait(16'h0014, 32'd32);
             else if (k == 6) mb_wr_wait(16'h0018, 32'd24);
-            mb_wr_wait(16'h0024, 32'h1 << (4+k));            // W1C PERRn
-            repeat (8) @(negedge mbus_clk);
-            mb_rd(16'h0024, rd_val);
-            if (rd_val[4+k] !== 1'b0) begin
-                $display("[%0t] ERR: P18 PERR%0d did not clear (%h)",
-                         $time, k, rd_val);
-                errors++;
+            if (k != 9) begin
+                mb_wr_wait(16'h0024, 32'h1 << (2+k));    // W1C PERRn (bit 2+组号)
+                repeat (8) @(negedge mbus_clk);
+                mb_rd(16'h0024, rd_val);
+                if (rd_val[2+k] !== 1'b0) begin
+                    $display("[%0t] ERR: P18 PERR%0d did not clear (%h)",
+                             $time, k, rd_val);
+                    errors++;
+                end
             end
         end
 
@@ -1749,11 +1805,11 @@ module tb_hang_prot_b_wrap;
             errors++;
         end
         mb_wr_wait(16'h001C, 32'h1);           // W1C FUSTAT[0]
-        mb_wr_wait(16'h0010, 32'h0000_08A0);   // PAR_SELFTEST (bit11)
+        mb_wr_wait(16'h0028, 32'h002A);        // CFG_REGST PAR_SELFTEST
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
         if (rd_val[0] !== 1'b1) begin
-            $display("[%0t] ERR: P18 PAR_SELFTEST PARSTAT %h", $time, rd_val);
+            $display("[%0t] ERR: P18 PAR_SELFTEST STA_PAR %h", $time, rd_val);
             errors++;
         end
         mb_wr_wait(16'h0024, 32'h1);           // W1C PAR_SELFTEST latch
@@ -1765,7 +1821,8 @@ module tb_hang_prot_b_wrap;
             $display("[%0t] ERR: P18 phantom block after idle QSR", $time);
             errors++;
         end
-        // kitchen-sink: every SCMCNTRL payload bit (incl. [31:21] ignored);
+        // kitchen-sink: every SCMCNTRL payload bit (incl. [31:13] ignored;
+        // house standard 地图: [11]/[20]/[19:16] 自检位已移至 CFG_REGST，写此处为无害忽略位);
         // the QSR_REL bit lands while blk=0 (ignored), the SELFTEST bit then
         // forces the entry -> same W1C + QSR cleanup
         mb_wr_wait(16'h0010, 32'hFFFF_FFAF);
@@ -1786,7 +1843,7 @@ module tb_hang_prot_b_wrap;
         mb_wr_badpar(16'h0014, 32'hDEAD_BEEF);  // ignored; PERR_CMD latches
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if (rd_val[14] !== 1'b1) begin
+        if (rd_val[12] !== 1'b1) begin
             $display("[%0t] ERR: P18 PERR_CMD not set (%h)", $time, rd_val);
             errors++;
         end
@@ -1796,10 +1853,10 @@ module tb_hang_prot_b_wrap;
                      $time, rd_val);
             errors++;
         end
-        mb_wr_wait(16'h0024, 32'h4000);         // W1C PERR_CMD
+        mb_wr_wait(16'h0024, 32'h1000);         // W1C PERR_CMD (bit 12 = 2+组10)
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if (rd_val[14] !== 1'b0) begin
+        if (rd_val[12] !== 1'b0) begin
             $display("[%0t] ERR: P18 PERR_CMD did not clear (%h)",
                      $time, rd_val);
             errors++;
@@ -1816,18 +1873,18 @@ module tb_hang_prot_b_wrap;
         release u_dut.u_hang_prot_regfile.r_mb.wpar_q;
         repeat (8) @(negedge mbus_clk);         // handshake drains
         mb_rd(16'h0024, rd_val);
-        if (rd_val[13] !== 1'b1) begin
+        if (rd_val[11] !== 1'b1) begin
             $display("[%0t] ERR: P18 PERR9 not set (%h)", $time, rd_val);
             errors++;
         end
-        mb_wr_wait(16'h0024, 32'h2000);         // W1C PERR9
+        mb_wr_wait(16'h0024, 32'h0800);         // W1C PERR9 (bit 11 = 2+组9)
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if (rd_val[13] !== 1'b0) begin
+        if (rd_val[11] !== 1'b0) begin
             $display("[%0t] ERR: P18 PERR9 did not clear (%h)", $time, rd_val);
             errors++;
         end
-        // par_lq duplicate rail: one SEU sets ALL THREE latches (fail-visible)
+        // par_lq duplicate rail: one SEU sets BOTH lanes (fail-visible)
 `ifdef IVERILOG
         u_dut.u_hang_prot_regfile.r_mb.par_lq_n[0] = 1'b0;
 `else
@@ -1837,15 +1894,15 @@ module tb_hang_prot_b_wrap;
 `endif
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if ({rd_val[14], rd_val[13], rd_val[0]} !== 3'b111) begin
-            $display("[%0t] ERR: P18 par_lq rail FI did not set all (%h)",
+        if ({rd_val[11], rd_val[0]} !== 2'b11) begin
+            $display("[%0t] ERR: P18 par_lq rail FI did not set both (%h)",
                      $time, rd_val);
             errors++;
         end
-        mb_wr_wait(16'h0024, 32'h6001);         // W1C all three
+        mb_wr_wait(16'h0024, 32'h0801);         // W1C both lanes
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if ({rd_val[14], rd_val[13], rd_val[0]} !== 3'b000) begin
+        if ({rd_val[11], rd_val[0]} !== 2'b00) begin
             $display("[%0t] ERR: P18 par_lq W1C stuck (%h)", $time, rd_val);
             errors++;
         end
@@ -2221,15 +2278,15 @@ module tb_hang_prot_b_wrap;
 `endif
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if (rd_val[4] !== 1'b1) begin
+        if ({rd_val[0], rd_val[2]} !== 2'b11) begin
             $display("[%0t] ERR: P20e dup_err did not set PERR0 (%h)",
                      $time, rd_val);
             errors++;
         end
-        mb_wr_wait(16'h0024, 32'h10);           // W1C PERR0
+        mb_wr_wait(16'h0024, 32'h4);            // W1C PERR0 (bit 2 = 2+组0)
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if (rd_val[4] !== 1'b0) begin
+        if (rd_val[2] !== 1'b0) begin
             $display("[%0t] ERR: P20e PERR0 did not clear (%h)", $time, rd_val);
             errors++;
         end
@@ -2735,9 +2792,9 @@ module tb_hang_prot_b_wrap;
         //  (a) mbus address high bits: alias (addr[7:6]) and wrong-instance
         //      (addr[14:9]) accesses - dropped by the decode (OOR reads 0),
         //      they only toggle the pins / comparator inputs
-        //  (b) reg_wrap dup-rail deposits: par_lq_n[2:1] (P18 covered bit0)
-        //      and every image/shadow flt_q_n (P20 covered u_r_iaerr0) -> dup_err
-        //      pulse -> heal-to-SET; SCMREGPARSTAT W1C clears (both ways)
+        //  (b) reg_wrap dup-rail deposits: par_lq_n[1] (P18 covered bit0)
+        //      and every image/shadow/CMD flt_q_n (P20 covered u_r_iaerr0)
+        //      -> dup_err pulse -> heal-to-SET; STA_PAR W1C clears (both ways)
         // ====================================================================
         scn = 27; $display("[%0t] --- P27 ---", $time);
         // (a) mbus address high-bit sweeps
@@ -2773,30 +2830,22 @@ module tb_hang_prot_b_wrap;
         // (b) dup-rail deposits (snapshot-then-force; Rule 3 posedge hold).
         //     A complement-of-snapshot force on either rail makes the
         //     scalar (par_lq_n != ~par_lq) go 1 -> par_l_dup_f[0] pulses
-        //     -> heal-to-SET. bits[2:1] are structurally dead (the RHS !=
-        //     is 1-bit, zero-extended into [2:0]; excluded in the .el -
+        //     -> heal-to-SET. dup_f[1] is structurally dead (the RHS !=
+        //     is 1-bit, zero-extended into [1:0]; excluded in the .el -
         //     NOT a VCS force-routing issue).
-        //     Fresh snapshot per bit: after bit2's deposit the
-        //     heal-to-SET rewrites both rails, so a stale snapshot could
-        //     force the already-correct value (no mismatch, no pulse).
+        //     Fresh snapshot: after a deposit the heal-to-SET rewrites
+        //     both rails, so a stale snapshot could force the
+        //     already-correct value (no mismatch, no pulse).
 `ifdef IVERILOG
-        fi_snap = u_dut.u_hang_prot_regfile.r_mb.par_lq_n[2];
-        u_dut.u_hang_prot_regfile.r_mb.par_lq_n[2] = ~fi_snap;
-        repeat (4) @(negedge mbus_clk);      // scalar dup pulse (bit0) + heal
         fi_snap = u_dut.u_hang_prot_regfile.r_mb.par_lq_n[1];
         u_dut.u_hang_prot_regfile.r_mb.par_lq_n[1] = ~fi_snap;
 `else
-        fi_snap = u_dut.u_hang_prot_regfile.r_mb.par_lq_n[2];
-        force   u_dut.u_hang_prot_regfile.r_mb.par_lq_n[2] = ~fi_snap;
-        @(posedge mbus_clk);         // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_hang_prot_regfile.r_mb.par_lq_n[2];
-        repeat (4) @(negedge mbus_clk);      // scalar dup pulse (bit0) + heal-to-SET
         fi_snap = u_dut.u_hang_prot_regfile.r_mb.par_lq_n[1];
         force   u_dut.u_hang_prot_regfile.r_mb.par_lq_n[1] = ~fi_snap;
-        @(posedge mbus_clk);         // FI hold (Rule 3)
+        @(posedge mbus_clk);         // FI hold: seq latches the forced value (Rule 3)
         release u_dut.u_hang_prot_regfile.r_mb.par_lq_n[1];
 `endif
-        repeat (4) @(negedge mbus_clk);      // par_l_dup_f[0] pulse + heal
+        repeat (4) @(negedge mbus_clk);      // par_l_dup_f[0] pulse + heal-to-SET
 `ifdef IVERILOG
         u_dut.u_hang_prot_regfile.u_r_iaerr1.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_r_iastat.r.flt_q_n = 1'b0;
@@ -2806,6 +2855,7 @@ module tb_hang_prot_b_wrap;
         u_dut.u_hang_prot_regfile.u_r_thresh1.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_r_fustat.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
+        u_dut.u_hang_prot_regfile.u_w_cmd.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_c_thresh0.r.flt_q_n = 1'b0;
         u_dut.u_hang_prot_regfile.u_c_thresh1.r.flt_q_n = 1'b0;
@@ -2834,6 +2884,9 @@ module tb_hang_prot_b_wrap;
         force   u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n = 1'b0;
         @(posedge mbus_clk);         // FI hold (Rule 3)
         release u_dut.u_hang_prot_regfile.u_r_fusrc.r.flt_q_n;
+        force   u_dut.u_hang_prot_regfile.u_w_cmd.r.flt_q_n = 1'b0;
+        @(posedge mbus_clk);         // FI hold (Rule 3)
+        release u_dut.u_hang_prot_regfile.u_w_cmd.r.flt_q_n;
         force   u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n = 1'b0;
         @(posedge aclk);             // FI hold (aclk-domain shadows, Rule 3)
         release u_dut.u_hang_prot_regfile.u_c_ena.r.flt_q_n;
@@ -2845,11 +2898,11 @@ module tb_hang_prot_b_wrap;
         release u_dut.u_hang_prot_regfile.u_c_thresh1.r.flt_q_n;
 `endif
         repeat (8) @(negedge mbus_clk);
-        mb_wr_wait(16'h0024, 32'h0000_7FF1); // W1C: r0..r8 + c4..c6 + par_lq
+        mb_wr_wait(16'h0024, 32'h0000_1FFD); // W1C: r0..r8 + PERR9 + CMD + latch
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h0024, rd_val);
-        if ({rd_val[14], rd_val[13], rd_val[0]} !== 3'b000) begin
-            $display("[%0t] ERR: P27 par_lq W1C stuck (%h)", $time, rd_val);
+        if (rd_val !== 32'h0000_0002) begin
+            $display("[%0t] ERR: P27 par W1C stuck (STA_PAR %h)", $time, rd_val);
             errors++;
         end
         scn_sample();

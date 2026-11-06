@@ -158,49 +158,51 @@ addFld(0x28, 'FORCE', 'INJ_CMP',     19, 19, 'RW', True, '0', '', 'PERR3 / REGSE
 addFld(0x28, 'FORCE', 'INJ_CNT',     20, 20, 'RW', True, '0', '', 'PERR3 / REGSEL=3',
        'XOR into the shadow duplicate check of channel DBGSEL')
 
-# ---- 0x2C REGPAR (W1C) ----
-addReg(0x2C, 'REGPAR', 'W1C', False, '0x00000002', '-',
-       'register parity status: dual-rail fault (RO bits 1:0) + per-group W1C flags')
-addFld(0x2C, 'REGPAR', 'REG_PAR_FAULT',   0, 0, 'RO', False, '0', '', '-',
-       'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail)')
-addFld(0x2C, 'REGPAR', 'REG_PAR_FAULT_N', 1, 1, 'RO', False, '1', '', '-',
+# ---- 0x2C/0x30 DBG0/1 (RO) ----
+addReg(0x2C, 'DBG0', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL (clk_ref domain values)')
+addFld(0x2C, 'DBG0', 'SHADOW', 11, 0,  'RO', False, DYN, '', '-',
+       'edge count of the last closed window, ch DBGSEL (FAIL direction: >WIN_HI=fast, <WIN_LO=slow)')
+addFld(0x2C, 'DBG0', 'NOEDGE', 27, 16, 'RO', False, DYN, '', '-',
+       'live no-edge counter, ch DBGSEL')
+addReg(0x30, 'DBG1', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL + shared window counter')
+addFld(0x30, 'DBG1', 'EDGECNT', 11, 0,  'RO', False, DYN, '', '-',
+       'live window edge counter, ch DBGSEL')
+addFld(0x30, 'DBG1', 'WIN_CNT', 31, 16, 'RO', False, DYN, '', '-',
+       'shared window counter (current window)')
+
+# ---- 0x34 STA_PAR (W1C, house standard: 3rd-last) ----
+addReg(0x34, 'STA_PAR', 'W1C', False, '0x00000002', '-',
+       'register parity status (house standard layout): PAR_FAULT level (RO bits 1:0) '
+       '+ per-group W1C flags, bit = 2 + group')
+addFld(0x34, 'STA_PAR', 'PAR_FAULT',   0, 0, 'RO', False, '0', '', '-',
+       'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail); '
+       'W1C on bit0 clears ONLY the selftest latch')
+addFld(0x34, 'STA_PAR', 'PAR_FAULT_N', 1, 1, 'RO', False, '1', '', '-',
        'inverted rail (reads 1 when no fault)')
 PERR_NAMES = ['ENLO', 'ENHI', 'GCTRL', 'FORCE', 'CLO', 'CHI', 'CDEAD',
-              'ERRIMG', 'SRCIMG', 'FUSRCIMG', 'FUSTATIMG']
+              'ERRIMG', 'SRCIMG', 'FUSRCIMG', 'FUSTATIMG', 'INFLIGHT', 'CMD']
 for k, name in enumerate(PERR_NAMES):
-    addFld(0x2C, 'REGPAR', 'PERR_' + name, 4 + k, 4 + k, 'W1C', False, '0', '', '-',
-           'parity fault of wrap group %d (%s); inject via REGST REGSEL=%d%s'
-           % (k, name, k, '; image wrap self-restores next cycle' if k >= 7
-              else '; config wrap restored by rewriting the register'))
-addFld(0x2C, 'REGPAR', 'PERR_INFLIGHT', 15, 15, 'W1C', False, '0', '', '-',
-       'in-flight write payload {wsel,wdata} parity (sticky; transient flight window)')
-addFld(0x2C, 'REGPAR', 'PERR_CMD',      16, 16, 'W1C', False, '0', '', '-',
-       'mbus command in-flight parity: par = ^{addr,wr,wdata} failed at ce')
-addFld(0x2C, 'REGPAR', 'PAR_SELFTEST',  17, 17, 'W1C', False, '0', '', '-',
-       'no-source injection latch (ESM service self-test signature), set via REGST bit9')
+    extra = {11: '; latch lane - no injection target',
+             12: '; W=1 wrap: the W1C write IS the wrap rewrite'}.get(
+        k, '; image wrap self-restores next cycle' if k >= 7
+        else '; config wrap restored by rewriting the register')
+    addFld(0x34, 'STA_PAR', 'PERR_' + name, 2 + k, 2 + k, 'W1C', False, '0', '', '-',
+           'parity fault of group %d (%s); inject via CFG_REGST REGSEL=%d%s'
+           % (k, name, k, extra))
 
-# ---- 0x30 REGST (keyed, WO) ----
-addReg(0x30, 'REGST', 'WO', True, '-', '-',
-       'parity self-test injection (keyed, write-only, reads 0)')
-addFld(0x30, 'REGST', 'REGSEL', 4, 0, 'WO', True, '-',
-       '0..10=mbus wrap group k; 16+i=ref-domain config shadow of ch i; 11..15=reserved', '-',
-       'injection target select')
-addFld(0x30, 'REGST', 'ST',     8, 8, 'WO', True, '-', '', '-',
+# ---- 0x38 CFG_REGST (house key 1010, WO, 2nd-last) ----
+addReg(0x38, 'CFG_REGST', 'WO', True, '-', '-',
+       'register parity self-test control (write-only, reads 0); house key '
+       'wdata[3:0]=1010 (NOT the WKEY[31:28] space), wrong key = REG_PROT')
+addFld(0x38, 'CFG_REGST', 'KEY', 3, 0, 'WO', True, '-', '0xA', '-',
+       'house key: must be 4b1010, else the whole write is rejected + REG_PROT')
+addFld(0x38, 'CFG_REGST', 'REG_SELFTEST', 4, 4, 'WO', True, '-', '', '-',
        'inject a parity fault into the REGSEL storage target')
-addFld(0x30, 'REGST', 'NO_SRC', 9, 9, 'WO', True, '-', '', '-',
-       'no-source injection -> REGPAR[17] PAR_SELFTEST (ESM service signature)')
-
-# ---- 0x34/0x38 DBG0/1 (RO) ----
-addReg(0x34, 'DBG0', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL (clk_ref domain values)')
-addFld(0x34, 'DBG0', 'SHADOW', 11, 0,  'RO', False, DYN, '', '-',
-       'edge count of the last closed window, ch DBGSEL (FAIL direction: >WIN_HI=fast, <WIN_LO=slow)')
-addFld(0x34, 'DBG0', 'NOEDGE', 27, 16, 'RO', False, DYN, '', '-',
-       'live no-edge counter, ch DBGSEL')
-addReg(0x38, 'DBG1', 'RO', False, DYN, '-', 'debug counters of channel GCTRL.DBGSEL + shared window counter')
-addFld(0x38, 'DBG1', 'EDGECNT', 11, 0,  'RO', False, DYN, '', '-',
-       'live window edge counter, ch DBGSEL')
-addFld(0x38, 'DBG1', 'WIN_CNT', 31, 16, 'RO', False, DYN, '', '-',
-       'shared window counter (current window)')
+addFld(0x38, 'CFG_REGST', 'PAR_SELFTEST', 5, 5, 'WO', True, '-', '', '-',
+       'no-source injection -> fault level with no PERR source (ESM service signature)')
+addFld(0x38, 'CFG_REGST', 'REGSEL', 12, 8, 'WO', True, '-',
+       '0..12=mbus group k (11 = inflight latch, ignored); 16+i=ref-domain config shadow of ch i', '-',
+       'injection target select (cmm extension of the house [11:8]: 29 parity groups need 5 bits)')
 
 # ---- 0x40.. channel config space (keyed), REGMAP collapsed as arrays -------
 CHS = [('WIN_LO', 0, WIN_LO_RST, 'window count lower bound; expected count = N_WIN*f_dut/(f_ref*2^(PSC+1))', 'PERR4 / REGSEL=4'),
@@ -310,47 +312,50 @@ TRM = [
         ('16', 'FORCE_HANG',  'RW', '0', 'mask the CDC ack -> CFG_HANG must fire (self-test); clear by writing FORCE with bit16=0 (escape path)'),
         ('i',  'FORCE_CHi',   'RW', '0', 'ch i verdict force (i=0..%d): XOR into the debounced freq verdict - exercises the full debounce->latch->alarm->nERR path with no storage corrupted' % (N_DUT - 1)),
      ]),
-    ('REGPAR', '0x002C', 'W1C', False, '0x00000002',
-     'Register parity status: dual-rail fault (RO bits 1:0) + per-group W1C flags. Parity group k is injected via REGST REGSEL=k.', [
-        RSVD(31, 18),
-        ('17',    'PAR_SELFTEST',  'W1C', '0', 'no-source injection latch (ESM service self-test signature), set via REGST.NO_SRC'),
-        ('16',    'PERR_CMD',      'W1C', '0', 'mbus command in-flight parity failed at ce (par = ^{addr,wr,wdata})'),
-        ('15',    'PERR_INFLIGHT', 'W1C', '0', 'in-flight write payload {wsel,wdata} parity (sticky; transient flight window)'),
-        ('14',    'PERR_FUSTATIMG','W1C', '0', 'wrap group 10: FUSTAT image (image wrap - self-restores next cycle)'),
-        ('13',    'PERR_FUSRCIMG', 'W1C', '0', 'wrap group 9: FUSRC image (image wrap)'),
-        ('12',    'PERR_SRCIMG',   'W1C', '0', 'wrap group 8: SRCSTAT image (image wrap)'),
-        ('11',    'PERR_ERRIMG',   'W1C', '0', 'wrap group 7: ERRSTAT image (image wrap)'),
-        ('10',    'PERR_CDEAD',    'W1C', '0', 'wrap group 6: all-channel NDEAD config (restored by rewriting the register)'),
-        ('9',     'PERR_CHI',      'W1C', '0', 'wrap group 5: all-channel WIN_HI config'),
-        ('8',     'PERR_CLO',      'W1C', '0', 'wrap group 4: all-channel WIN_LO config'),
-        ('7',     'PERR_FORCE',    'W1C', '0', 'wrap group 3: FORCE'),
-        ('6',     'PERR_GCTRL',    'W1C', '0', 'wrap group 2: GCTRL storage {dbgsel,refsel}'),
-        ('5',     'PERR_ENHI',     'W1C', '0', 'wrap group 1: ENHI'),
-        ('4',     'PERR_ENLO',     'W1C', '0', 'wrap group 0: ENLO'),
-        RSVD(3, 2),
-        ('1',     'REG_PAR_FAULT_N', 'RO', '1', 'inverted dual rail (reads 1 when no fault)'),
-        ('0',     'REG_PAR_FAULT',   'RO', '0', 'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail)'),
-     ]),
-    ('REGST', '0x0030', 'WO', True, '-',
-     'Parity self-test injection (write-only, reads 0).', [
-        RSVD(31, 10),
-        ('9',   'NO_SRC', 'WO', '-', 'no-source injection -> REGPAR[17] PAR_SELFTEST (ESM service signature)'),
-        ('8',   'ST',     'WO', '-', 'inject a parity fault into the REGSEL storage target'),
-        RSVD(7, 5),
-        ('4:0', 'REGSEL', 'WO', '-', 'injection target: 0..10 = mbus wrap group k; 16+i = ref-domain 41-bit config shadow of ch i; 11..15 reserved'),
-     ]),
-    ('DBG0', '0x0034', 'RO', False, DYN,
+    ('DBG0', '0x002C', 'RO', False, DYN,
      'Debug counters of channel GCTRL.DBGSEL (clk_ref domain values).', [
         RSVD(31, 28),
         ('27:16', 'NOEDGE', 'RO', DYN, 'live no-edge counter, ch DBGSEL'),
         RSVD(15, 12),
         ('11:0',  'SHADOW', 'RO', DYN, 'edge count of the last closed window, ch DBGSEL (FAIL direction: >WIN_HI=fast, <WIN_LO=slow)'),
      ]),
-    ('DBG1', '0x0038', 'RO', False, DYN,
+    ('DBG1', '0x0030', 'RO', False, DYN,
      'Debug counters of channel GCTRL.DBGSEL + shared window counter.', [
         ('31:16', 'WIN_CNT', 'RO', DYN, 'shared window counter (current window)'),
         RSVD(15, 12),
         ('11:0',  'EDGECNT', 'RO', DYN, 'live window edge counter, ch DBGSEL'),
+     ]),
+    ('STA_PAR', '0x0034', 'W1C', False, '0x00000002',
+     'Register parity status (house standard layout, 3rd-last register): PAR_FAULT level '
+     '(RO bits 1:0; W1C on bit0 clears ONLY the selftest latch) + per-group W1C flags, '
+     'bit = 2 + group. Group k is injected via CFG_REGST REGSEL=k.', [
+        RSVD(31, 15),
+        ('14',    'PERR_CMD',      'W1C', '0', 'group 12 (W=1 wrap): mbus command in-flight parity failed at ce (par = ^{addr,wr,wdata}); the W1C write IS the wrap rewrite'),
+        ('13',    'PERR_INFLIGHT', 'W1C', '0', 'group 11 (latch lane): in-flight write payload {wsel,wdata} parity (sticky; transient flight window; no injection target)'),
+        ('12',    'PERR_FUSTATIMG','W1C', '0', 'wrap group 10: FUSTAT image (image wrap - self-restores next cycle)'),
+        ('11',    'PERR_FUSRCIMG', 'W1C', '0', 'wrap group 9: FUSRC image (image wrap)'),
+        ('10',    'PERR_SRCIMG',   'W1C', '0', 'wrap group 8: SRCSTAT image (image wrap)'),
+        ('9',     'PERR_ERRIMG',   'W1C', '0', 'wrap group 7: ERRSTAT image (image wrap)'),
+        ('8',     'PERR_CDEAD',    'W1C', '0', 'wrap group 6: all-channel NDEAD config (restored by rewriting the register)'),
+        ('7',     'PERR_CHI',      'W1C', '0', 'wrap group 5: all-channel WIN_HI config'),
+        ('6',     'PERR_CLO',      'W1C', '0', 'wrap group 4: all-channel WIN_LO config'),
+        ('5',     'PERR_FORCE',    'W1C', '0', 'wrap group 3: FORCE'),
+        ('4',     'PERR_GCTRL',    'W1C', '0', 'wrap group 2: GCTRL storage {dbgsel,refsel}'),
+        ('3',     'PERR_ENHI',     'W1C', '0', 'wrap group 1: ENHI'),
+        ('2',     'PERR_ENLO',     'W1C', '0', 'wrap group 0: ENLO'),
+        ('1',     'PAR_FAULT_N',   'RO',  '1', 'inverted dual rail (reads 1 when no fault)'),
+        ('0',     'PAR_FAULT',     'RO',  '0', 'dual-rail OR of all register parity faults (drives the reg_par_fault ESM rail)'),
+     ]),
+    ('CFG_REGST', '0x0038', 'WO', True, '-',
+     'Register parity self-test control (write-only, reads 0; 2nd-last register). '
+     'Keyed by the HOUSE key wdata[3:0]=4b1010 (not the WKEY[31:28] space); a wrong key '
+     'rejects the whole write + REG_PROT.', [
+        RSVD(31, 13),
+        ('12:8', 'REGSEL',        'WO', '-', 'injection target: 0..12 = mbus group k (11 = inflight latch, no target, ignored); 16+i = ref-domain 41-bit config shadow of ch i (cmm uses 5 REGSEL bits - 29 parity groups)'),
+        RSVD(7, 6),
+        ('5',    'PAR_SELFTEST',  'WO', '-', 'no-source injection -> fault level with no PERR source (ESM service signature); cleared by STA_PAR bit0 W1C'),
+        ('4',    'REG_SELFTEST',  'WO', '-', 'inject a parity fault into the REGSEL storage target'),
+        ('3:0',  'KEY',           'WO', '-', 'house key: must be 4b1010'),
      ]),
 ]
 for sub, base, rv, cdesc, pg in CHS:
@@ -372,7 +377,7 @@ info_rows = [
     S('MODULE'),
     KV('Module', 'cmm_top / cmm_regfile - Clock Monitor Module (multi-channel, SIL2-oriented)'),
     KV('Sources', 'rtl/cmm_regfile.sv (source of truth), rtl/cmm_top.sv, rtl/cmm_clk_dut_chk.sv, rtl/reg_wrap.sv; spec doc/cmm_sil2_design.md section 5'),
-    KV('Generated', 'doc/gen_cmm_regmap.py, 2026-10-28 - re-run the script after any register-map change'),
+    KV('Generated', 'doc/gen_cmm_regmap.py, 2026-11-06 (house-standard STA_PAR/CFG_REGST retrofit) - re-run the script after any register-map change'),
     KV('Addressing', '16-bit mbus address = {IDX[7:0], byte_offset[7:0]}; IDX default 0; word-aligned (addr[1:0]=00); zero-wait, rdata combinational'),
     KV('Sheets', 'REGMAP = register address list; REGISTERS = TRM-style bit tables per register (TI OMAP style); FIELDS = one row per bit-field, all %d channels expanded = machine input for RDL generation' % N_DUT),
     S('PARAMETERS (RTL defaults)'),
@@ -394,16 +399,16 @@ info_rows = [
     KV('WO', 'write-only action, reads 0 -> sw=w'),
     KV('W1P', 'write-1 pulse, self-clearing, reads 0 -> sw=w + singlepulse'),
     KV('R (RSVD)', 'reserved bit range: reads 0, writes ignored'),
-    KV('Keyed', 'register write requires wdata[31:28]==WKEY(0x5), else the write is rejected entirely + FUSTAT[6] REG_PROT'),
+    KV('Keyed', 'register write requires wdata[31:28]==WKEY(0x5). CFG_REGST instead keys on the house key wdata[3:0]==4b1010'),
     S('PROTOCOL NOTES (mbus)'),
-    KV('1 Command parity', 'par = ^{addr,wr,wdata} checked at every ce; bad parity: writes blocked, rdata=0, REGPAR[16] PERR_CMD latched'),
-    KV('2 CDC busy', 'forwarded writes (all RW/W1C except REGPAR local bits) cross to clk_ref one-at-a-time; poll GSTAT[6] CFG_BUSY==0 before the next write; a write while busy is dropped (FUSTAT[7] WR_DROPPED)'),
+    KV('1 Command parity', 'par = ^{addr,wr,wdata} checked at every ce; bad parity: writes blocked, rdata=0, STA_PAR[14] PERR_CMD latched'),
+    KV('2 CDC busy', 'forwarded writes (all RW/W1C except STA_PAR local bits) cross to clk_ref one-at-a-time; poll GSTAT[6] CFG_BUSY==0 before the next write; a write while busy is dropped (FUSTAT[7] WR_DROPPED)'),
     KV('3 Hang escape', 'a FORCE write with bit16=0 is always accepted (clears FORCE_HANG), local only, never dropped'),
     KV('4 GCTRL RMW', 'every GCTRL write re-stores REFSEL and DBGSEL: write TST_CLR together with the intended REFSEL/DBGSEL values'),
     KV('5 TST_CLR', 'FSM->ARM and clears ALL sticky status in the clk_ref domain'),
     KV('6 Reset state', 'ENLO/ENHI reset to all-F: all channels ENABLED out of POR; FSM reaches RUN after the first full window'),
     KV('7 REFSEL switch', 'quiesce protocol: EN<-0 -> GCTRL REFSEL -> GCTRL REFSEL|TST_CLR -> re-EN; the N_DEB debounce absorbs the transition window'),
-    KV('8 W1C crossing', 'ERRSTAT/SRCSTAT/FUSTAT/FUSRC clears are forwarded to clk_ref through the same handshake; FUSRC bit [4i+2] also clears the ref-domain shadow wrap flt; REGPAR clears are local (mbus domain)'),
+    KV('8 W1C crossing', 'ERRSTAT/SRCSTAT/FUSTAT/FUSRC clears are forwarded to clk_ref through the same handshake; FUSRC bit [4i+2] also clears the ref-domain shadow wrap flt; STA_PAR clears are local (mbus domain)'),
     S('STATUS DECODE (clk_dut states)'),
     KV('FAST', 'SRCSTAT.FAIL_CHi=1 and DBG0.SHADOW > WIN_HI (select ch via GCTRL.DBGSEL)'),
     KV('SLOW', 'SRCSTAT.FAIL_CHi=1 and DBG0.SHADOW < WIN_LO'),
@@ -414,8 +419,8 @@ info_rows = [
     KV('NDEAD constraint', 'NDEAD > prescaled-edge gap at the lowest legal f_dut: > 2^(PSC+1)*f_ref/f_dut_min + 2FF jitter, else slow reads as dead'),
     KV('Debounce', 'FAIL_FREQ needs N_DEB consecutive out-of-window windows; DEAD is not debounced (re-issuing level)'),
     S('SELF-TEST (REGST / FORCE)'),
-    KV('Storage inject', 'REGST: ST=1, REGSEL=0..10 mbus wrap group k -> REGPAR[4+k]; REGSEL=16+i ref-domain 41-bit config shadow of ch i -> FUSRC bit [4i+2] CFGPAR'),
-    KV('No-source inject', 'REGST: NO_SRC=1 -> REGPAR[17] PAR_SELFTEST (ESM service self-test signature)'),
+    KV('Storage inject', 'CFG_REGST: REG_SELFTEST=1 (bit4) + REGSEL=0..12 mbus group k -> STA_PAR[2+k]; REGSEL=16+i ref-domain 41-bit config shadow of ch i -> FUSRC bit [4i+2] CFGPAR'),
+    KV('No-source inject', 'CFG_REGST: PAR_SELFTEST=1 (bit5) -> fault level with no PERR source (ESM service self-test signature); cleared by STA_PAR bit0'),
     KV('Restore', 'image wraps (group 7..10) self-restore next cycle; config wraps (0..6, shadow) restored by rewriting the register (last step of the self-test flow)'),
     KV('Path inject', 'FORCE: FORCE_CHi full alarm path; FORCE_HANG/STALE config-path watchdogs; INJ_CNT/CMP/PSC integrity classes of ch DBGSEL'),
 ]

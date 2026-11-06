@@ -49,11 +49,11 @@ module edc_site #(
    // ---------------- 生成 EDC (组合) ----------------
    logic [EDCW-1:0] c_edc;
    nuclei300_edc_gen #(
-      .DW   (DW  ),
-      .EDCW (EDCW)
+      .DW  (DW  ),
+      .EDCW(EDCW)
    ) u_nuclei300_edc_gen (
-      .i_dat (i_payload),
-      .edc   (c_edc    )
+      .i_dat(i_payload),
+      .edc  (c_edc    )
    );
 
    // GEN 时寄存新算的 EDC, CHK 时 o_edc 直传随路 EDC (父级 CHK 装载走
@@ -68,14 +68,14 @@ module edc_site #(
 
    logic err_raw;
    nuclei300_edc_chk_fault_ej #(
-      .DW   (DW  ),
-      .EDCW (EDCW)
+      .DW  (DW  ),
+      .EDCW(EDCW)
    ) u_nuclei300_edc_chk_fault_ej (
-      .i_dat          (i_payload  ),
-      .edc            (i_edc      ),
-      .einj_pos       (inj_pos_g  ),
-      .einj_force_err (inj_force_v),
-      .o_err          (err_raw    )
+      .i_dat         (i_payload  ),
+      .edc           (i_edc      ),
+      .einj_pos      (inj_pos_g  ),
+      .einj_force_err(inj_force_v),
+      .o_err         (err_raw    )
    );
 
    // vld 门控在父级: o_site_err[i] = o_err & 通道 vld (父级唯一 valid FF)

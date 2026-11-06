@@ -119,10 +119,10 @@ module cmm_top #(
     // sync release to 1 over 2 clk_ref cycles (d tied 1)
     logic rst_ref_n;
     sync_2dff #(.WIDTH(1)) u_rst_ref_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_n    ),
-        .d    (1'b1     ),
-        .q    (rst_ref_n)
+        .clk (clk_ref  ),
+        .rstn(rst_n    ),
+        .d   (1'b1     ),
+        .q   (rst_ref_n)
     );
 
     //=========================================================================
@@ -236,16 +236,16 @@ module cmm_top #(
     logic [2:0] inj_s2;
     logic [3:0] dbs_s2;
     sync_2dff #(.WIDTH(3)) u_inj_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    ({inj_cnt, inj_cmp, inj_psc}),
-        .q    (inj_s2   )
+        .clk (clk_ref                    ),
+        .rstn(rst_ref_n                  ),
+        .d   ({inj_cnt, inj_cmp, inj_psc}),
+        .q   (inj_s2                     )
     );
     sync_2dff #(.WIDTH(4)) u_dbs_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (dbgsel   ),
-        .q    (dbs_s2   )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (dbgsel   ),
+        .q   (dbs_s2   )
     );
 
     //=========================================================================
@@ -258,32 +258,32 @@ module cmm_top #(
     logic [N_DUT-1:0] fu_cnt_lvl, fu_cmp_lvl, fu_psc_lvl;
 
     cmm_core #(
-        .N_DUT  (N_DUT        ),
-        .DUT_PSC(DUT_PSC      ),
-        .CNT_W  (CNT_W        ),
-        .N_DEB  (N_DEB        )
+        .N_DUT  (N_DUT  ),
+        .DUT_PSC(DUT_PSC),
+        .CNT_W  (CNT_W  ),
+        .N_DEB  (N_DEB  )
     ) u_cmm_core (
-        .clk_ref     (clk_ref     ),
-        .rst_ref_n   (rst_ref_n   ),
-        .clk_dut     (clk_dut     ),
-        .cfg_winlo   (cfg_winlo   ),
-        .cfg_winhi   (cfg_winhi   ),
-        .cfg_ndead   (cfg_ndead   ),
-        .cfg_force   (cfg_force   ),
-        .inj_cnt     (inj_s2[2]   ),
-        .inj_cmp     (inj_s2[1]   ),
-        .inj_psc     (inj_s2[0]   ),
-        .dbgsel      (dbs_s2      ),
-        .window_end  (window_end  ),
-        .window_fire (r.window_fire),
-        .fail_lvl    (fail_lvl    ),
-        .dead_lvl    (dead_lvl    ),
-        .fu_cnt_lvl  (fu_cnt_lvl  ),
-        .fu_cmp_lvl  (fu_cmp_lvl  ),
-        .fu_psc_lvl  (fu_psc_lvl  ),
-        .dbg_shadow  (dbg_shadow  ),
-        .dbg_noedge  (dbg_noedge  ),
-        .dbg_edgecnt (dbg_edgecnt )
+        .clk_ref    (clk_ref      ),
+        .rst_ref_n  (rst_ref_n    ),
+        .clk_dut    (clk_dut      ),
+        .cfg_winlo  (cfg_winlo    ),
+        .cfg_winhi  (cfg_winhi    ),
+        .cfg_ndead  (cfg_ndead    ),
+        .cfg_force  (cfg_force    ),
+        .inj_cnt    (inj_s2[2]    ),
+        .inj_cmp    (inj_s2[1]    ),
+        .inj_psc    (inj_s2[0]    ),
+        .dbgsel     (dbs_s2       ),
+        .window_end (window_end   ),
+        .window_fire(r.window_fire),
+        .fail_lvl   (fail_lvl     ),
+        .dead_lvl   (dead_lvl     ),
+        .fu_cnt_lvl (fu_cnt_lvl   ),
+        .fu_cmp_lvl (fu_cmp_lvl   ),
+        .fu_psc_lvl (fu_psc_lvl   ),
+        .dbg_shadow (dbg_shadow   ),
+        .dbg_noedge (dbg_noedge   ),
+        .dbg_edgecnt(dbg_edgecnt  )
     );
 
     //=========================================================================
@@ -337,10 +337,10 @@ module cmm_top #(
     // reg_prot (mbus domain) -> cmm_fu, sync cell wrap (6.apb2mbus/rtl)
     logic rp_s2;
     sync_2dff #(.WIDTH(1)) u_rp_sync (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (reg_prot_lvl),
-        .q    (rp_s2    )
+        .clk (clk_ref     ),
+        .rstn(rst_ref_n   ),
+        .d   (reg_prot_lvl),
+        .q   (rp_s2       )
     );
 
     assign alarm_any = (|r.fail_q) || (|r.dead_q);
@@ -455,65 +455,65 @@ module cmm_top #(
                       |r.fu_cmp_q, |r.fu_cnt_q};
 
     cmm_regfile #(
-        .N_DUT         (N_DUT        ),
-        .CNT_W         (CNT_W        ),
-        .WKEY          (WKEY         ),
-        .WIN_LO_RST    (WIN_LO_RST   ),
-        .WIN_HI_RST    (WIN_HI_RST   ),
-        .NDEAD_RST     (NDEAD_RST    ),
-        .HANG_TO       (HANG_TO      ),
-        .WIN_ALIVE_MAX (WIN_ALIVE_MAX),
-        .IDX           (IDX          )
+        .N_DUT        (N_DUT        ),
+        .CNT_W        (CNT_W        ),
+        .WKEY         (WKEY         ),
+        .WIN_LO_RST   (WIN_LO_RST   ),
+        .WIN_HI_RST   (WIN_HI_RST   ),
+        .NDEAD_RST    (NDEAD_RST    ),
+        .HANG_TO      (HANG_TO      ),
+        .WIN_ALIVE_MAX(WIN_ALIVE_MAX),
+        .IDX          (IDX          )
     ) u_cmm_regfile (
-        .mbus_clk        (mbus_clk       ),
-        .mbus_rstn       (mbus_rstn      ),
-        .ce              (mbus_ce        ),
-        .wr              (mbus_wr        ),
-        .addr            (mbus_addr      ),
-        .wdata           (mbus_wdata     ),
-        .par             (mbus_par       ),
-        .rdata           (mbus_rdata     ),
-        .clk_ref         (clk_ref        ),
-        .rst_ref_n       (rst_ref_n      ),
-        .cfg_en          (cfg_en         ),
-        .cfg_force       (cfg_force      ),
-        .cfg_winlo       (cfg_winlo      ),
-        .cfg_winhi       (cfg_winhi      ),
-        .cfg_ndead       (cfg_ndead      ),
-        .cfgpar_flt      (cfgpar_flt     ),
-        .cfg_refsel      (cfg_refsel     ),
-        .dbgsel          (dbgsel         ),
-        .reg_prot_lvl    (reg_prot_lvl   ),
-        .tst_clr         (tst_clr        ),
-        .clr_fail        (clr_fail       ),
-        .clr_dead        (clr_dead       ),
-        .clr_fucnt       (clr_fucnt      ),
-        .clr_fucmp       (clr_fucmp      ),
-        .clr_fupsc       (clr_fupsc      ),
-        .clr_fuwin       (clr_fuwin      ),
-        .clr_fuhierr     (clr_fuhierr    ),
-        .clr_fufsm       (clr_fufsm      ),
-        .inj_cnt         (inj_cnt        ),
-        .inj_cmp         (inj_cmp        ),
-        .inj_psc         (inj_psc        ),
-        .sts_fail        (r.fail_q       ),
-        .sts_dead        (r.dead_q       ),
-        .fu_mon          (fu_mon         ),
-        .fu_bits         (fu_bits        ),
-        .fsm_state       (r.fsm_state    ),
-        .active          (active         ),
-        .alarm_any       (alarm_any      ),
-        .fu_any          (fu_any         ),
-        .nerrn_in        (nerr_n         ),
-        .win_tog         (r.win_tog      ),
-        .dbg_shadow      (dbg_shadow     ),
-        .dbg_noedge      (dbg_noedge     ),
-        .dbg_edgecnt     (dbg_edgecnt    ),
-        .win_cnt         (r.win_cnt      ),
-        .reg_par_fault   (reg_par_fault  ),
-        .reg_par_fault_n (reg_par_fault_n),
-        .cfg_hang        (cfg_hang       ),
-        .cfg_hang_n      (cfg_hang_n     )
+        .mbus_clk       (mbus_clk       ),
+        .mbus_rstn      (mbus_rstn      ),
+        .ce             (mbus_ce        ),
+        .wr             (mbus_wr        ),
+        .addr           (mbus_addr      ),
+        .wdata          (mbus_wdata     ),
+        .par            (mbus_par       ),
+        .rdata          (mbus_rdata     ),
+        .clk_ref        (clk_ref        ),
+        .rst_ref_n      (rst_ref_n      ),
+        .cfg_en         (cfg_en         ),
+        .cfg_force      (cfg_force      ),
+        .cfg_winlo      (cfg_winlo      ),
+        .cfg_winhi      (cfg_winhi      ),
+        .cfg_ndead      (cfg_ndead      ),
+        .cfgpar_flt     (cfgpar_flt     ),
+        .cfg_refsel     (cfg_refsel     ),
+        .dbgsel         (dbgsel         ),
+        .reg_prot_lvl   (reg_prot_lvl   ),
+        .tst_clr        (tst_clr        ),
+        .clr_fail       (clr_fail       ),
+        .clr_dead       (clr_dead       ),
+        .clr_fucnt      (clr_fucnt      ),
+        .clr_fucmp      (clr_fucmp      ),
+        .clr_fupsc      (clr_fupsc      ),
+        .clr_fuwin      (clr_fuwin      ),
+        .clr_fuhierr    (clr_fuhierr    ),
+        .clr_fufsm      (clr_fufsm      ),
+        .inj_cnt        (inj_cnt        ),
+        .inj_cmp        (inj_cmp        ),
+        .inj_psc        (inj_psc        ),
+        .sts_fail       (r.fail_q       ),
+        .sts_dead       (r.dead_q       ),
+        .fu_mon         (fu_mon         ),
+        .fu_bits        (fu_bits        ),
+        .fsm_state      (r.fsm_state    ),
+        .active         (active         ),
+        .alarm_any      (alarm_any      ),
+        .fu_any         (fu_any         ),
+        .nerrn_in       (nerr_n         ),
+        .win_tog        (r.win_tog      ),
+        .dbg_shadow     (dbg_shadow     ),
+        .dbg_noedge     (dbg_noedge     ),
+        .dbg_edgecnt    (dbg_edgecnt    ),
+        .win_cnt        (r.win_cnt      ),
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n),
+        .cfg_hang       (cfg_hang       ),
+        .cfg_hang_n     (cfg_hang_n     )
     );
 
 endmodule

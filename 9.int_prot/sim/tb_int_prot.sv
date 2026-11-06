@@ -74,27 +74,27 @@ module tb_int_prot;
    // DUT
    //--------------------------------------------------------------------------
    int_prot_top #(
-      .IDX                 (        0),
-      .NUM_INT             (  NUM_INT),
+      .IDX                 (0        ),
+      .NUM_INT             (NUM_INT  ),
       .SYNC_MODE           (SYNC_MODE),
-      .SYNC_STAGE          (        3),
-      .FUSA_STA_INT_TIMEOUT(  TIMEOUT),
-      .POSEDGE_DETECT_ONLY (    1'b1)
+      .SYNC_STAGE          (3        ),
+      .FUSA_STA_INT_TIMEOUT(TIMEOUT  ),
+      .POSEDGE_DETECT_ONLY (1'b1     )
    ) dut (
-      .clk            (           clk),
-      .rstn           (          rstn),
-      .ce             (            ce),
-      .wr             (            wr),
-      .addr           (          addr),
-      .wdata          (         wdata),
-      .par            (           par),
-      .rdata          (         rdata),
-      .spi            (           spi),
-      .spi_chk        (       spi_chk),
-      .spi_sync       (      spi_sync),
-      .esm_err        (       esm_err),
-      .esm_err_n      (     esm_err_n),
-      .reg_par_fault  ( reg_par_fault),
+      .clk            (clk            ),
+      .rstn           (rstn           ),
+      .ce             (ce             ),
+      .wr             (wr             ),
+      .addr           (addr           ),
+      .wdata          (wdata          ),
+      .par            (par            ),
+      .rdata          (rdata          ),
+      .spi            (spi            ),
+      .spi_chk        (spi_chk        ),
+      .spi_sync       (spi_sync       ),
+      .esm_err        (esm_err        ),
+      .esm_err_n      (esm_err_n      ),
+      .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );
 
@@ -108,20 +108,20 @@ module tb_int_prot;
    logic [NUM_INT-1:0] mon2_inj_chk = '0;
 
    int_prot_core #(
-      .NUM_INT             (  NUM_INT),
+      .NUM_INT             (NUM_INT  ),
       .SYNC_MODE           (SYNC_MODE),
-      .SYNC_STAGE          (        3),
-      .FUSA_STA_INT_TIMEOUT(  TIMEOUT),
-      .POSEDGE_DETECT_ONLY (    1'b0)
+      .SYNC_STAGE          (3        ),
+      .FUSA_STA_INT_TIMEOUT(TIMEOUT  ),
+      .POSEDGE_DETECT_ONLY (1'b0     )
    ) u_mon2 (
-      .clk    (          clk),
-      .rstn   (         rstn),
-      .enable (     mon2_en),
-      .spi    (          spi),
-      .spi_chk(     spi_chk),
-      .spi_inj(mon2_inj_spi),
-      .chk_inj(mon2_inj_chk),
-      .spi_err(    spi_err2),
+      .clk     (clk         ),
+      .rstn    (rstn        ),
+      .enable  (mon2_en     ),
+      .spi     (spi         ),
+      .spi_chk (spi_chk     ),
+      .spi_inj (mon2_inj_spi),
+      .chk_inj (mon2_inj_chk),
+      .spi_err (spi_err2    ),
       .spi_sync()
    );
 

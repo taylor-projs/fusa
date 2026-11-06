@@ -9,17 +9,51 @@
 //   Bad-parity command: writes blocked, read returns 0, PERR_CMD latched.
 //   rdata combinational, 0 when not selected.
 //
-// REGISTER PARITY (FuSa): every SW-visible register is a reg_wrap instance
-// (storage + even parity + selftest_key injection + own sticky flt with
-// inverted duplicate) - the check lives with the storage:
-//   mbus domain groups (REGPAR PERR[k] = bit [4+k]):
-//     0 ENLO   1 ENHI   2 GCTRLS({dbgsel,refsel})   3 FORCE
+// REGISTER MAP (house standard placement - ID last / CFG_REGST second-last /
+// STA_PAR third-last within the fixed segment; the variable-length channel
+// array at 0x40+ is NOT part of the countdown, cmm keeps ID at 0x00 as its
+// page head; see 10.dup_ctrl_regfile header for the template):
+//   0x00 ID      RO  32'hC44D_0100|ND8 ("cM" v1, N_DUT in [7:0])
+//   0x04 GCTRL   RW+key(WKEY[31:28]) [0]REFSEL [1]TST_CLR [7:4]DBGSEL
+//   0x08 GSTAT   RO  live status
+//   0x0C ENLO    RW  ch0..7 coded enables (nibbles)
+//   0x10 ENHI    RW  ch8..15 coded enables
+//   0x14 ERRSTAT W1C per-ch alarm
+//   0x18 SRCSTAT W1C [2i]=fail [2i+1]=dead
+//   0x1C FUSTAT  W1C fault classes
+//   0x20 FUSRC0  W1C ch0..7  {psc,cfgpar,cmp,cnt}
+//   0x24 FUSRC1  W1C ch8..15
+//   0x28 FORCE   RW+key(WKEY[31:28])
+//   0x2C DBG0    RO  selected-ch shadow/noedge
+//   0x30 DBG1    RO  selected-ch edgecnt/win_cnt
+//   0x34 STA_PAR W1C/R register parity status (standard layout):
+//     [0]   PAR_FAULT level (W1C clears ONLY the selftest latch)
+//     [1]   PAR_FAULT_N (RO inverted rail; idle readback 0x2)
+//     [14:2] PERR12..PERR0 (W1C): bit = 2 + group (13 groups, below)
+//   0x38 CFG_REGST W+key register parity selftest control (reads 0):
+//     [3:0]  key, must be 4'b1010 (house key - NOT the WKEY space), else
+//            the whole write is rejected (+ REG_PROT like any keyed
+//            register violation)
+//     [4]    REG_SELFTEST pulse: parity injection into the REGSEL selected
+//            group (0..12; group 11 has no wrap target - silently ignored)
+//     [5]    PAR_SELFTEST pulse: sets ONLY the selftest latch
+//            ("fault without a source" ESM signature)
+//     [12:8] REGSEL (cmm extension of the house [11:8]: cmm has 29 parity
+//            groups, one bit wider; 0..12 = mbus groups below, 16+i =
+//            ref-domain channel i shadow wrap)
+//   0x40+12*i CH space RW+key(WKEY[31:28]): LO/HI/DEAD
+//
+// REGISTER PARITY (FuSa, house standard): every SW-visible register is a
+// reg_wrap instance (storage + even parity + selftest_key injection + own
+// sticky flt with inverted duplicate) - the check lives with the storage.
+// STA_PAR PERR group = bit - 2 (13 groups):
+//     0 ENLO   1 ENHI   2 GCTRL({dbgsel,refsel})   3 FORCE
 //     4 CLO (all ch WIN_LO)  5 CHI (all WIN_HI)     6 CDEAD (all N_DEAD)
 //     7 ERRSTAT image  8 SRCSTAT image  9 FUSRC image  10 FUSTAT image
 //    11 in-flight write payload {wsel,wdata} parity latch (transient
 //       window, sticky; no injection target)
-//   [16]=PERR_CMD command in-flight parity, [17]=PAR_SELFTEST latch
-//   ("fault, no source" = the ESM service self-test signature).
+//    12 CMD wrap (W=1: command in-flight parity sticky body; its own W1C
+//       bit is a wrap rewrite that recomputes the parity)
 //   clk_ref domain: one 41-bit config shadow wrap per channel
 //   ({en,force,ndead,winhi,winlo}); its flt is reported per-channel as
 //   FUSRC bit [4i+2] (CFGpar) and 2FF-synced into the FUSRC image.
@@ -152,10 +186,10 @@ module cmm_regfile #(
     localparam logic [7:0] OFF_FUSRC0  = 8'h20;   // W1C ch0..7  {psc,cfgpar,cmp,cnt}
     localparam logic [7:0] OFF_FUSRC1  = 8'h24;   // W1C ch8..15
     localparam logic [7:0] OFF_FORCE   = 8'h28;   // keyed: [N-1:0]force [16]hang [17]stale [18]inj_psc [19]inj_cmp [20]inj_cnt
-    localparam logic [7:0] OFF_REGPAR  = 8'h2C;   // W1C register parity status
-    localparam logic [7:0] OFF_REGST   = 8'h30;   // keyed: parity self-test
-    localparam logic [7:0] OFF_DBG0    = 8'h34;   // RO selected-ch shadow/noedge
-    localparam logic [7:0] OFF_DBG1    = 8'h38;   // RO selected-ch edgecnt/win_cnt
+    localparam logic [7:0] OFF_DBG0    = 8'h2C;   // RO selected-ch shadow/noedge
+    localparam logic [7:0] OFF_DBG1    = 8'h30;   // RO selected-ch edgecnt/win_cnt
+    localparam logic [7:0] OFF_STAPAR  = 8'h34;   // W1C/R parity+protection status (3rd-last)
+    localparam logic [7:0] OFF_REGST   = 8'h38;   // keyed 1010: parity self-test (2nd-last)
     localparam logic [7:0] OFF_CHBASE  = 8'h40;   // +12*i: LO/HI/DEAD (keyed)
 
     localparam int HCW = $clog2(HANG_TO+1);        // hang watchdog width
@@ -174,10 +208,10 @@ module cmm_regfile #(
         logic [7:0]    wsel_q;       // latched write: byte offset
         logic [31:0]   wdata_q;      // latched write data
         logic          wpar_q;       // parity of {wsel_q, wdata_q} in flight
-        logic [6:0]    lst_q;        // local sticky latches + inverted dup
-        logic [6:0]    lst_qn;       //   [0]reg_prot [1]wr_dropped [2]cfg_hang
-                                     //   [3]ref_stale [4]perr_cmd [5]par_selftest
-                                     //   [6]inflight payload parity
+        logic [5:0]    lst_q;        // local sticky latches + inverted dup
+        logic [5:0]    lst_qn;       //   [0]reg_prot [1]wr_dropped [2]cfg_hang
+                                     //   [3]ref_stale [4]par_selftest
+                                     //   [5]inflight payload parity (PERR11)
         logic [HCW-1:0] hang_cnt;    // CFG_HANG watchdog + inverted dup
         logic [HCW-1:0] hang_cnt_n;
         logic [WCW-1:0] stale_cnt;   // REF_STALE watchdog + inverted dup
@@ -189,8 +223,8 @@ module cmm_regfile #(
         wsel_q      : 8'h00,
         wdata_q     : 32'h0,
         wpar_q      : 1'b0,
-        lst_q       : 7'b0000000,
-        lst_qn      : 7'b1111111,
+        lst_q       : 6'b000000,
+        lst_qn      : 6'b111111,
         hang_cnt    : '0,
         hang_cnt_n  : '1,
         stale_cnt   : '0,
@@ -292,29 +326,40 @@ module cmm_regfile #(
                                 || (off == OFF_ENHI) || (off == OFF_ERRSTAT)
                                 || (off == OFF_SRCSTAT) || (off == OFF_FUSTAT)
                                 || (off == OFF_FUSRC0) || (off == OFF_FUSRC1)
-                                || (off == OFF_FORCE) || (off == OFF_REGPAR)
+                                || (off == OFF_FORCE) || (off == OFF_STAPAR)
                                 || (off == OFF_REGST) || ch_hit);
     logic wr_keyed;
     assign wr_keyed = wr_ok && ((off == OFF_GCTRL) || (off == OFF_FORCE)
-                                || (off == OFF_REGST) || ch_hit);
+                                || ch_hit);
     logic keyed_bad;
     assign keyed_bad = wr_keyed && !key_ok;
     logic en_illegal;
     assign en_illegal = wr_ok && (enlo_ill || enhi_ill);
 
+    // REGST house key ([3:0]=1010) violation: same protection event class
+    logic regst_key_bad;
+    assign regst_key_bad = wr_ok && (off == OFF_REGST)
+                        && (wdata[3:0] != 4'b1010);
+
+    // REGST decode ([4] REG_SELFTEST + REGSEL[12:8], [5] PAR_SELFTEST)
+    logic [4:0] regsel;
+    assign regsel = wdata[12:8];
+    logic regst_wr;
+    assign regst_wr = wr_ok && (off == OFF_REGST) && (wdata[3:0] == 4'b1010);
+
     logic regprot_ev;
     assign regprot_ev = wr_id_ro || (wr_ok && !wr_known && !wr_id_ro)
-                        || keyed_bad || en_illegal;
+                        || keyed_bad || regst_key_bad || en_illegal;
 
-    // forwarded write set (everything writable except REGPAR; blocked on
+    // forwarded write set (everything writable except STA_PAR; blocked on
     // key violation - the write is rejected entirely)
     logic wr_fwd;
-    assign wr_fwd = wr_ok && !keyed_bad
+    assign wr_fwd = wr_ok && !keyed_bad && !regst_key_bad
                     && ((off == OFF_GCTRL) || (off == OFF_ENLO) || (off == OFF_ENHI)
                         || (off == OFF_ERRSTAT) || (off == OFF_SRCSTAT)
                         || (off == OFF_FUSTAT) || (off == OFF_FUSRC0)
                         || (off == OFF_FUSRC1) || (off == OFF_FORCE)
-                        || (off == OFF_REGST) || ch_hit);
+                        || regst_wr || ch_hit);
 
     //=========================================================================
     // CDC handshake, mbus side: payload latch + req toggle + busy + drop
@@ -338,10 +383,10 @@ module cmm_regfile #(
     // ack level 2FF sync back into mbus_clk - sync cell wrap
     // (6.apb2mbus/rtl; s1 stays inside the cell)
     sync_2dff #(.WIDTH(1)) u_ack_sync (
-        .clk  (mbus_clk  ),
-        .rstn (mbus_rstn ),
-        .d    (r_rf.ack_t),
-        .q    (ack_t_s2  )
+        .clk (mbus_clk  ),
+        .rstn(mbus_rstn ),
+        .d   (r_rf.ack_t),
+        .q   (ack_t_s2  )
     );
 
     // in-flight payload parity: payload held stable while busy; a flip of
@@ -354,37 +399,34 @@ module cmm_regfile #(
     // parity monitor cannot parity-protect its own status bits - hang_prot
     // pattern). Per-bit rail mismatch (bitwise XNOR): heals EVERY corrupted
     // bit back to SET. A vector "!=" would collapse to a scalar compare and
-    // only ever heal bit 0 - bits [6:1] would stay silently cleared
+    // only ever heal bit 0 - bits [5:1] would stay silently cleared
     // (fail-silent).
     //=========================================================================
-    logic [6:0] lst_dup;
+    logic [5:0] lst_dup;
     assign lst_dup = (r_mb.lst_qn ~^ r_mb.lst_q);
 
     logic fustat_w1c;
     assign fustat_w1c = wr_ok && (off == OFF_FUSTAT);   // local bits 6..9
-    logic regpar_w1c;
-    assign regpar_w1c = wr_ok && (off == OFF_REGPAR);
-    logic regst_wr;
-    assign regst_wr = wr_ok && (off == OFF_REGST) && key_ok;
+    logic stapar_w1c;
+    assign stapar_w1c = wr_ok && (off == OFF_STAPAR);
     logic parst_ev;
-    assign parst_ev = regst_wr && wdata[9];
+    assign parst_ev = regst_wr && wdata[5];
     logic regst_st;
-    assign regst_st = regst_wr && wdata[8] && (wdata[4:0] <= 5'd10);
+    assign regst_st = regst_wr && wdata[4] && (regsel <= 5'd12);
 
     logic hang_fire, stale_fire;                       // watchdogs below
 
-    logic [6:0] lst_set;
-    assign lst_set = {inflight_ev, parst_ev, par_bad,
+    logic [5:0] lst_set;
+    assign lst_set = {inflight_ev, parst_ev,
                       stale_fire, hang_fire, dropped_ev, regprot_ev};
-    logic [6:0] lst_clr;
-    assign lst_clr = {(regpar_w1c && wdata[15]),      // PERR11
-                      (regpar_w1c && wdata[17]),      // PAR_SELFTEST
-                      (regpar_w1c && wdata[16]),      // PERR_CMD
+    logic [5:0] lst_clr;
+    assign lst_clr = {(stapar_w1c && wdata[13]),      // PERR11 INFLIGHT
+                      (stapar_w1c && wdata[0]),       // PAR_SELFTEST latch
                       (fustat_w1c && wdata[9]),       // REF_STALE
                       (fustat_w1c && wdata[8]),       // CFG_HANG
                       (fustat_w1c && wdata[7]),       // WR_DROPPED
                       (fustat_w1c && wdata[6])};      // REG_PROT
-    logic [6:0] lst_nxt;
+    logic [5:0] lst_nxt;
     assign lst_nxt = (r_mb.lst_q | lst_set | lst_dup) & ~lst_clr;
 
     assign reg_prot_lvl = r_mb.lst_q[0];
@@ -418,16 +460,16 @@ module cmm_regfile #(
     // forcing the verdict low has no such hole.
     logic wt_s2, wt_s2d;
     sync_2dff #(.WIDTH(1)) u_wt_sync (
-        .clk  (mbus_clk ),
-        .rstn (mbus_rstn),
-        .d    (win_tog  ),
-        .q    (wt_s2    )
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (win_tog  ),
+        .q   (wt_s2    )
     );
     sync_dff #(.WIDTH(1)) u_wt_dly (
-        .clk  (mbus_clk ),
-        .rstn (mbus_rstn),
-        .d    (wt_s2    ),
-        .q    (wt_s2d   )
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (wt_s2    ),
+        .q   (wt_s2d   )
     );
     logic win_alive;
     assign win_alive = !force_stale && (wt_s2 ^ wt_s2d);
@@ -504,18 +546,41 @@ module cmm_regfile #(
     logic [N_DUT-1:0]      cfgpar_flt_r;          // ref-domain flt vector
 
     sync_dff #(.WIDTH(N_DUT))   u_fail_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(sts_fail),     .q(fail_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (sts_fail ),
+        .q   (fail_s1  )
+    );
     sync_dff #(.WIDTH(N_DUT))   u_dead_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(sts_dead),     .q(dead_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (sts_dead ),
+        .q   (dead_s1  )
+    );
     sync_dff #(.WIDTH(3*N_DUT)) u_fumon_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(fu_mon),       .q(fumon_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (fu_mon   ),
+        .q   (fumon_s1 )
+    );
     sync_dff #(.WIDTH(N_DUT))   u_cfgpar_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(cfgpar_flt_r), .q(cfgpar_s1));
+        .clk (mbus_clk    ),
+        .rstn(mbus_rstn   ),
+        .d   (cfgpar_flt_r),
+        .q   (cfgpar_s1   )
+    );
     sync_dff #(.WIDTH(6))       u_fubits_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn), .d(fu_bits),      .q(fubits_s1));
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (fu_bits  ),
+        .q   (fubits_s1)
+    );
     sync_2dff #(.WIDTH(7))      u_gstat_sync (
-        .clk(mbus_clk), .rstn(mbus_rstn),
-        .d({nerrn_in, fsm_state, active, fu_any, alarm_any}), .q(gstat_s2));
+        .clk (mbus_clk                                        ),
+        .rstn(mbus_rstn                                       ),
+        .d   ({nerrn_in, fsm_state, active, fu_any, alarm_any}),
+        .q   (gstat_s2                                        )
+    );
 
     // FUSRC merged view {psc,cfgpar,cmp,cnt} per ch (pre-image)
     logic [4*N_DUT-1:0] fusrc_m;
@@ -535,9 +600,11 @@ module cmm_regfile #(
     end
 
     //=========================================================================
-    // reg_wrap instances (mbus domain). PERR group index = REGPAR bit 4+k.
+    // reg_wrap instances (mbus domain). PERR group index = STA_PAR bit - 2.
     //=========================================================================
-    logic [10:0] perr_w;   // group flt vector (0..10); group 11 = lst_q[6]
+    logic [12:0] perr_w;   // group flt vector (0..10, 12); group 11 = lst_q[5]
+    logic        cmd_r;    // PERR12 cmd sticky body (cmd wrap readback)
+    assign perr_w[11] = 1'b0;   // group 11 is a latch lane, not a wrap
 
     logic [4:0]  gctrl_r;
     logic [191:0] clo_r, chi_r, cdead_r;
@@ -579,165 +646,179 @@ module cmm_regfile #(
     end
 
     reg_wrap #(
-        .W     (32           ),
-        .RESET (32'hFFFF_FFFF)
+        .W    (32           ),
+        .RESET(32'hFFFF_FFFF)
     ) u_enlo (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (enlo_nxt                        ),
-        .wr           (sto_enlo                        ),
-        .rdata        (enlo_r                          ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd0)),
-        .flt          (perr_w[0]                       ),
-        .flt_w1c      (regpar_w1c && wdata[4]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (enlo_nxt                    ),
+        .wr          (sto_enlo                    ),
+        .rdata       (enlo_r                      ),
+        .selftest_key(regst_st && (regsel == 5'd0)),
+        .flt         (perr_w[0]                   ),
+        .flt_w1c     (stapar_w1c && wdata[2]      )
     );
 
     reg_wrap #(
-        .W     (32           ),
-        .RESET (32'hFFFF_FFFF)
+        .W    (32           ),
+        .RESET(32'hFFFF_FFFF)
     ) u_enhi (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (enhi_nxt                        ),
-        .wr           (sto_enhi                        ),
-        .rdata        (enhi_r                          ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd1)),
-        .flt          (perr_w[1]                       ),
-        .flt_w1c      (regpar_w1c && wdata[5]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (enhi_nxt                    ),
+        .wr          (sto_enhi                    ),
+        .rdata       (enhi_r                      ),
+        .selftest_key(regst_st && (regsel == 5'd1)),
+        .flt         (perr_w[1]                   ),
+        .flt_w1c     (stapar_w1c && wdata[3]      )
     );
 
     reg_wrap #(
-        .W     (5   ),
-        .RESET (5'b0)
+        .W    (5   ),
+        .RESET(5'b0)
     ) u_gctrl (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        ({wdata[7:4], wdata[0]}          ),
-        .wr           (sto_gctrl                       ),
-        .rdata        (gctrl_r                         ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd2)),
-        .flt          (perr_w[2]                       ),
-        .flt_w1c      (regpar_w1c && wdata[6]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       ({wdata[7:4], wdata[0]}      ),
+        .wr          (sto_gctrl                   ),
+        .rdata       (gctrl_r                     ),
+        .selftest_key(regst_st && (regsel == 5'd2)),
+        .flt         (perr_w[2]                   ),
+        .flt_w1c     (stapar_w1c && wdata[4]      )
     );
 
     reg_wrap #(
-        .W     (32   ),
-        .RESET (32'b0)
+        .W    (32   ),
+        .RESET(32'b0)
     ) u_force (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (wdata                           ),
-        .wr           (sto_force                       ),
-        .rdata        (force_r                         ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd3)),
-        .flt          (perr_w[3]                       ),
-        .flt_w1c      (regpar_w1c && wdata[7]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (wdata                       ),
+        .wr          (sto_force                   ),
+        .rdata       (force_r                     ),
+        .selftest_key(regst_st && (regsel == 5'd3)),
+        .flt         (perr_w[3]                   ),
+        .flt_w1c     (stapar_w1c && wdata[5]      )
     );
 
     reg_wrap #(
-        .W     (192                      ),
-        .RESET ({(192/CNT_W){WIN_LO_RST}})
+        .W    (192                      ),
+        .RESET({(192/CNT_W){WIN_LO_RST}})
     ) u_clo (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (clo_nxt                         ),
-        .wr           (sto_ch && (ch_sub == 2'd0)      ),
-        .rdata        (clo_r                           ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd4)),
-        .flt          (perr_w[4]                       ),
-        .flt_w1c      (regpar_w1c && wdata[8]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (clo_nxt                     ),
+        .wr          (sto_ch && (ch_sub == 2'd0)  ),
+        .rdata       (clo_r                       ),
+        .selftest_key(regst_st && (regsel == 5'd4)),
+        .flt         (perr_w[4]                   ),
+        .flt_w1c     (stapar_w1c && wdata[6]      )
     );
 
     reg_wrap #(
-        .W     (192                      ),
-        .RESET ({(192/CNT_W){WIN_HI_RST}})
+        .W    (192                      ),
+        .RESET({(192/CNT_W){WIN_HI_RST}})
     ) u_chi (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (chi_nxt                         ),
-        .wr           (sto_ch && (ch_sub == 2'd1)      ),
-        .rdata        (chi_r                           ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd5)),
-        .flt          (perr_w[5]                       ),
-        .flt_w1c      (regpar_w1c && wdata[9]          )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (chi_nxt                     ),
+        .wr          (sto_ch && (ch_sub == 2'd1)  ),
+        .rdata       (chi_r                       ),
+        .selftest_key(regst_st && (regsel == 5'd5)),
+        .flt         (perr_w[5]                   ),
+        .flt_w1c     (stapar_w1c && wdata[7]      )
     );
 
     reg_wrap #(
-        .W     (192                     ),
-        .RESET ({(192/CNT_W){NDEAD_RST}})
+        .W    (192                     ),
+        .RESET({(192/CNT_W){NDEAD_RST}})
     ) u_cdead (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        (cdead_nxt                       ),
-        .wr           (sto_ch && (ch_sub == 2'd2)      ),
-        .rdata        (cdead_r                         ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd6)),
-        .flt          (perr_w[6]                       ),
-        .flt_w1c      (regpar_w1c && wdata[10]         )
+        .clk         (mbus_clk                    ),
+        .rst_n       (mbus_rstn                   ),
+        .wdata       (cdead_nxt                   ),
+        .wr          (sto_ch && (ch_sub == 2'd2)  ),
+        .rdata       (cdead_r                     ),
+        .selftest_key(regst_st && (regsel == 5'd6)),
+        .flt         (perr_w[6]                   ),
+        .flt_w1c     (stapar_w1c && wdata[8]      )
     );
 
     reg_wrap #(
-        .W     (32   ),
-        .RESET (32'b0)
+        .W    (32   ),
+        .RESET(32'b0)
     ) u_errimg (
-        .clk          (mbus_clk                                 ),
-        .rst_n        (mbus_rstn                                ),
-        .wdata        ({{(32-N_DUT){1'b0}}, (fail_s1 | dead_s1)}),
-        .wr           (1'b1                                     ),
-        .rdata        (errimg_r                                 ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd7)         ),
-        .flt          (perr_w[7]                                ),
-        .flt_w1c      (regpar_w1c && wdata[11]                  )
+        .clk         (mbus_clk                                 ),
+        .rst_n       (mbus_rstn                                ),
+        .wdata       ({{(32-N_DUT){1'b0}}, (fail_s1 | dead_s1)}),
+        .wr          (1'b1                                     ),
+        .rdata       (errimg_r                                 ),
+        .selftest_key(regst_st && (regsel == 5'd7)             ),
+        .flt         (perr_w[7]                                ),
+        .flt_w1c     (stapar_w1c && wdata[9]                   )
     );
 
     reg_wrap #(
-        .W     (32   ),
-        .RESET (32'b0)
+        .W    (32   ),
+        .RESET(32'b0)
     ) u_srcimg (
-        .clk          (mbus_clk                         ),
-        .rst_n        (mbus_rstn                        ),
-        .wdata        ({{(32-2*N_DUT){1'b0}}, srcstat_m}),
-        .wr           (1'b1                             ),
-        .rdata        (srcimg_r                         ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd8) ),
-        .flt          (perr_w[8]                        ),
-        .flt_w1c      (regpar_w1c && wdata[12]          )
+        .clk         (mbus_clk                         ),
+        .rst_n       (mbus_rstn                        ),
+        .wdata       ({{(32-2*N_DUT){1'b0}}, srcstat_m}),
+        .wr          (1'b1                             ),
+        .rdata       (srcimg_r                         ),
+        .selftest_key(regst_st && (regsel == 5'd8)     ),
+        .flt         (perr_w[8]                        ),
+        .flt_w1c     (stapar_w1c && wdata[10]          )
     );
 
     reg_wrap #(
-        .W     (64   ),
-        .RESET (64'b0)
+        .W    (64   ),
+        .RESET(64'b0)
     ) u_fusrcimg (
-        .clk          (mbus_clk                        ),
-        .rst_n        (mbus_rstn                       ),
-        .wdata        ({{(64-4*N_DUT){1'b0}}, fusrc_m} ),
-        .wr           (1'b1                            ),
-        .rdata        (fusrcimg_r                      ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd9)),
-        .flt          (perr_w[9]                       ),
-        .flt_w1c      (regpar_w1c && wdata[13]         )
+        .clk         (mbus_clk                       ),
+        .rst_n       (mbus_rstn                      ),
+        .wdata       ({{(64-4*N_DUT){1'b0}}, fusrc_m}),
+        .wr          (1'b1                           ),
+        .rdata       (fusrcimg_r                     ),
+        .selftest_key(regst_st && (regsel == 5'd9)   ),
+        .flt         (perr_w[9]                      ),
+        .flt_w1c     (stapar_w1c && wdata[11]        )
     );
 
     reg_wrap #(
-        .W     (32   ),
-        .RESET (32'b0)
+        .W    (32   ),
+        .RESET(32'b0)
     ) u_fustatimg (
-        .clk          (mbus_clk                         ),
-        .rst_n        (mbus_rstn                        ),
-        .wdata        ({26'b0, fubits_s1}               ),
-        .wr           (1'b1                             ),
-        .rdata        (fustat_img_r                     ),
-        .selftest_key (regst_st && (wdata[4:0] == 5'd10)),
-        .flt          (perr_w[10]                       ),
-        .flt_w1c      (regpar_w1c && wdata[14]          )
+        .clk         (mbus_clk                     ),
+        .rst_n       (mbus_rstn                    ),
+        .wdata       ({26'b0, fubits_s1}           ),
+        .wr          (1'b1                         ),
+        .rdata       (fustat_img_r                 ),
+        .selftest_key(regst_st && (regsel == 5'd10)),
+        .flt         (perr_w[10]                   ),
+        .flt_w1c     (stapar_w1c && wdata[12]      )
+    );
+
+    // command in-flight parity sticky body (PERR12): par_bad sets, its own
+    // W1C bit (STA_PAR[14]) is a wrap rewrite that recomputes the parity
+    reg_wrap #(
+        .W    (1   ),
+        .RESET(1'b0)
+    ) u_w_cmd (
+        .clk         (mbus_clk                            ),
+        .rst_n       (mbus_rstn                           ),
+        .wdata       (par_bad                             ),
+        .wr          (par_bad || (stapar_w1c && wdata[14])),
+        .rdata       (cmd_r                               ),
+        .selftest_key(regst_st && (regsel == 5'd12)       ),
+        .flt         (perr_w[12]                          ),
+        .flt_w1c     (stapar_w1c && wdata[14]             )
     );
 
     //=========================================================================
     // PERR aggregation + dual-rail ESM events (mbus domain)
     //=========================================================================
-    logic [11:0] perr;
-    assign perr = {r_mb.lst_q[6], perr_w};
-    assign reg_par_fault   = (|perr) || r_mb.lst_q[4] || r_mb.lst_q[5];
+    assign reg_par_fault   = (|perr_w) || cmd_r || r_mb.lst_q[5] || r_mb.lst_q[4];
     assign reg_par_fault_n = ~reg_par_fault;
     assign cfg_hang        = |r_mb.lst_q[3:1];   // dropped | hang | stale
     assign cfg_hang_n      = ~cfg_hang;
@@ -799,9 +880,12 @@ module cmm_regfile #(
                 OFF_FUSRC0:  rdata_mux = fusrcimg_r[31:0];
                 OFF_FUSRC1:  rdata_mux = fusrcimg_r[63:32];
                 OFF_FORCE:   rdata_mux = force_r;
-                OFF_REGPAR:  rdata_mux = {14'b0, r_mb.lst_q[5], r_mb.lst_q[4],
-                                          perr, 2'b00,
-                                          reg_par_fault_n, reg_par_fault};
+                OFF_STAPAR:  rdata_mux = {17'b0,
+                                          perr_w[12] | cmd_r,  // [14] PERR12 CMD
+                                          r_mb.lst_q[5],       // [13] PERR11 INFLIGHT
+                                          perr_w[10:0],        // [12:2] PERR10..0
+                                          reg_par_fault_n,     // [1]
+                                          reg_par_fault};      // [0]
                 OFF_REGST:   rdata_mux = 32'h0;
                 OFF_DBG0:    rdata_mux = {4'b0, dbg_ne_i, 4'b0, dbg_sh_i};
                 OFF_DBG1:    rdata_mux = {win_cnt, 4'b0, dbg_ec_i};
@@ -827,28 +911,28 @@ module cmm_regfile #(
     logic req_s2, req_s2d;
     logic fh_s2, fh_s3;
     sync_2dff #(.WIDTH(1)) u_req_sync (
-        .clk  (clk_ref   ),
-        .rstn (rst_ref_n ),
-        .d    (r_mb.req_t),
-        .q    (req_s2    )
+        .clk (clk_ref   ),
+        .rstn(rst_ref_n ),
+        .d   (r_mb.req_t),
+        .q   (req_s2    )
     );
     sync_dff #(.WIDTH(1)) u_req_dly (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (req_s2   ),
-        .q    (req_s2d  )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (req_s2   ),
+        .q   (req_s2d  )
     );
     sync_2dff #(.WIDTH(1)) u_fh_sync (
-        .clk  (clk_ref   ),
-        .rstn (rst_ref_n ),
-        .d    (force_r[16]),
-        .q    (fh_s2     )
+        .clk (clk_ref    ),
+        .rstn(rst_ref_n  ),
+        .d   (force_r[16]),
+        .q   (fh_s2      )
     );
     sync_dff #(.WIDTH(1)) u_fh_dly (
-        .clk  (clk_ref  ),
-        .rstn (rst_ref_n),
-        .d    (fh_s2    ),
-        .q    (fh_s3    )
+        .clk (clk_ref  ),
+        .rstn(rst_ref_n),
+        .d   (fh_s2    ),
+        .q   (fh_s3    )
     );
     logic req_edge;
     assign req_edge = req_s2 ^ req_s2d;
@@ -888,8 +972,9 @@ module cmm_regfile #(
     logic q_force;
     assign q_force = req_edge && (q_off == OFF_FORCE) && q_key;
     logic q_regst;
-    assign q_regst = req_edge && (q_off == OFF_REGST) && q_key
-                     && r_mb.wdata_q[8] && (r_mb.wdata_q[4:0] >= 5'd16);
+    assign q_regst = req_edge && (q_off == OFF_REGST)
+                     && (r_mb.wdata_q[3:0] == 4'b1010)
+                     && r_mb.wdata_q[4] && (r_mb.wdata_q[12:8] >= 5'd16);
     logic q_ch;
     assign q_ch = req_edge && q_chhit && q_key;
 
@@ -1002,7 +1087,7 @@ module cmm_regfile #(
             assign cw_wr = (q_ch && (q_chidx == i))
                            || (q_enlo && nib_ok_lo) || (q_enhi && nib_ok_hi)
                            || q_force;
-            assign cw_st = q_regst && (r_mb.wdata_q[4:0] == ST_SEL);
+            assign cw_st = q_regst && (r_mb.wdata_q[12:8] == ST_SEL);
             // FUSRC0/1 bit 2 of this channel's nibble clears the shadow-wrap
             // parity fault. NB keeps the bit select in range for i >= 8.
             // (computed on a named signal: iverilog cannot fold the genvar/localparam
@@ -1012,17 +1097,17 @@ module cmm_regfile #(
                             || (q_fusrc1 && (i >= 8) && r_mb.wdata_q[NB+2]);
 
             reg_wrap #(
-                .W     (41                                             ),
-                .RESET ({4'hF, 1'b0, NDEAD_RST, WIN_HI_RST, WIN_LO_RST})
+                .W    (41                                             ),
+                .RESET({4'hF, 1'b0, NDEAD_RST, WIN_HI_RST, WIN_LO_RST})
             ) u_cwrap (
-                .clk          (clk_ref        ),
-                .rst_n        (rst_ref_n      ),
-                .wdata        (cw_wd          ),
-                .wr           (cw_wr          ),
-                .rdata        (cw_rd          ),
-                .selftest_key (cw_st          ),
-                .flt          (cfgpar_flt_r[i]),
-                .flt_w1c      (cw_w1c         )
+                .clk         (clk_ref        ),
+                .rst_n       (rst_ref_n      ),
+                .wdata       (cw_wd          ),
+                .wr          (cw_wr          ),
+                .rdata       (cw_rd          ),
+                .selftest_key(cw_st          ),
+                .flt         (cfgpar_flt_r[i]),
+                .flt_w1c     (cw_w1c         )
             );
 
             assign cfg_winlo[i*CNT_W +: CNT_W] = cw_rd[CNT_W-1:0];
