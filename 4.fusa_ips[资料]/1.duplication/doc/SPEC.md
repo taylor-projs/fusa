@@ -6,13 +6,17 @@
 
 ## 0. py3 相对 py2 的修复记录
 
-1. **py2→py3 语法移植**: `print` 语句→函数、`cmp()`→`==` 比较;
-2. **DCLS 时钟输出端口跨例化去重**: py2 对每个标记实例各生成一份
-   `output <clk>_dcls`, 多实例共用同一时钟时产生重复端口声明(直接编不过;
-   实物见 `demo/test_gld.v` 第 40-41 行两条 `output mclk_dcls`);
-   py3 在父模块 `allDclsClks` 汇总去重后只声明一次;
-3. **内部 `_dcls` 延迟信号声明去重**(`isDeclared` 守卫): 修同一信号被多个
-   实例重复 `wire` 声明的问题, 并将需要门控时钟的实例上报父模块统一处理。
+基础: py2→py3 语法移植(`print`→函数、`cmp()`→`==`)。在此之上修 3 个 bug:
+
+1. **`<clk>_dcls` 端口重复声明 + cell_ckgate 双驱动** — py2 的
+   Clockbuffer/IClockbuffer 全局量被多实例覆盖, 多实例共用同一时钟时
+   重复生成 `output <clk>_dcls`(直接编不过; 实物见 `demo/test_gld.v`
+   第 40-41 行两条 `output mclk_dcls`); py3 改为父模块 `allDclsClks`
+   跨实例去重收集(注意: 仅 `-d` 延迟模式生成, 见 §5);
+2. **delay=0 实例 err 打拍引用不存在的 `<clk>_dcls`** — 改为 delay=0
+   用原时钟打拍;
+3. **ANSI output 端口 + 体内 wire 冗余声明 warning** — 已成端口的信号
+   不再补 wire 声明。
 
 ## 1. 输入标记
 
@@ -30,13 +34,18 @@
 |---|---|---|
 | `//O` / `//OUT...` / `//Output...` | 输出 | 双核输出各引一份进比较器 |
 | `//I`(或无注释) | 输入(无注释有 WARNING) | 双核共享驱动 |
-| `//CLK` | 标签时钟 | 生成 `output <clk>_dcls` 门控时钟(去重) |
-| `//MCLK` | 主 DCLS 时钟 | 同上, 且标记为主时钟 |
+| `//MCLK` | 主 DCLS 时钟 | 生成 `output <clk>_dcls` 门控时钟(去重) |
+| `//CLK` | 标签时钟(LCLK) | 同上 |
 | `//RST` | 复位 | 复位路径特殊处理(随复位方案) |
 | `//NOCMP` | 该端口不比较 | 比较器省掉该位(降开销) |
+| `//ICG` | 时钟门控使能端口 | 触发生成顶层 `input icg_mode` |
+| `//SCAN` / `//FORCEI` / `//FORCEO` | 扫描/强制旁路信号 | 记入工具 scan 集合(FORCEI/FORCEO 走 `_fusadcls_i` 命名) |
 
-无 `()` 连接的输出端口自动按 NC 处理。工具按正则前缀识别
-(`O|OUT|Output` 一族 / `MCLK` / `CLK` / `RST` / `NOCMP`), 其余视为输入。
+无 `()` 连接的输出端口自动按 NC 处理; 常数输入(如 `1'b0`)支持。
+工具按正则前缀识别(`O|OUT|Output` 一族 / `MCLK` / `CLK` / `RST` /
+`NOCMP` / `ICG` / `SCAN` / `FORCEI` / `FORCEO`), 其余视为输入。
+demo 只覆盖 O/I/CLK/MCLK/RST/NOCMP; SCAN/ICG/FORCEI/FORCEO 与
+「LCLK+D0 组合生成 `_buf` 未声明」为**未踩路径**, 用到时先冒烟。
 
 ## 3. 生成结构
 
