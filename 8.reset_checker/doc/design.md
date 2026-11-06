@@ -244,7 +244,7 @@ INJ 与 PASS 可同拍复合。
 | rst_sync.SYNC_LVL_NUM（例化单元） | 2 | 复位同步器级数（≥2：一级亚稳吸收 + 一级解析），本设计三处例化均为 2 |
 | rst_sync.DEF_VAL（例化单元） | 1'b0 | 断言期间输出值（低有效复位；释放值 = ~DEF_VAL） |
 
-## 7. 验证（tb_reset_checker，107 checks）
+## 7. 验证（tb_reset_checker，109 checks）
 
 | 相位 | 覆盖 |
 |---|---|

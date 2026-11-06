@@ -1351,14 +1351,14 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 ## 附：文件清单
 
 ```
-design/ hang_prot_core.sv        监控核（v1，未改）
-design/ hang_prot_wskid.sv      双 slot W skid（v2.3 新增：两单元共享，环形三指针，每槽 one-hot；v3.1 FuSa 载荷奇偶/计数器副本）
-design/ hang_prot_recover.sv    出向恢复桥（v3.2：mcore 感知多类 AR remap + 共享双 slot skid + v3.1 FuSa 双轨/条目奇偶）
-design/ hang_prot_bdry_in.sv    入向边界单元（v2.3 位域多类 AR remap——main 单主口无 mcore 语义，见 §3.6；共享双 slot skid + QSR 强清 + v3.1 FuSa）
-design/ hang_prot_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + s_in_rst 透传 + FuSa 边沿双轨）
-design/ hang_prot_mcu2main_top.sv Unit A 集成顶层（v3.2 mcore 参数透传）
-design/ hang_prot_main2mcu_top.sv Unit B 集成顶层（v2.3 + FuSa）
-design/ hang_prot_regfile.sv mbus leaf (reg_wrap 单一源在 fusa 根 common_modules/) 寄存器（奇偶保护，含 QSR_REL）
+rtl/    hang_prot_core.sv        监控核（v1，未改）
+rtl/    hang_prot_wskid.sv      双 slot W skid（v2.3 新增：两单元共享，环形三指针，每槽 one-hot；v3.1 FuSa 载荷奇偶/计数器副本）
+rtl/    hang_prot_recover.sv    出向恢复桥（v3.2：mcore 感知多类 AR remap + 共享双 slot skid + v3.1 FuSa 双轨/条目奇偶）
+rtl/    hang_prot_bdry_in.sv    入向边界单元（v2.3 位域多类 AR remap——main 单主口无 mcore 语义，见 §3.6；共享双 slot skid + QSR 强清 + v3.1 FuSa）
+rtl/    hang_prot_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + s_in_rst 透传 + FuSa 边沿双轨）
+rtl/    hang_prot_mcu2main_top.sv Unit A 集成顶层（v3.2 mcore 参数透传）
+rtl/    hang_prot_main2mcu_top.sv Unit B 集成顶层（v2.3 + FuSa）
+rtl/    hang_prot_regfile.sv mbus leaf (reg_wrap 单一源在 fusa 根 common_modules/) 寄存器（奇偶保护，含 QSR_REL）
 sim/    tb_hang_prot_a_wrap.sv / tb_hang_prot_b_wrap.sv TB（P1..P12 / P1..P9，iverilog 全 PASS）
 sim/    run_iverilog.sh         WSL iverilog 功能仿真脚本（陈旧 .vvp 防护）
 doc/    hang_prot_design.md     本文档

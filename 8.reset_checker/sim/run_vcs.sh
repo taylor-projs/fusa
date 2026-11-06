@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # reset_checker simulation: Synopsys VCS build + run, FSDB waves for Verdi.
 # Usage (in the VCS/Verdi VM):  cd sim && ./run_vcs.sh [clean|cov]
-#   (none)  compile + run (107 self-checks) + FSDB + KDB
+#   (none)  compile + run (109 self-checks) + FSDB + KDB
 #   cov     same, plus code coverage on the DUT (line+cond+fsm+tgl+branch),
 #           urg report into ./urg_report (dashboard.txt = summary)
 #   clean   remove all build products

@@ -1,4 +1,4 @@
-CHECKSUM: "1953430030 876937681"
+CHECKSUM: "2840217261 72207857"
 MODULE: cmm_regfile
 Block 6 "1340919908" "enhi_nxt[(4 * n)+:4] = wdata[(4 * n)+:4];"
 Block 13 "98725876" "enhi_ill = 1'b1;"
@@ -22,55 +22,168 @@ Block 5 "1536880127" "if (selftest_key)"
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3652419779"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3630667363"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3630667363"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3630667363"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3630667363"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 3630667363"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
 Block 3 "745202470" "v.par_q = (~(^wdata));"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_errimg
 Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_srcimg
 Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
 CHECKSUM: "1754090427 2812380192"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fusrcimg
 Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
 CHECKSUM: "1754090427 1490817134"
 INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fustatimg
 Block 6 "3204031942" "v.par_q = (~r.par_q);"
-CHECKSUM: "1953430030 876937681"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3652419779"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_errimg
+Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_srcimg
+Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
+CHECKSUM: "1754090427 2812380192"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fusrcimg
+Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
+CHECKSUM: "1754090427 1490817134"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fustatimg
+Block 6 "3204031942" "v.par_q = (~r.par_q);"
+
+CHECKSUM: "1754090427 53784019"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_w_cmd
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3652419779"
+MODULE: reg_wrap ( parameter W=5,RESET=0 ) 
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 53784019"
+MODULE: reg_wrap ( parameter W=1,RESET=0 ) 
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "1754090427 3630667363"
+MODULE: reg_wrap ( parameter W=41,RESET ) 
+Block 3 "745202470" "v.par_q = (~(^wdata));"
+
+CHECKSUM: "2840217261 72207857"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile
+Block 89 "3891549726" "g_cwrap[0].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[0].NB+:4];"
+Block 104 "3102814658" "g_cwrap[1].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[1].NB+:4];"
+Block 119 "4161056403" "g_cwrap[2].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[2].NB+:4];"
+Block 134 "2801912143" "g_cwrap[3].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[3].NB+:4];"
+Block 149 "2657954117" "g_cwrap[4].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[4].NB+:4];"
+
+CHECKSUM: "2840217261 72207857"
 MODULE: cmm_regfile
 Block 89 "3891549726" "g_cwrap[0].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[0].NB+:4];"
 Block 104 "3102814658" "g_cwrap[1].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[1].NB+:4];"
 Block 119 "4161056403" "g_cwrap[2].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[2].NB+:4];"
 Block 134 "2801912143" "g_cwrap[3].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[3].NB+:4];"
 Block 149 "2657954117" "g_cwrap[4].cw_wd[40:37] = r_mb.wdata_q[g_cwrap[4].NB+:4];"
+
+CHECKSUM: "1754090427 2812380192"
+MODULE: reg_wrap ( parameter W=64,RESET=0 ) 
+Block 5 "1536880127" "if (selftest_key)"
+
+CHECKSUM: "1754090427 2812380192"
+MODULE: reg_wrap ( parameter W=64,RESET=0 ) 
+Block 6 "3204031942" "v.par_q = (~r.par_q);"
+

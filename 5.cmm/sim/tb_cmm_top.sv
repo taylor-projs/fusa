@@ -825,9 +825,12 @@ module tb_cmm_top;
             chk(rd == 32'd200, $sformatf("COVa: CH%0d_DEAD readback", k));
         end
 
-        // 20b: REGST selftest sweep, mbus wrapper groups 0..10
-        //   (inject parity flip -> PERR[2+g] -> restore rewrite -> W1C)
-        for (k = 0; k <= 10; k = k + 1) begin
+        // 20b: REGST selftest sweep, mbus wrapper groups 0..10 + 12
+        //   (inject parity flip -> PERR[2+g] -> restore rewrite -> W1C;
+        //    组 11 = latch 通道无 wrap, 跳过; 组 12 = u_w_cmd 命令奇偶粘滞体,
+        //    注入翻转 par_q -> PERR14, 其 W1C(bit14) 即重写自愈)
+        for (k = 0; k <= 12; k = k + 1) begin
+            if (k == 11) continue;                     // latch lane, 无 wrap
             mb_wr_sync(A_REGST, (k[7:0] << 8) | 32'h1A);
             #800;
             mb_rd(A_STAPAR, rd);
@@ -840,7 +843,7 @@ module tb_cmm_top;
                 4:       mb_wr_sync(A_CH0_LO,        KEY | 32'd14);
                 5:       mb_wr_sync(A_CH0_LO + 8'd4, KEY | 32'd26);
                 6:       mb_wr_sync(A_CH0_LO + 8'd8, KEY | 32'd200);
-                default: ;                             // 7..10 self-resync
+                default: ;        // 7..10 self-resync; 12 的恢复即下方 W1C 重写
             endcase
             #800;
             mb_wr(A_STAPAR, 32'h4 << k);               // W1C bit (2+k)
@@ -849,6 +852,13 @@ module tb_cmm_top;
             chk(rd[2+k] == 1'b0, $sformatf("COVb: group %0d restored+W1C", k));
         end
         chk(reg_par_fault == 1'b0, "COVb: reg_par_fault rail clean after sweep");
+
+        // 20b+: ERRSTAT W1C 空写, 数据恰带 REGST 图案 (key=1010 + bit4 +
+        //   REGSEL 域≥16) 但 off!=REGST —— 覆盖 shadow-strobe 译码 (q_regst)
+        //   的非目标寄存器交叉组合 bin。必须走转发集寄存器 (STA_PAR 不在
+        //   wr_fwd 内, 不产生 req_edge/不锁 payload, 打不中);
+        //   W1C 空清无害 (PERR 已全清)
+        mb_wr_sync(A_ERRSTAT, 32'h1_101A);
 
         // 20c: ref-domain shadow wrap selftest ch0/2/3/4 (ch1 done in P16)
         for (k = 0; k < N_DUT; k = k + 1) begin

@@ -8,12 +8,12 @@ vlib work_b
 vmap work work_b
 
 vlog -sv -cover bsftc \
-    ../design/hang_prot_wskid.sv \
-    ../design/hang_prot_bdry_in.sv \
-    ../design/hang_prot_core.sv \
-    ../design/reg_wrap.sv \
-    ../design/hang_prot_regfile.sv \
-    ../design/hang_prot_main2mcu_mon.sv \
+    ../rtl/hang_prot_wskid.sv \
+    ../rtl/hang_prot_bdry_in.sv \
+    ../rtl/hang_prot_core.sv \
+    ../../common_modules/reg_wrap.sv \
+    ../rtl/hang_prot_regfile.sv \
+    ../rtl/hang_prot_main2mcu_top.sv \
     ../tb_hang_prot_b_wrap.sv
 
 vsim -coverage -c work_b.tb_hang_prot_b_wrap

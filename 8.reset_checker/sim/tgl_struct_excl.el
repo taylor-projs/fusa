@@ -114,3 +114,25 @@ INSTANCE: tb_reset_checker.dut.u_reset_checker_regfile.u_ctrl
 Toggle rdata [3] "logic rdata[3:0]"
 Toggle r.data_q [3] "logic r.data_q[3:0]"
 Toggle rin.data_q [3] "logic rin.data_q[3:0]"
+
+// ---- 2026-11-07 增补 (TB 109-check vdb 复验残 4 对象) ----
+// rdata[18]/rdata_mux[18]: 全图恒 0 (ID 0x5243_0001 bit18=0, 其余
+//   字段窄于 bit18) —— 读恒 0 保留位族, 同 [15:10]/[21:19] 判例
+// dup_err: reg_wrap 双轨副本失配线, 总线路径不可达 (cmm F 族判例)
+CHECKSUM: "1754090427 2929597457"
+INSTANCE: tb_reset_checker.dut.u_reset_checker_regfile.u_w_cmd
+Toggle dup_err "logic dup_err"
+
+CHECKSUM: "153086616 1831917773"
+MODULE: reset_checker_top
+Toggle rdata [18] "logic rdata[31:0]"
+
+CHECKSUM: "2049934112 3639887880"
+MODULE: reset_checker_regfile
+Toggle rdata [18] "logic rdata[31:0]"
+Toggle rdata_mux [18] "logic rdata_mux[31:0]"
+
+CHECKSUM: "1754090427 2929597457"
+MODULE: reg_wrap ( parameter W=1,RESET=0 ) 
+Toggle dup_err "logic dup_err"
+

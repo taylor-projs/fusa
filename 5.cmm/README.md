@@ -12,7 +12,7 @@ config-path hang monitoring.
 | Dir | Content |
 |---|---|
 | `rtl/` | `cmm_top.sv` (top: ref mux, 共享窗口发生器 dual-rail, lifecycle FSM, 判决锁存/聚合, ESM rails) · `cmm_core.sv` (**单例化多通道测量核**: 一个实例同时监视全部 N_DUT 个 dut clock, 每通道独立 [WIN_LO, WIN_HI] min/max 约束, 通道为向量切片 + 每时钟域 prescaler generate) · `cmm_regfile.sv` (mbus leaf + parity wraps + CDC + hang monitors) · reg_wrap 由 fusa 根 `common_modules/reg_wrap.sv` 单一源提供 (filelist 引用) |
-| `sim/` | `tb_cmm_top.sv` (self-checking TB, 319 checks) · `run_vcs.sh` (VCS+ Verdi+coverage) · `run_iverilog.sh` · `excl/` (urg 结构常量排除集 + `rebuild_*_el.py` 再生成脚本) |
+| `sim/` | `tb_cmm_top.sv` (self-checking TB, 321 checks) · `run_vcs.sh` (VCS+ Verdi+coverage) · `run_iverilog.sh` · `excl/` (urg 结构常量排除集 + `rebuild_*_el.py` 再生成脚本) |
 | `doc/` | `cmm_sil2_design.md` (architecture + register map) · `cmm_timing_sw_guide.md` (parameters, expire values, timing, error classes, SW flows) · `fusa_coverage_sil.md` (SM list, FMEDA-style coverage, SIL assessment) |
 | `legacy/` | previous cmm_m1 design (Verilog), its README and safety assessment |
 

@@ -348,9 +348,9 @@ module cmm_top #(
                        || r.win_l || r.hierr_l || r.fsm_l
                        || (|cfgpar_flt) || rp_s2;
 
-    assign cmm_err   = alarm_any;
+    assign cmm_err   =  alarm_any;
     assign cmm_err_n = ~alarm_any;
-    assign cmm_fu    = fu_any;
+    assign cmm_fu    =  fu_any;
     assign cmm_fu_n  = ~fu_any;
     assign cmm_active = active;
 

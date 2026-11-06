@@ -23,14 +23,14 @@ $ROOT/../common_modules/sync_dff.sv
 $ROOT/../common_modules/sync_2dff.sv
 $ROOT/../common_modules/rst_sync.sv
 $ROOT/../common_modules/reg_wrap.sv
-$ROOT/design/hang_prot_regfile.sv
-$ROOT/design/hang_prot_core.sv
-$ROOT/design/hang_prot_wskid.sv
-$ROOT/design/hang_prot_bdry_in.sv
-$ROOT/design/hang_prot_recover.sv
-$ROOT/design/hang_prot_top.sv
-$ROOT/design/hang_prot_mcu2main_top.sv
-$ROOT/design/hang_prot_main2mcu_top.sv
+$ROOT/rtl/hang_prot_regfile.sv
+$ROOT/rtl/hang_prot_core.sv
+$ROOT/rtl/hang_prot_wskid.sv
+$ROOT/rtl/hang_prot_bdry_in.sv
+$ROOT/rtl/hang_prot_recover.sv
+$ROOT/rtl/hang_prot_top.sv
+$ROOT/rtl/hang_prot_mcu2main_top.sv
+$ROOT/rtl/hang_prot_main2mcu_top.sv
 EOF
 
 # 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)

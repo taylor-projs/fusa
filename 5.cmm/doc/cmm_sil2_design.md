@@ -48,7 +48,7 @@ rtl/
                       (dual-rail), lifecycle FSM, verdict latches / sticky
                       vectors, aggregation, ESM rails, nERR
 sim/
-  tb_cmm_top.sv       self-checking TB (319 checks, N_DUT=5 instance)
+  tb_cmm_top.sv       self-checking TB (321 checks, N_DUT=5 instance)
   run_vcs.sh          VCS build+run (+cov: coverage & urg report)
   run_iverilog.sh     iverilog -g2012 build+run (WSL)
   excl/               urg structural exclusion set (see excl/README.md)

@@ -110,6 +110,8 @@ module esm_core #(
     // IOFFHR 读取自动清 SR2 命中通道 (spec §5.2)
     wire        vec_rd_pulse;
     wire [7:0]  vec_rd_val;
+    wire        vec_clr_pulse;   // 声明提前(驱动见 §5.2 读副作用处), VCS 禁先用后声明
+    wire [7:0]  vec_clr_vec;
     wire vec_clr_g2 = vec_clr_pulse && (vec_clr_vec[7:0] >= 8'h21) && (vec_clr_vec[7:0] <= 8'h40);
     wire [4:0]  vec_clr_ch = vec_clr_vec[4:0] - 5'd1; // G2 vec = 0x21+ch → [4:0]=ch+1
 
@@ -262,8 +264,8 @@ module esm_core #(
                             : 8'h00;
     assign vec_rd_pulse = reg_rd && (reg_addr==A_IOFFHR);
     // 副作用延迟一拍: 先捕获向量(ioffh_r), 下一拍再清 SR2 —— 读值与副作用解耦
-    wire       vec_clr_pulse = vec_rd_d;                    // 读后一拍触发清除
-    wire [7:0] vec_clr_vec   = ioffh_r;                     // 用捕获的向量定位通道
+    assign vec_clr_pulse = vec_rd_d;                        // 读后一拍触发清除
+    assign vec_clr_vec   = ioffh_r;                         // 用捕获的向量定位通道
     assign vec_rd_val   = vec_clr_vec;
 
     // ------------------------------------------------------------------

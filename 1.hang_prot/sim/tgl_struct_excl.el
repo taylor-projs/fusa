@@ -1,33 +1,31 @@
 // ==================================================================
 // tgl_struct_excl.el -- hang_prot structural-constant toggle
 // exclusions (urg -elfile, merged report of tb a/b/gen).
-// Every entry is a constant/tie-off/dead bit or a proven tool
-// limitation; nothing stimulus-reachable is excluded.
-// (rst_sync scan_mode tie-off exclusions were retired once scan_mode
-// was routed to the top and TB P0 toggles it - now covered.)
-// Instance paths refreshed for the u_<module_name> renaming +
-// the rst_sync reset-synchronizer swap (regenerate after RTL
-// changes):
-//   cd obj_vcs/<tb> && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
+// 2026-11-07 重建+补全: 实例路径按 u_hang_prot_top 改名刷新,
+// CHECKSUM 全部取自本次合并 vdb 的 fullexclude dump; 复验残 175 行
+// 未覆盖 toggle 按 8 个结构常量家族补齐 (双域各一份):
+//   镜像wrap wr 恒1 / cfg_key 常量 / otd_sat 死链 bit6 (含同步级) /
+//   AXI ID remap 参数位 / rlen_ext 拼接位 / 读恒0保留位 /
+//   par_l_dup_f 双轨检测臂 / b_wrap 读通道不激励
+// RTL 改动后重新生成:
+//   cd obj_vcs && urg -lca -flex_merge modules -dir a/simv.vdb \
+//     -dir b/simv.vdb -dir gen/simv.vdb -dump full_exclusions tgl \
+//     -report /tmp/x   (fullexclude.tgl / fullexclude_module.tgl)
 // ==================================================================
 
-// ====================================================================
-// tb_a gen_wrap: cfg_key tied to 4b1010 (key comparator constant);
-// fu_src[6] = the dead otd_sat chain bit (see u_hang_prot_core note).
-// ====================================================================
-CHECKSUM: "1545673430 1454626359"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap
+CHECKSUM: "1694240753 905252766"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top
 Toggle cfg_key "logic cfg_key[3:0]"
 Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
 
-// ====================================================================
-// u_hang_prot_core: dead FU_SRC bit6 chain - the otd-saturation
-// source is never asserted: the monitor caps otd counters at
-// OTD_MAX, so otd_sat_w / otd_sat_live / fu_src_live[6] /
-// g_m[0].*_otd_sat / r.rin.fu_src[6] are constant 0 by construction.
-// ====================================================================
-CHECKSUM: "2234357750 2193858042"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_core
+CHECKSUM: "1379166315 3587586986"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_core
 Toggle r.fu_src [6] "logic r.fu_src[6:0]"
 Toggle rin.fu_src [6] "logic rin.fu_src[6:0]"
 Toggle otd_sat_w "logic otd_sat_w[0:0]"
@@ -36,18 +34,11 @@ Toggle fu_src_live [6] "logic fu_src_live[6:0]"
 Toggle g_m[0].rd_otd_sat "logic g_m[0].rd_otd_sat"
 Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
 
-// ====================================================================
-// u_hang_prot_recover: r.rbeat_cnt/rbeat_cnt_n bit8 dead - the
-// RLAST branch resets the counter before 256 can register (the
-// combinational rin value 256 IS covered). ar_id class-constant
-// storage: class1 always stores id 1 (bits[3:1] const), class2
-// id 3 (bits[3:2] const). mcore_fwd_id[3:2] / s_arid_w[3:2] =
-// remap constants (fwd ids 9/A/8: bits[3:2] never toggle).
-// rlen_ext[8] = zero-extension of ar_len ({1b0, ar_len}).
-// ====================================================================
 CHECKSUM: "2516521374 381690749"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_recover
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_recover
 Toggle r.rbeat_cnt [0][8] "logic [2:0][8:0]r.rbeat_cnt"
 Toggle r.rbeat_cnt [1][8] "logic [2:0][8:0]r.rbeat_cnt"
 Toggle r.rbeat_cnt [2][8] "logic [2:0][8:0]r.rbeat_cnt"
@@ -73,13 +64,11 @@ Toggle rin.ar_id [2][3][3:2] "logic [2:0][3:0][3:0]rin.ar_id"
 Toggle mcore_fwd_id [3:2] "logic mcore_fwd_id[3:0]"
 Toggle rlen_ext [8] "logic rlen_ext[8:0]"
 Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
 
-// ====================================================================
-// u_hang_prot_wskid: ridx/ridx_n top bit dead - the replay index
-// walks 0..WSKID_BEATS-1 and never reaches the top code.
-// ====================================================================
 CHECKSUM: "1195076962 2055443683"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_recover.u_hang_prot_wskid
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_recover.u_hang_prot_wskid
 Toggle r.ridx [0][3] "logic [1:0][3:0]r.ridx"
 Toggle r.ridx [1][3] "logic [1:0][3:0]r.ridx"
 Toggle r.ridx_n [0][3] "logic [1:0][3:0]r.ridx_n"
@@ -89,34 +78,26 @@ Toggle rin.ridx [1][3] "logic [1:0][3:0]rin.ridx"
 Toggle rin.ridx_n [0][3] "logic [1:0][3:0]rin.ridx_n"
 Toggle rin.ridx_n [1][3] "logic [1:0][3:0]rin.ridx_n"
 
-// ====================================================================
-// u_hang_prot_regfile: fusrc_s1/s2[6] = CDC syncs of the dead
-// fu_src[6]. par_l_dup_f[2:1]: its RHS (par_lq_n != ~par_lq) yields
-// a 1-bit scalar (SV != on vectors), zero-extended into the 3-bit
-// vector - bit0 = "any rail mismatch", bits[2:1] are structurally
-// constant 0; no stimulus or FI can toggle them (same construct as
-// 3.ia_bus_timeo ia_bus_timeo_regfile par_l_dup_f, probe-verified
-// there). Bit0 IS covered (FI deposit -> scalar dup pulse ->
-// heal-to-SET -> W1C).
-// ====================================================================
-CHECKSUM: "2756963508 3502128684"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_regfile
+CHECKSUM: "1773060344 2230016229"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile
 Toggle fusrc_s1 [6] "logic fusrc_s1[6:0]"
 Toggle fusrc_s2 [6] "logic fusrc_s2[6:0]"
 Toggle par_l_dup_f [2:1] "logic par_l_dup_f[2:0]"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle rdata [21:17] "logic rdata[31:0]"
+Toggle rdata [26:23] "logic rdata[31:0]"
+Toggle rdata [29:28] "logic rdata[31:0]"
+Toggle rdata [31] "logic rdata[31:0]"
 
-// ====================================================================
-// u_r_fusrc (FU_SRC image register): data_q[6] = the dead fu_src[6]
-// bit - never toggles with the source constant 0.
-// ====================================================================
-CHECKSUM: "4239507712 2328058128"
-INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_gen_wrap.u_hang_prot_regfile.u_r_fusrc
+CHECKSUM: "1754090427 2366923744"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_fusrc
 Toggle r.data_q [6] "logic r.data_q[6:0]"
 Toggle rin.data_q [6] "logic rin.data_q[6:0]"
+Toggle rdata [6] "logic rdata[6:0]"
+Toggle wdata [6] "logic wdata[6:0]"
+Toggle wr  "logic wr"
 
-// ====================================================================
-// tb_b bdry wskid: ridx/ridx_n top bit dead (see a-TB note).
-// ====================================================================
 CHECKSUM: "1195076962 2055443683"
 INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_bdry_in.u_hang_prot_wskid
 Toggle r.ridx [0][3] "logic [1:0][3:0]r.ridx"
@@ -128,10 +109,7 @@ Toggle rin.ridx [1][3] "logic [1:0][3:0]rin.ridx"
 Toggle rin.ridx_n [0][3] "logic [1:0][3:0]rin.ridx_n"
 Toggle rin.ridx_n [1][3] "logic [1:0][3:0]rin.ridx_n"
 
-// ====================================================================
-// u_hang_prot_core: dead FU_SRC bit6 chain (see a-TB note).
-// ====================================================================
-CHECKSUM: "2234357750 2193858042"
+CHECKSUM: "1379166315 3587586986"
 INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_core
 Toggle r.fu_src [6] "logic r.fu_src[6:0]"
 Toggle rin.fu_src [6] "logic rin.fu_src[6:0]"
@@ -141,37 +119,41 @@ Toggle fu_src_live [6] "logic fu_src_live[6:0]"
 Toggle g_m[0].rd_otd_sat "logic g_m[0].rd_otd_sat"
 Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
 
-// ====================================================================
-// u_hang_prot_regfile: fusrc_s1/s2[6] + par_l_dup_f[2:1]
-// (see a-TB note).
-// ====================================================================
-CHECKSUM: "2756963508 3502128684"
+CHECKSUM: "1773060344 2230016229"
 INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile
 Toggle fusrc_s1 [6] "logic fusrc_s1[6:0]"
 Toggle fusrc_s2 [6] "logic fusrc_s2[6:0]"
 Toggle par_l_dup_f [2:1] "logic par_l_dup_f[2:0]"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle rdata [21:17] "logic rdata[31:0]"
+Toggle rdata [26:23] "logic rdata[31:0]"
+Toggle rdata [29:28] "logic rdata[31:0]"
+Toggle rdata [31] "logic rdata[31:0]"
 
-// ====================================================================
-// u_r_fusrc: data_q[6] dead bit (see a-TB note).
-// ====================================================================
-CHECKSUM: "4239507712 2328058128"
+CHECKSUM: "1754090427 2366923744"
 INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_fusrc
 Toggle r.data_q [6] "logic r.data_q[6:0]"
 Toggle rin.data_q [6] "logic rin.data_q[6:0]"
+Toggle rdata [6] "logic rdata[6:0]"
+Toggle wdata [6] "logic wdata[6:0]"
+Toggle wr  "logic wr"
 
-// ====================================================================
-// tb_gen u_dut (gen_wrap): cfg_key tied 4b1010; fu_src[6] dead.
-// ====================================================================
-CHECKSUM: "1545673430 4252244453"
+CHECKSUM: "1694240753 2654126156"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut
 Toggle cfg_key "logic cfg_key[3:0]"
 Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
 
-// ====================================================================
-// u_hang_prot_core: dead FU_SRC bit6 chain (see a-TB note).
-// ====================================================================
-CHECKSUM: "2234357750 431554466"
+CHECKSUM: "1379166315 1319983602"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_core
 Toggle r.fu_src [6] "logic r.fu_src[6:0]"
 Toggle rin.fu_src [6] "logic rin.fu_src[6:0]"
@@ -181,11 +163,9 @@ Toggle fu_src_live [6] "logic fu_src_live[6:0]"
 Toggle g_m[0].rd_otd_sat "logic g_m[0].rd_otd_sat"
 Toggle g_m[0].wr_otd_sat "logic g_m[0].wr_otd_sat"
 Toggle g_m[0].dlv_otd_sat "logic g_m[0].dlv_otd_sat"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
 
-// ====================================================================
-// u_hang_prot_recover: rbeat_cnt bit8 dead / ar_id class-constant
-// storage / remap constants (gen widths, see a-TB note).
-// ====================================================================
 CHECKSUM: "2516521374 1729841864"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_recover
 Toggle r.rbeat_cnt [0][8] "logic [2:0][8:0]r.rbeat_cnt"
@@ -229,10 +209,9 @@ Toggle rin.ar_id [2][7][3:2] "logic [2:0][7:0][3:0]rin.ar_id"
 Toggle mcore_fwd_id [3:2] "logic mcore_fwd_id[3:0]"
 Toggle rlen_ext [8] "logic rlen_ext[8:0]"
 Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
 
-// ====================================================================
-// u_hang_prot_wskid: ridx/ridx_n top bit dead (gen widths).
-// ====================================================================
 CHECKSUM: "1195076962 2676351451"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_recover.u_hang_prot_wskid
 Toggle r.ridx [0][4] "logic [1:0][4:0]r.ridx"
@@ -244,20 +223,316 @@ Toggle rin.ridx [1][4] "logic [1:0][4:0]rin.ridx"
 Toggle rin.ridx_n [0][4] "logic [1:0][4:0]rin.ridx_n"
 Toggle rin.ridx_n [1][4] "logic [1:0][4:0]rin.ridx_n"
 
-// ====================================================================
-// u_hang_prot_regfile: fusrc_s1/s2[6] + par_l_dup_f[2:1]
-// (see a-TB note).
-// ====================================================================
-CHECKSUM: "2756963508 1430722834"
+CHECKSUM: "1773060344 3942120289"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile
 Toggle fusrc_s1 [6] "logic fusrc_s1[6:0]"
 Toggle fusrc_s2 [6] "logic fusrc_s2[6:0]"
 Toggle par_l_dup_f [2:1] "logic par_l_dup_f[2:0]"
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle rdata [21:17] "logic rdata[31:0]"
+Toggle rdata [26:23] "logic rdata[31:0]"
+Toggle rdata [29:28] "logic rdata[31:0]"
+Toggle rdata [31] "logic rdata[31:0]"
 
-// ====================================================================
-// u_r_fusrc: data_q[6] dead bit (see a-TB note).
-// ====================================================================
-CHECKSUM: "4239507712 2328058128"
+CHECKSUM: "1754090427 2366923744"
 INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_fusrc
 Toggle r.data_q [6] "logic r.data_q[6:0]"
 Toggle rin.data_q [6] "logic rin.data_q[6:0]"
+Toggle rdata [6] "logic rdata[6:0]"
+Toggle wdata [6] "logic wdata[6:0]"
+Toggle wr  "logic wr"
+
+CHECKSUM: "144183691 3330916786"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_fusrc_sync
+Toggle d [6] "logic d[6:0]"
+Toggle q [6] "logic q[6:0]"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_cntrl
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_fustat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_iaerr0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_iaerr1
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_iastat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 514970307"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_otd
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_thresh0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_top.u_hang_prot_regfile.u_r_thresh1
+Toggle wr  "logic wr"
+
+CHECKSUM: "144183691 3330916786"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_fusrc_sync
+Toggle d [6] "logic d[6:0]"
+Toggle q [6] "logic q[6:0]"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_cntrl
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_fustat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_iaerr0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_iaerr1
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_iastat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 514970307"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_otd
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_thresh0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_thresh1
+Toggle wr  "logic wr"
+
+CHECKSUM: "144183691 3330916786"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_fusrc_sync
+Toggle d [6] "logic d[6:0]"
+Toggle q [6] "logic q[6:0]"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_cntrl
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_fustat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_iaerr0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_iaerr1
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 599623581"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_iastat
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 3668076"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_otd
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_thresh0
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_gen_wrap.u_dut.u_hang_prot_regfile.u_r_thresh1
+Toggle wr  "logic wr"
+
+CHECKSUM: "916143158 344196392"
+MODULE: hang_prot_bdry_in
+Toggle r.ar_id [1:0][3:0][3:0] "logic [1:0][3:0][3:0]r.ar_id"
+Toggle r.ar_len [1:0][3:0][7:0] "logic [1:0][3:0][7:0]r.ar_len"
+Toggle r.ar_occ [1:0][2:0] "logic [1:0][2:0]r.ar_occ"
+Toggle r.ar_occ_n [1:0][2:0] "logic [1:0][2:0]r.ar_occ_n"
+Toggle r.ar_par [1:0][3:0] "logic [1:0][3:0]r.ar_par"
+Toggle r.aw_id [3:0][3:0] "logic [3:0][3:0]r.aw_id"
+Toggle r.rbeat_cnt [1:0][8:0] "logic [1:0][8:0]r.rbeat_cnt"
+Toggle r.rbeat_cnt_n [1:0][8:0] "logic [1:0][8:0]r.rbeat_cnt_n"
+Toggle rin.ar_id [1:0][3:0][3:0] "logic [1:0][3:0][3:0]rin.ar_id"
+Toggle rin.ar_len [1:0][3:0][7:0] "logic [1:0][3:0][7:0]rin.ar_len"
+Toggle rin.ar_occ [1:0][2:0] "logic [1:0][2:0]rin.ar_occ"
+Toggle rin.ar_occ_n [1:0][2:0] "logic [1:0][2:0]rin.ar_occ_n"
+Toggle rin.ar_par [1:0][3:0] "logic [1:0][3:0]rin.ar_par"
+Toggle rin.aw_id [3:0][3:0] "logic [3:0][3:0]rin.aw_id"
+Toggle rin.rbeat_cnt [1:0][8:0] "logic [1:0][8:0]rin.rbeat_cnt"
+Toggle rin.rbeat_cnt_n [1:0][8:0] "logic [1:0][8:0]rin.rbeat_cnt_n"
+Toggle rlen_ext [8] "logic rlen_ext[8:0]"
+Toggle s_arid [3:1] "logic s_arid[3:0]"
+Toggle s_arid_w [3:1] "logic s_arid_w[3:0]"
+Toggle s_arready  "logic s_arready"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+Toggle s_rid [3:1] "logic s_rid[3:0]"
+
+CHECKSUM: "1379166315 3587586986"
+MODULE: hang_prot_core (version = 0)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle fu_src_live [6] "logic fu_src_live[6:0]"
+Toggle g_m[0].dlv_otd_sat  "logic g_m[0].dlv_otd_sat"
+Toggle g_m[0].rd_otd_sat  "logic g_m[0].rd_otd_sat"
+Toggle g_m[0].wr_otd_sat  "logic g_m[0].wr_otd_sat"
+Toggle otd_sat_live  "logic otd_sat_live"
+Toggle otd_sat_w  "logic otd_sat_w[0:0]"
+Toggle r.fu_src [6] "logic r.fu_src[6:0]"
+Toggle rin.fu_src [6] "logic rin.fu_src[6:0]"
+
+CHECKSUM: "1379166315 1319983602"
+MODULE: hang_prot_core (version = 1)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle fu_src_live [6] "logic fu_src_live[6:0]"
+Toggle g_m[0].dlv_otd_sat  "logic g_m[0].dlv_otd_sat"
+Toggle g_m[0].rd_otd_sat  "logic g_m[0].rd_otd_sat"
+Toggle g_m[0].wr_otd_sat  "logic g_m[0].wr_otd_sat"
+Toggle otd_sat_live  "logic otd_sat_live"
+Toggle otd_sat_w  "logic otd_sat_w[0:0]"
+Toggle r.fu_src [6] "logic r.fu_src[6:0]"
+Toggle rin.fu_src [6] "logic rin.fu_src[6:0]"
+
+CHECKSUM: "3736702931 575149990"
+MODULE: hang_prot_main2mcu_top
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:1] "logic s_arid[3:0]"
+Toggle s_arready  "logic s_arready"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+Toggle s_rid [3:1] "logic s_rid[3:0]"
+
+CHECKSUM: "855789548 1771942375"
+MODULE: hang_prot_mcu2main_top
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+
+CHECKSUM: "2516521374 381690749"
+MODULE: hang_prot_recover (version = 0)
+Toggle mcore_fwd_id [3:2] "logic mcore_fwd_id[3:0]"
+Toggle r.ar_id [2:0][3:0][3:0] "logic [2:0][3:0][3:0]r.ar_id"
+Toggle r.rbeat_cnt [2:0][8:0] "logic [2:0][8:0]r.rbeat_cnt"
+Toggle r.rbeat_cnt_n [2:0][8:0] "logic [2:0][8:0]r.rbeat_cnt_n"
+Toggle rin.ar_id [2:0][3:0][3:0] "logic [2:0][3:0][3:0]rin.ar_id"
+Toggle rlen_ext [8] "logic rlen_ext[8:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+
+CHECKSUM: "2516521374 1729841864"
+MODULE: hang_prot_recover (version = 1)
+Toggle mcore_fwd_id [3:2] "logic mcore_fwd_id[3:0]"
+Toggle r.ar_id [2:0][7:0][3:0] "logic [2:0][7:0][3:0]r.ar_id"
+Toggle r.rbeat_cnt [2:0][8:0] "logic [2:0][8:0]r.rbeat_cnt"
+Toggle r.rbeat_cnt_n [2:0][8:0] "logic [2:0][8:0]r.rbeat_cnt_n"
+Toggle rin.ar_id [2:0][7:0][3:0] "logic [2:0][7:0][3:0]rin.ar_id"
+Toggle rlen_ext [8] "logic rlen_ext[8:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+
+CHECKSUM: "1773060344 2230016229"
+MODULE: hang_prot_regfile (version = 0)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle fusrc_s1 [6] "logic fusrc_s1[6:0]"
+Toggle fusrc_s2 [6] "logic fusrc_s2[6:0]"
+Toggle par_l_dup_f [1] "logic par_l_dup_f[1:0]"
+Toggle rdata [21:17] "logic rdata[31:0]"
+Toggle rdata [26:23] "logic rdata[31:0]"
+Toggle rdata [29:28] "logic rdata[31:0]"
+Toggle rdata [31] "logic rdata[31:0]"
+
+CHECKSUM: "1773060344 3942120289"
+MODULE: hang_prot_regfile (version = 1)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle fusrc_s1 [6] "logic fusrc_s1[6:0]"
+Toggle fusrc_s2 [6] "logic fusrc_s2[6:0]"
+Toggle par_l_dup_f [1] "logic par_l_dup_f[1:0]"
+Toggle rdata [21:17] "logic rdata[31:0]"
+Toggle rdata [26:23] "logic rdata[31:0]"
+Toggle rdata [29:28] "logic rdata[31:0]"
+Toggle rdata [31] "logic rdata[31:0]"
+
+CHECKSUM: "1694240753 905252766"
+MODULE: hang_prot_top (version = 0)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+
+CHECKSUM: "1694240753 2654126156"
+MODULE: hang_prot_top (version = 1)
+Toggle cfg_key [3:0] "logic cfg_key[3:0]"
+Toggle fu_src [6] "logic fu_src[6:0]"
+Toggle mbus_rdata [21:17] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [26:23] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [29:28] "logic mbus_rdata[31:0]"
+Toggle mbus_rdata [31] "logic mbus_rdata[31:0]"
+Toggle s_arid [3:2] "logic s_arid[3:0]"
+Toggle s_awid [3:0] "logic s_awid[3:0]"
+
+CHECKSUM: "1195076962 2055443683"
+MODULE: hang_prot_wskid (version = 0)
+Toggle r.ridx [1:0][3:0] "logic [1:0][3:0]r.ridx"
+Toggle r.ridx_n [1:0][3:0] "logic [1:0][3:0]r.ridx_n"
+Toggle rin.ridx [1:0][3:0] "logic [1:0][3:0]rin.ridx"
+Toggle rin.ridx_n [1:0][3:0] "logic [1:0][3:0]rin.ridx_n"
+
+CHECKSUM: "1195076962 2676351451"
+MODULE: hang_prot_wskid (version = 1)
+Toggle r.ridx [1:0][4:0] "logic [1:0][4:0]r.ridx"
+Toggle r.ridx_n [1:0][4:0] "logic [1:0][4:0]r.ridx_n"
+Toggle rin.ridx [1:0][4:0] "logic [1:0][4:0]rin.ridx"
+Toggle rin.ridx_n [1:0][4:0] "logic [1:0][4:0]rin.ridx_n"
+
+CHECKSUM: "1754090427 599623581"
+MODULE: reg_wrap ( parameter W=2,RESET=0 ) 
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 514970307"
+MODULE: reg_wrap ( parameter W=6,RESET=0 ) 
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 2366923744"
+MODULE: reg_wrap ( parameter W=7,RESET=0 ) 
+Toggle r.data_q [6] "logic r.data_q[6:0]"
+Toggle rdata [6] "logic rdata[6:0]"
+Toggle rin.data_q [6] "logic rin.data_q[6:0]"
+Toggle wdata [6] "logic wdata[6:0]"
+Toggle wr  "logic wr"
+
+CHECKSUM: "1754090427 3668076"
+MODULE: reg_wrap ( parameter W=8,RESET=0 ) 
+Toggle wr  "logic wr"
+
+CHECKSUM: "144183691 3330916786"
+MODULE: sync_dff ( parameter WIDTH=7 ) 
+Toggle d [6] "logic d[6:0]"
+Toggle q [6] "logic q[6:0]"
+

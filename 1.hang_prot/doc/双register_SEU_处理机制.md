@@ -1,6 +1,6 @@
 # 双寄存器（bit / ~bit）SEU 处理机制
 
-> 对象：`design/hang_prot_core.sv`
+> 对象：`rtl/hang_prot_core.sv`
 > 问题：设计里大量寄存器采用双副本存储（原值 + 反码），如果发现 `bit != ~bit_n`（副本不一致），IP 功能怎么往下走？
 
 ## 结论（一句话）

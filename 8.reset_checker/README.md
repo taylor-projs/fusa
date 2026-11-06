@@ -26,7 +26,7 @@ rtl/
 doc/
   design.md                 设计说明（功能/业内对照/结构/寄存器/验证矩阵/集成约束）
 sim/
-  tb_reset_checker.sv       自检 TB（107 checks）
+  tb_reset_checker.sv       自检 TB（109 checks）
   run_vcs.sh                VCS 编译+仿真（clean|cov），FSDB 含 "+all"
   run_verdi.sh              Verdi 看波形（-dbdir simv.daidir -ssf *.fsdb）
 ```

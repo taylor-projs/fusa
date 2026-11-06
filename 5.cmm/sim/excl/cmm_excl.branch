@@ -1,60 +1,196 @@
-CHECKSUM: "1953430030 3120807116"
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_errimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_srcimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fusrcimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fustatimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_errimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_srcimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fusrcimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fustatimg
+Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
+Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_w_cmd
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+CHECKSUM: "1754090427 3415330986"
+INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
+Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
+
+
+CHECKSUM: "2840217261 346019935"
 MODULE: cmm_regfile
 Branch 12 "3407312715" "(q_enhi && g_cwrap[0].nib_ok_hi)" (0) "(q_enhi && g_cwrap[0].nib_ok_hi) 1"
 Branch 16 "3030499236" "(q_enhi && g_cwrap[1].nib_ok_hi)" (0) "(q_enhi && g_cwrap[1].nib_ok_hi) 1"
 Branch 20 "1433824748" "(q_enhi && g_cwrap[2].nib_ok_hi)" (0) "(q_enhi && g_cwrap[2].nib_ok_hi) 1"
 Branch 24 "717268227" "(q_enhi && g_cwrap[3].nib_ok_hi)" (0) "(q_enhi && g_cwrap[3].nib_ok_hi) 1"
 Branch 28 "1116046830" "(q_enhi && g_cwrap[4].nib_ok_hi)" (0) "(q_enhi && g_cwrap[4].nib_ok_hi) 1"
-
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enlo
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_enhi
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_gctrl
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_force
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_clo
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_chi
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_cdead
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[0].u_cwrap
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[1].u_cwrap
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[2].u_cwrap
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[3].u_cwrap
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.g_cwrap[4].u_cwrap
-Branch 0 "3995083614" "wr" (0) "wr 1,1,-"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_errimg
-Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
-Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_srcimg
-Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
-Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fusrcimg
-Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
-Branch 0 "3995083614" "wr" (3) "wr 0,-,0"
-CHECKSUM: "1754090427 3415330986"
-INSTANCE: tb_cmm_top.dut.u_cmm_regfile.u_fustatimg
-Branch 0 "3995083614" "wr" (2) "wr 0,-,1"
-Branch 0 "3995083614" "wr" (3) "wr 0,-,0"

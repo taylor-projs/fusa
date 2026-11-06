@@ -12,3 +12,11 @@ INSTANCE: tb_apb2mbus.dut
 Toggle addr [15:9] "logic addr[15:0]"
 Toggle r_apb.paddr_q [15:9] "logic r_apb.paddr_q[15:0]"
 Toggle rin_apb.paddr_q [15:9] "logic rin_apb.paddr_q[15:0]"
+
+// ---- 2026-11-07 增补: 上三行的模块定义域副本 (双域各一份) ----
+CHECKSUM: "322145331 3359139601"
+MODULE: apb2mbus
+Toggle addr [15:9] "logic addr[15:0]"
+Toggle r_apb.paddr_q [15:9] "logic r_apb.paddr_q[15:0]"
+Toggle rin_apb.paddr_q [15:9] "logic rin_apb.paddr_q[15:0]"
+
