@@ -858,7 +858,7 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 
 ### 7.3 软件配置序列 —— 上电初始化（出向 Unit A 场景）
 
-前置：`mbus_rstn` 与 `rst` 系统级同时断言、同步释放（CDC 握手对齐，§7.5）。
+前置：`mbus_rstn` 与 `rstn` 系统级同时断言、同步释放（CDC 握手对齐，§7.5）。
 
 | 步 | 操作 | 寄存器/值 | 功能说明 |
 |---|---|---|---|
@@ -915,7 +915,7 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
 - **命令奇偶**：每次 `ce` 检查 `par == ^{addr, wr, wdata}`（与实例号译码无关）；失配 → 写阻断/读门控 + `PERR_CMD`（`STA_PAR[12]`，bit = 2+组10，W1C 即 wrap 重写）。
 - **逐寄存器偶校验**：每个寄存器在自己所在时钟域是独立 `reg_wrap`（存储+偶校验+selftest 注入+自身故障 sticky）；W1C 一次写、两域同清。
 - **配置旁路时序（cfg_wr 寄存一拍）**：`cfg_ena/cfg_key/cfg_req2a_max/cfg_req2r_max` 由 shadow 寄存器驱动，写落地的那一拍 `cfg_wr` 必须**晚一个 aclk**（`cfg_wr_q`）再脉冲——否则监控核在 shadow 的 NBA 更新同一拍采样，拿到的是上一次写的旧值（配置总线滞后一笔写：ENA 关→开序列会把监控核永远留在关态）。与 ia regfile 的 `cfg_wr_q` 做法一致。
-- **复位**：`mbus_rstn` 与 `rst` 必须系统级同时断言、同源同步释放，否则第一次写可能丢——集成约束。
+- **复位**：`mbus_rstn` 与 `rstn` 必须系统级同时断言、同源同步释放，否则第一次写可能丢——集成约束。
 
 ---
 
@@ -1105,10 +1105,10 @@ ADB400（或等效 CDC/隔离单元）在 main↔island 边界做：时钟域转
 ### 8.7 复位树
 
 ```
- island rst ──────────────► Unit A / Unit B / 岛侧监视器/寄存器 aclk 半边
+ island rstn ──────────────► Unit A / Unit B / 岛侧监视器/寄存器 aclk 半边
  main rst (受控于 ESM) ────► main 域; ADB400 main 侧半片
  s_in_rst (受控于 ESM) ────► Unit A（main 复位保持窗口的通道清洁，§8.5）
- presetn + rst 同源同步释放 ► regfile CDC 握手对齐（§7.6）
+ presetn + rstn 同源同步释放 ► regfile CDC 握手对齐（§7.6）
 ```
 
 岛复位**永不**来自 main 域；QSR_REL 服务序列里 main 复位的拉起/放下都
@@ -1269,7 +1269,7 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
    下排空至多两笔攒齐中 burst，预算翻倍）**；
 4. req2resp 阈值 > slave 最坏合法响应延迟（含 256 拍突发）；
 5. Σ(o.t) ≤ 下游 outstanding 容量（§2.2，误报方向）；
-6. `presetn` 与 `rst` 同源同步释放（regfile CDC）；
+6. `presetn` 与 `rstn` 同源同步释放（regfile CDC）；
 7. 岛内复位永不来自 main；隔离单元供电/时钟/复位全在岛内；
 8. QSR_REL 时 main 必须在复位且 ADB400 iso 已生效；
 9. master 需容忍 SLVERR（标准要求）；**不再要求**容忍提前 RLAST

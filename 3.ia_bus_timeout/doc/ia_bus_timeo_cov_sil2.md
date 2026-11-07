@@ -212,16 +212,16 @@
 
 ```systemverilog
 // 边界卫士: 最后一拍握手则不置位
-A_guard: assert property (@(posedge aclk) disable iff (rst_s)
+A_guard: assert property (@(posedge aclk) disable iff (!rstn_s)
     (axi_arvalid[m] && axi_arready[m] && (rd_cnt_a == thr_a_eff-1))
     |=> !r2a_err_status[RD]);
 
 // 超时上界: fire 时计数不超 thr-1+1
-A_upper: assert property (@(posedge aclk) disable iff (rst_s)
+A_upper: assert property (@(posedge aclk) disable iff (!rstn_s)
     rd_r2a_to |-> (rd_cnt_a >= thr_a_eff-1) && (rd_cnt_a <= thr_a_eff));
 
 // W1C 优先级
-A_w1c_prio: assert property (@(posedge aclk) disable iff (rst_s)
+A_w1c_prio: assert property (@(posedge aclk) disable iff (!rstn_s)
     (r2a_w1c[RD] && rd_r2a_to) |=> !r2a_err_status[RD]);
 
 // CDC 稳定性: 在途锁存不变
@@ -229,7 +229,7 @@ A_cdc_stable: assert property (@(posedge mbus_clk)
     cdc_busy |=> $stable({wsel_q, wdata_q, wpar_q}));
 
 // 副本失配强制立即触发(不迟到)
-A_not_late: assert property (@(posedge aclk) disable iff (rst_s)
+A_not_late: assert property (@(posedge aclk) disable iff (!rstn_s)
     (rd_cnt_a_n != ~rd_cnt_a) |-> rd_r2a_to;
 ```
 
@@ -296,7 +296,7 @@ monitor 的 `ena_q/thr_a_q/thr_r_q` 在该沿采到的是**旧值**，阈值/使
 | R1 共模双副本翻转 | 同一数据的正/反副本同时同值翻转 | 周期 REG_SELFTEST/SELFTEST 扫描 + 上电端到端事务测试（SPNU575 5.11.1 同思路） |
 | R2 parity 双位翻转 | 同寄存器偶数位翻转（parity 盲区） | 同上；SW 周期回读比对期望值 |
 | R3 时钟失效 | aclk 停 → 监控静默且总线也停 | ESM 侧独立时钟/心跳监测（集成项） |
-| R4 复位失配 | mbus_rstn 与 rst 非同源同释 → CDC 握手失步 | 系统级复位设计约束（文档已注明） |
+| R4 复位失配 | mbus_rstn 与 rstn 非同源同释 → CDC 握手失步 | 系统级复位设计约束（文档已注明） |
 | R5 SW 误用 | 动作写带 ENA=0x0 关监控 | SW 规范（文档 §5.2）+ 配置回读校验 |
 | R6 双轨共模 | 两条轨同拍翻转 | ESM 采样双次一致判定（SW 指南已含） |
 
@@ -380,7 +380,7 @@ MTBF ≈ e^(t_MET/τ) / (f_clk × f_data × τ)
 
 ### 5.6 集成假设（转移给系统级）
 
-1. mbus_rstn 与 rst 同源同释（文档既定约束）
+1. mbus_rstn 与 rstn 同源同释（文档既定约束）
 2. aclk/mbus_clk 失效由 ESM 时钟监测独立覆盖（R3）
 3. ESM 侧对双轨做互补校验；err_event/fu_fault/reg_par_fault 路由到不同 ESM 组
 4. 配置地址空间特权隔离（MPU/总线）

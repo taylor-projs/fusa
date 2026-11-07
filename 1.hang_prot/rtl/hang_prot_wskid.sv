@@ -70,7 +70,7 @@
 //   L1 slot state ONE-HOT coding with exactly-one-hot detectors: a
 //     non-one-hot code (SEU / stuck-at):
 //     - latches a sticky dual-rail fault (sk_fault/sk_fault_n -> own ESM
-//       group; cleared only by rst - a transient SEU is still reported)
+//       group; cleared only by rstn - a transient SEU is still reported)
 //     - fails EVERY decoded comparison (m_awready needs FREE, m_wready
 //       needs FILL, s_awvalid needs READY, s_wvalid needs REPLAY,
 //       all_free needs both FREE) - nothing is half-forwarded, both
@@ -91,7 +91,7 @@
 //     entry on its loss; sk_fault (sticky, dual-rail) is the ESM report.
 //   Pointer faults previously relied on wedge->r2a; now caught in 1 cycle.
 //
-// Assumptions: single clock; rst async active-high; W bursts are at most
+// Assumptions: single clock; rstn async active-low; W bursts are at most
 //   WSKID_BEATS beats (longer bursts saturate m_wready in normal mode ->
 //   the master wedges -> r2a; in mode the overflow beats are sunk without
 //   buffering).
@@ -113,7 +113,7 @@ module hang_prot_wskid #(
     parameter int WSKID_BEATS = 16             // max W burst beats per slot
 )(
     input  logic clk,
-    input  logic rst,                          // async active-high
+    input  logic rstn,                         // async active-low
     input  logic mode,                         // recover (A) / block (B) level
     input  logic force_clear,                  // QSR_REL clear (B only)
     input  logic aw_allow,                     // external m_awready gate
@@ -290,7 +290,7 @@ module hang_prot_wskid #(
 
 `ifndef SYNTHESIS
     always @(posedge clk) begin : sk_oh_msg
-        if (!rst && !sk_onehot) begin
+        if (rstn && !sk_onehot) begin
             $error("[hang_prot_wskid] slot state not one-hot: slot0=%b slot1=%b",
                    r.st[0], r.st[1]);
         end
@@ -417,8 +417,8 @@ module hang_prot_wskid #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge clk or posedge rst) begin : seq
-        if (rst) begin
+    always_ff @(posedge clk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;

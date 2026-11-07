@@ -104,8 +104,8 @@
 //   8. NOT covered in-IP           : counter common-mode - boot test
 //
 //  Assumptions:
-//   - single clock domain, asynchronous active-high reset, internally
-//     synchronized (async assert / 3-flop sync release -> rst_s)
+//   - single clock domain, asynchronous active-low reset, internally
+//     synchronized (async assert / 3-flop sync release -> rstn_s)
 //   - threshold == 0 disables that check (explicit SW action, keyed);
 //     reset values are non-zero
 //   - outstanding saturates at OTD_MAX (no rollback). A handshake AT the
@@ -126,8 +126,8 @@ module hang_prot_core #(
     parameter logic [15:0] REQ2RESP_RST   = 16'h00FF  // SCMTHRESHOLD generic param
 ) (
     input  logic clk,
-    input  logic rst,                          // async active-high; release synced inside
-    input  logic scan_mode,                    // DFT: 1 = bypass reset sync (raw rst path)
+    input  logic rstn,                         // async active-low; release synced inside
+    input  logic scan_mode,                    // DFT: 1 = bypass reset sync (raw rstn path)
 
     // ---- AXI4 read channel, observation only ----------------------------
     input  logic [NUM_M-1:0] axi_arvalid,      // read address request
@@ -180,36 +180,32 @@ module hang_prot_core #(
     localparam int FU_SRC_W = 4 + 3*NUM_M;   // fu_src width (+1 = OTDSAT top bit)
 
     //--------------------------------------------------------------------------
-    // Reset synchronizer (async assert / sync release): raw rst is
-    // asynchronous to clk; rst_s is the synchronized version used by ALL
+    // Reset synchronizer (async assert / sync release): raw rstn is
+    // asynchronous to clk; rstn_s is the synchronized version used by ALL
     // monitoring registers. Assertion propagates immediately (a hung or
     // absent clock cannot leave stale state in the monitor); deassertion
     // is clk-edge aligned by the 3-flop chain, so none of the duplicated
     // counter/status registers ever sees a recovery/removal timing risk.
-    // These are the ONLY flops in the module clocked with the raw rst.
+    // These are the ONLY flops in the module clocked with the raw rstn.
     // to_clear remains a purely synchronous data-path signal (cfg-bus key
     // restart) - it must never enter an async sensitivity list.
-    // House rst_sync unit (8.reset_checker/rtl/rst_sync.sv, FuSa-wide reset
-    // synchronizer rule): raw active-high rst -> .rstn = ~rst; DEF_VAL = 0
-    // makes rstn_s assert low asynchronously and release after SYNC_LVL_NUM
-    // = 3 flops; rst_s = ~rstn_s keeps the module-internal active-high
-    // polarity (same 3-cycle release latency). scan_mode is routed up to
-    // the top (DFT reset bypass, same convention as 8.reset_checker).
+    // House rst_sync unit (common_modules/rst_sync.sv, FuSa-wide reset
+    // synchronizer rule): raw active-low rstn straight into .rstn; DEF_VAL
+    // = 0 makes rstn_s assert low asynchronously and release after
+    // SYNC_LVL_NUM = 3 flops (module-internal active-low polarity kept
+    // end to end). scan_mode is routed up to the top (DFT reset bypass,
+    // same convention as 8.reset_checker).
     //--------------------------------------------------------------------------
-    logic rstn_i;
-    assign rstn_i = ~rst;
     logic rstn_s;
     rst_sync #(
        .SYNC_LVL_NUM(3   ),
        .DEF_VAL     (1'b0)
     ) u_rst_sync (
        .clk      (clk      ),
-       .rstn     (rstn_i   ),
+       .rstn     (rstn     ),
        .scan_mode(scan_mode),
        .rstn_s   (rstn_s   )
     );
-    logic rst_s;
-    assign rst_s = ~rstn_s;
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
@@ -648,8 +644,8 @@ module hang_prot_core #(
             //================================================================
             // 时序进程: 只做复位装载与 r <= rin
             //================================================================
-            always_ff @(posedge clk or posedge rst_s) begin : mon_seq
-                if (rst_s) begin
+            always_ff @(posedge clk or negedge rstn_s) begin : mon_seq
+                if (!rstn_s) begin
                     r <= MON_RST;
                 end else begin
                     r <= rin;
@@ -775,8 +771,8 @@ module hang_prot_core #(
     //--------------------------------------------------------------------------
     // 模块级时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge clk or posedge rst_s) begin : seq
-        if (rst_s) begin
+    always_ff @(posedge clk or negedge rstn_s) begin : seq
+        if (!rstn_s) begin
             r <= REG_RST;
         end else begin
             r <= rin;

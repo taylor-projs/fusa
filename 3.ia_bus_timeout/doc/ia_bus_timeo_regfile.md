@@ -53,7 +53,7 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | 奇偶故障 | out | `reg_par_fault`、`reg_par_fault_n` | mbus_clk 域 ESM 双轨事件（见 §5） |
 | 故障源 | in | `fu_src` | `4+3*NUM_M` 位完整性故障源 |
 
-复位 `rst`：异步断言、高有效（与监控核 `rst` 同源）。
+复位 `rstn`：异步断言、低有效（与监控核 `rstn` 同源）。
 
 ---
 
@@ -179,9 +179,9 @@ ack_t ◄──toggle── 回 ack              │
 
 ### 4.3 复位
 
-- `mbus_rstn`（mbus_clk）与 `rst`（aclk）**必须系统级同时断言**（同源、同步释放），否则握手 toggle 状态失配，第一次写可能丢失
+- `mbus_rstn`（mbus_clk）与 `rstn`（aclk）**必须系统级同时断言**（同源、同步释放），否则握手 toggle 状态失配，第一次写可能丢失
 - 这是系统集成约束，文档级约定（TI 安全外设整块复位的做法）；模块内部不做复位 bridging
-- 监控核内部再对 `rst` 做异步断言 / 3 级同步释放（见 `ia_bus_timeo_core.sv`）
+- 监控核内部再对 `rstn` 做异步断言 / 3 级同步释放（见 `ia_bus_timeo_core.sv`）
 
 ---
 

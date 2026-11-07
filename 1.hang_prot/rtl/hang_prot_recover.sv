@@ -191,9 +191,9 @@
 //       counter dups) replaces sk_onehot in the entry condition.
 //   The sk_fault/sk_fault_n output port is now the AGGREGATED boundary
 //   integrity fault (wskid faults OR this unit's mode/FIFO faults),
-//   same dual-rail semantics, sticky until rst.
+//   same dual-rail semantics, sticky until rstn.
 //
-// Assumptions: single clock aclk; rst async active-high, same release
+// Assumptions: single clock aclk; rstn async active-low, same release
 //   synchronization as the monitor (shared reset tree).
 //
 // STYLE: GRLIB two-process - one packed record r (mode rails + ID FIFOs
@@ -223,7 +223,7 @@ module hang_prot_recover #(
     parameter int                  WSKID_BEATS = 16             // max W burst beats
 )(
     input  logic clk,                     // = ia_bus_aclk
-    input  logic rst,                     // async active-high (monitor rst)
+    input  logic rstn,                    // async active-low (monitor rst)
 
     // ---- control from the monitor (aclk domain) ----------------------------
     input  logic          recover_req,    // 1-cycle pulse: arm recovery
@@ -641,8 +641,8 @@ module hang_prot_recover #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge clk or posedge rst) begin : seq
-        if (rst) begin
+    always_ff @(posedge clk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;
@@ -789,7 +789,7 @@ module hang_prot_recover #(
         .WSKID_BEATS(WSKID_BEATS)
     ) u_hang_prot_wskid (
         .clk        (clk     ),
-        .rst        (rst     ),
+        .rstn       (rstn    ),
         .mode       (r.mode_r),
         .force_clear(s_force ),
         .aw_allow   (aw_room ),

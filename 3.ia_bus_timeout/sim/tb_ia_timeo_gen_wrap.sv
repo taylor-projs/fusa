@@ -31,7 +31,7 @@
 //       (1/2/3-flip), thr dup mismatch, per-master counter/otd/dlv/status
 //       dup mismatch, comparator cf windows, regfile wpar latch, par_lq
 //       dup, reg_wrap dup_err (all 13 instances incl. u_w_cmd)
-//   P15 mid-sim reset pulse + re-readback (rst 0->1, mbus_rstn 1->0)
+//   P15 mid-sim reset pulse + re-readback (rstn 1->0, mbus_rstn 1->0)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
 // crosses to aclk via the toggle handshake; mb_wr_wait() polls
@@ -52,7 +52,7 @@ module tb_ia_timeo_gen_wrap;
     localparam realtime T_ACLK = 10ns;    // 100 MHz
 
     logic mbus_clk = 0, aclk = 0;
-    logic mbus_rstn = 0, rst = 1;
+    logic mbus_rstn = 0, rstn = 0;
     logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2) mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
@@ -94,7 +94,7 @@ module tb_ia_timeo_gen_wrap;
         .mbus_rdata(mbus_rdata),
 
         .ia_bus_aclk(aclk     ),
-        .rst        (rst      ),
+        .rstn       (rstn     ),
         .scan_mode  (scan_mode),
 
         .axi_arvalid(axi_arvalid),
@@ -488,22 +488,22 @@ module tb_ia_timeo_gen_wrap;
         // ---- reset --------------------------------------------------------
         axi_reset_all();
         mbus_ce = 0; mbus_wr = 0; mbus_par = 0; mbus_addr = '0; mbus_wdata = '0;
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (5) @(negedge aclk);
-        @(negedge mbus_clk); mbus_rstn = 1; rst = 0;
+        @(negedge mbus_clk); mbus_rstn = 1; rstn = 1;
         repeat (10) @(negedge aclk);
 
         // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
-        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
         scan_mode = 1;
-        rst = 1;
+        rstn = 0;
         #1;                                   // settle, no clock edge needed
-        if (u_dut.u_ia_bus_timeo_core.rst_s !== 1'b1) begin
+        if (u_dut.u_ia_bus_timeo_core.rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
         end
-        rst = 0;
+        rstn = 1;
         #1;
-        if (u_dut.u_ia_bus_timeo_core.rst_s !== 1'b0) begin
+        if (u_dut.u_ia_bus_timeo_core.rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
         end
         scan_mode = 0;
@@ -1273,9 +1273,9 @@ module tb_ia_timeo_gen_wrap;
 
         // ---- P15: mid-sim reset pulse -----------------------------------------
         $display("\n--- P15: mid-sim reset ---");
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (5) @(negedge aclk);
-        @(negedge mbus_clk); mbus_rstn = 1; rst = 0;
+        @(negedge mbus_clk); mbus_rstn = 1; rstn = 1;
         repeat (10) @(negedge aclk);
         repeat (5) @(negedge mbus_clk);
         mb_rd(8'h10, rd_val); if (rd_val[3:0] !== 4'b1111) begin $display("ERR: post-reset ENA"); errors++; end

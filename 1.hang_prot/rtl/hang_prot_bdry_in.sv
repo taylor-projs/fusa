@@ -130,9 +130,9 @@
 //       counter dups) replaces sk_onehot in the entry condition.
 //   The sk_fault/sk_fault_n output port is now the AGGREGATED boundary
 //   integrity fault (wskid faults OR this unit's mode/FIFO faults),
-//   same dual-rail semantics, sticky until rst.
+//   same dual-rail semantics, sticky until rstn.
 //
-// Assumptions: single clock (island aclk); rst async active-high from
+// Assumptions: single clock (island aclk); rstn async active-low from
 //   the island reset tree (NEVER from the main domain).
 //
 // STYLE: GRLIB two-process - one packed record r (mode rails + ID FIFOs
@@ -156,7 +156,7 @@ module hang_prot_bdry_in #(
     parameter int                  WSKID_BEATS = 16             // max ARLEN+1 per burst
 )(
     input  logic clk,                          // island aclk
-    input  logic rst,                          // island reset, async high
+    input  logic rstn,                         // island reset, async low
 
     // ---- control (island aclk domain) --------------------------------------
     input  logic          recover_req,         // 1-cycle pulse: enter block mode
@@ -533,8 +533,8 @@ module hang_prot_bdry_in #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge clk or posedge rst) begin : seq
-        if (rst) begin
+    always_ff @(posedge clk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;
@@ -639,7 +639,7 @@ module hang_prot_bdry_in #(
     // Dual-slot W skid (v2.3): shared hang_prot_wskid instance
     //   mode = block level; force_clear = quiesce_exit (stale FILL/READY
     //   force-discarded - safe ONLY with main held in reset; the fault
-    //   latch is NOT cleared, the event is reported until rst)
+    //   latch is NOT cleared, the event is reported until rstn)
     //--------------------------------------------------------------------------
     logic wsk_fault;
     logic wsk_fault_n;
@@ -651,7 +651,7 @@ module hang_prot_bdry_in #(
         .WSKID_BEATS(WSKID_BEATS)
     ) u_hang_prot_wskid (
         .clk        (clk                 ),
-        .rst        (rst                 ),
+        .rstn       (rstn                ),
         .mode       (r.blk_r             ),
         .force_clear(quiesce_exit        ),
         .aw_allow   (wr_otd_mon < OTD_MAX),
