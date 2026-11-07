@@ -18,6 +18,10 @@
 //   T10 覆盖率激励: 请求保持通路地址/数据位扫 (含非对齐/inst1 边界),
 //       越界地址输入位扫 (paddr[15:9] 输入翻转, 不锁存), 仿真中途复位
 //       (rstn 1->0->1, 两域同步) 后功能恢复
+//   T11 读回程奇偶 rpar: 好读通过 / 坏 rpar 读 -> pready+pslverr+prdata=0
+//       + rpar_evt 单拍脉冲 (双轨) / 坏 rpar 写 -> 不触发 (只查读) /
+//       迟到 ack (drain 窗) 坏 rpar -> 不触发 (drain 路径语义隔离) /
+//       坏读后重读恢复 / rpar_evt_n 互补常时检查
 // ============================================================================
 module tb_apb2mbus;
 
@@ -53,11 +57,15 @@ module tb_apb2mbus;
    logic [31:0] wdata;
    logic        par;
    logic [31:0] rdata;
+   logic        rpar;
+   logic        rpar_flip = 1'b0;    // 回程奇偶 1bit 翻转注入 (模拟叶->桥通路损坏)
 
    logic [31:0] mem [0:511];        // {1'b0, inst[0], off[7:2]} 平铺
    integer      ce_cnt = 0;
 
    assign rdata = (ce && !wr) ? mem[addr[10:2]] : 32'h0;
+   // 叶端契约: rpar = ^rdata 无条件组合驱动 (不做 wr 门控, 未选中=0 天然成立)
+   assign rpar  = (^rdata) ^ rpar_flip;
 
    always @(posedge mbus_clk) begin
       if (ce) begin
@@ -69,49 +77,61 @@ module tb_apb2mbus;
    // ---------------- DUT ----------------
    logic hang_evt;
    logic hang_evt_n;
+   logic rpar_evt;
+   logic rpar_evt_n;
 
    apb2mbus #(
       .NP     (NP     ),
       .HANG_TO(HANG_TO)
    ) dut (
-      .apb_clk    (apb_clk   ),
-      .apb_rstn   (apb_rstn  ),
-      .apb_paddr  (paddr     ),
-      .apb_psel   (psel      ),
-      .apb_penable(penable   ),
-      .apb_pwrite (pwrite    ),
-      .apb_pwdata (pwdata    ),
-      .apb_prdata (prdata    ),
-      .apb_pready (pready    ),
-      .apb_pslverr(pslverr   ),
-      .mbus_clk   (mbus_clk  ),
-      .mbus_rstn  (mbus_rstn ),
-      .ce         (ce        ),
-      .wr         (wr        ),
-      .addr       (addr      ),
-      .wdata      (wdata     ),
-      .par        (par       ),
-      .rdata      (rdata     ),
-      .hang_evt   (hang_evt  ),
-      .hang_evt_n (hang_evt_n)
+      .apb_clk    (apb_clk    ),
+      .apb_rstn   (apb_rstn   ),
+      .apb_paddr  (paddr      ),
+      .apb_psel   (psel       ),
+      .apb_penable(penable    ),
+      .apb_pwrite (pwrite     ),
+      .apb_pwdata (pwdata     ),
+      .apb_prdata (prdata     ),
+      .apb_pready (pready     ),
+      .apb_pslverr(pslverr    ),
+      .mbus_clk   (mbus_clk   ),
+      .mbus_rstn  (mbus_rstn  ),
+      .ce         (ce         ),
+      .wr         (wr         ),
+      .addr       (addr       ),
+      .wdata      (wdata      ),
+      .par        (par        ),
+      .rdata      (rdata      ),
+      .rpar       (rpar       ),
+      .hang_evt   (hang_evt   ),
+      .hang_evt_n (hang_evt_n ),
+      .rpar_evt   (rpar_evt   ),
+      .rpar_evt_n (rpar_evt_n )
    );
 
-   // ---------------- 常时检查: T6 双轨互补 / T7 命令奇偶 ----------------
-   integer rail_bad = 0;
-   integer par_bad  = 0;
+   // ---------------- 常时检查: T6 双轨互补 / T7 命令奇偶 / T11 rpar 双轨 ----
+   integer rail_bad  = 0;
+   integer par_bad   = 0;
+   integer rrail_bad = 0;
 
    always @(posedge apb_clk) begin
       if (hang_evt_n !== ~hang_evt) rail_bad = rail_bad + 1;
+      if (rpar_evt_n !== ~rpar_evt) rrail_bad = rrail_bad + 1;
    end
 
    always @(posedge mbus_clk) begin
       if (ce && (par !== ^{addr, wr, wdata})) par_bad = par_bad + 1;
    end
 
-   // hang_evt 见到即记 (单拍脉冲, 相位间清零)
+   // hang_evt / rpar_evt 见到即记 (单拍脉冲, 相位间清零)
    logic hang_evt_seen = 1'b0;
    always @(posedge apb_clk) begin
       if (hang_evt) hang_evt_seen <= 1'b1;
+   end
+
+   integer rpar_evt_cnt = 0;
+   always @(posedge apb_clk) begin
+      if (rpar_evt) rpar_evt_cnt <= rpar_evt_cnt + 1;
    end
 
    // ---------------- 检查统计 ----------------
@@ -281,6 +301,47 @@ module tb_apb2mbus;
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
       chk("T9e late write landed   ", (err === 1'b0) && (rd === 32'hF00D_0086));
 
+      // ---- T11: 读回程奇偶 rpar ----
+      // 基线: 叶端按契约驱动 rpar, 好读照常通过
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
+      chk("T11a good read passes   ", (err === 1'b0) && (rd === 32'hF00D_0086));
+
+      // 坏 rpar 读: pready+pslverr 完成, prdata 驱 0, rpar_evt 单拍
+      rpar_evt_cnt = 0;
+      rpar_flip = 1'b1;
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
+      chk("T11b bad rpar slverr    ", err === 1'b1);
+      chk("T11c bad rpar data 0    ", rd === 32'h0);
+      chk("T11d completed via rdy  ", (wc >= 3) && (wc <= 40));
+      repeat (4) @(posedge apb_clk);   // rpar_evt 为寄存输出, pready 后 1 拍可见
+      chk("T11e rpar_evt pulsed    ", rpar_evt_cnt === 1);
+
+      // 坏 rpar 写: 只查读 -> 写照常执行, 不触发事件
+      rpar_evt_cnt = 0;
+      apb_acc(16'h0004, 32'h70AC_0004, 1'b1, err, rd, wc);
+      chk("T11f bad rpar wr ok     ", err === 1'b0);
+      repeat (4) @(posedge apb_clk);
+      chk("T11g no evt on write    ", rpar_evt_cnt === 0);
+
+      // 恢复: 翻转撤销后重读正常 (SW 收 bus error 后重读的恢复语义)
+      rpar_flip = 1'b0;
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
+      chk("T11h read recovers      ", (err === 1'b0) && (rd === 32'h70AC_0004));
+
+      // drain 窗迟到 ack 坏 rpar: 不触发 rpar_evt (drain 完成语义隔离)
+      rpar_evt_cnt = 0;
+      mbus_run = 1'b0;
+      repeat (4) @(posedge apb_clk);
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);   // 读超时, caps 尚未采样
+      chk("T11i timeout slverr     ", err === 1'b1);
+      rpar_flip = 1'b1;                              // 迟到通路上翻转
+      mbus_run = 1'b1;
+      repeat (200) @(posedge apb_clk);               // 迟到 ack + drain 自清
+      chk("T11j drain: no rpar evt ", rpar_evt_cnt === 0);
+      rpar_flip = 1'b0;
+      apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
+      chk("T11k link recovered     ", (err === 1'b0) && (rd === 32'h70AC_0004));
+
       // ---- T10a: 请求保持通路地址/数据位扫 (含非对齐与 [7:5]) ----
       // paddr[15:8]<NP 才会被锁存; 位扫均在 inst0/inst1 合法窗内,
       // 数据 0x86/0x81 覆盖 pwdata_q/prdata/rdat_cap 的 [7]/[2:1]/[0]
@@ -330,9 +391,10 @@ module tb_apb2mbus;
       apb_acc(16'h0008, 32'h0, 1'b0, err, rd, wc);
       chk("T10q post-rst rd ok     ", (err === 1'b0) && (rd === 32'h5E53_0008));
 
-      // ---- T6/T7: 常时检查汇总 ----
+      // ---- T6/T7/T11: 常时检查汇总 ----
       chk("T6 rail complement      ", rail_bad === 0);
       chk("T7 ce parity            ", par_bad === 0);
+      chk("T11 rpar rail complement", rrail_bad === 0);
 
       $display("=================================================");
       $display("tb_apb2mbus: %0d checks, %0d errors", checks, errors);

@@ -49,6 +49,22 @@
 // 在途 SEU = payload 坏/par_q 好 -> 失配检出. 注意 par 与 payload 必须
 // 同代直达 (要么都走链要么都直采, 混搭会跨代错位).
 //
+// 读回程奇偶 rpar (FuSa, 与命令 par 对称): 叶端契约 = rpar 无条件组合驱动
+// ^rdata (不做 wr 门控; 未选中叶端 rdata=0 -> rpar=0, OR 网合并不需要额外
+// 使能). 本桥 ce 拍与 rdat_cap 同沿采样 rpar_cap, 完成拍比对
+// ^rdat_cap != rpar_cap -> rpar_bad. 只查读 (pwrite_q=0): 写周期叶端
+// rdata 无消费语义 (写向在途保护已由命令 par 承担). 检出处理 (fail-safe):
+//   * 该笔 APB 读以 pready + pslverr 完成, prdata 驱 0 (坏数据不外送,
+//     与越界/hang/drain 路径同语义: SW 收 bus error 后重读目标寄存器);
+//   * rpar_evt / rpar_evt_n 双轨单拍脉冲送 ESM 独立通道 (rdy 单拍 -> 事件
+//     单拍, 与 hang_evt 同模式). drain/越界路径不触发 (那两笔本身已
+//     SLVERR, 语义是"完成状态未知", 不与回程奇偶混淆).
+// CDC 安全性: rpar_cap 与 rdat_cap 同沿锁存、ce 拍后同样静止, rpar_bad 是
+// 两个静态寄存器的纯组合函数 -> 直采安全性与 rdat_cap 完全相同 (不变量 3
+// 原文适用), 无新同步结构. SDC: rpar 归入 rdata 同一 set_max_delay
+// -datapath_only 直采类. 覆盖能力 = 回程任意单 bit 翻转 (rdata 1bit 或
+// rpar 自身); 双翻转 (数据+奇偶同时) 为 parity 极限, 文档化残余风险.
+//
 // APB 域 HANG 看门狗 (bus-level hang protection, 业界惯例 = 桥/互连层兜底):
 //   mbus 叶端全部零等待 (组合读/单拍写), mbus 传输本身永不 hang; 唯一
 //   的 hang 源是 CDC 链路: mbus_clk 死/停顿、mbus 域复位卡死、广播通路
@@ -103,10 +119,13 @@ module apb2mbus #(
    output logic [31:0]    wdata,
    output logic           par,        // 命令负载偶校验 (req_fire 同沿锁存直采)
    input  logic [31:0]    rdata,
+   input  logic           rpar,       // 读回程偶校验 ^rdata (叶端无条件组合驱动)
 
-   // ---------------- hang 事件 (apb_clk 域, 送 ESM) ----------------
+   // ---------------- hang / rpar 事件 (apb_clk 域, 送 ESM) ----------------
    output logic           hang_evt,   // timeout 单拍脉冲
-   output logic           hang_evt_n  // 双轨反相 (传输完整性, ESM 侧校验)
+   output logic           hang_evt_n, // 双轨反相 (传输完整性, ESM 侧校验)
+   output logic           rpar_evt,   // 读回程奇偶错单拍脉冲 (完成拍, 随 pslverr)
+   output logic           rpar_evt_n  // 双轨反相 (传输完整性, ESM 侧校验)
 );
 
    // hang 看门狗计数位宽
@@ -145,12 +164,15 @@ module apb2mbus #(
       logic [31:0]    pwdata_q;
       logic           pwrite_q;
       logic           par_q;       // 命令负载偶校验 (req_fire 同沿锁存)
+      logic           rpar_evt;    // 读回程奇偶错单拍脉冲 -> ESM
+      logic           rpar_evt_n;  // 双轨反相
    } apb_reg_t;
 
    typedef struct packed {
       logic           ce_flag;     // 单拍 ce (零等待自完成)
       logic           ack_flag;    // 应答 toggle -> APB 域
       logic [31:0]    rdat_cap;    // 读数据锁存 (ce 拍)
+      logic           rpar_cap;    // 读回程偶校验锁存 (与 rdat_cap 同沿)
    } mbus_reg_t;
 
    localparam apb_reg_t APB_REG_RST = '{
@@ -165,13 +187,16 @@ module apb2mbus #(
       paddr_q    : 16'b0,
       pwdata_q   : 32'b0,
       pwrite_q   : 1'b0,
-      par_q      : 1'b0      // ^{16'b0, 1'b0, 32'b0} = 0, 复位态自洽
+      par_q      : 1'b0,     // ^{16'b0, 1'b0, 32'b0} = 0, 复位态自洽
+      rpar_evt   : 1'b0,
+      rpar_evt_n : 1'b1
    };
 
    localparam mbus_reg_t MBUS_REG_RST = '{
       ce_flag  : 1'b0,
       ack_flag : 1'b0,
-      rdat_cap : 32'b0
+      rdat_cap : 32'b0,
+      rpar_cap : 1'b0      // ^32'b0 = 0, 与 rdat_cap 复位态自洽
    };
 
    apb_reg_t  r_apb;
@@ -190,6 +215,13 @@ module apb2mbus #(
    logic h_fire_a;
    logic h_fire_b;
    logic h_dup;
+   logic rpar_bad;                 // 读回程奇偶失配 (静态寄存器的纯组合函数)
+   logic rpar_err;                 // 完成拍检出: rdy 单拍 -> 事件单拍
+
+   // 回程奇偶: 只查读 (pwrite_q=0). rpar_bad 为 rdat_cap/rpar_cap/pwrite_q
+   // 三个静态寄存器的组合函数 -> 直采安全性与 rdat_cap 相同 (不变量 3).
+   assign rpar_bad = !r_apb.pwrite_q && (^r_mb.rdat_cap != r_mb.rpar_cap);
+   assign rpar_err = rdy && !r_apb.drain && rpar_bad;
 
    logic ack_s2;                  // ack toggle: sync 输出
    logic ack_s3;                  // ack toggle: 边沿检测延迟级
@@ -266,6 +298,10 @@ module apb2mbus #(
       v_apb.hang_evt   =   to_fire;
       v_apb.hang_evt_n = ~ to_fire;
 
+      // 读回程奇偶错事件: rpar_err 含 rdy (单拍) -> 事件单拍, 镜像 hang_evt
+      v_apb.rpar_evt   =   rpar_err;
+      v_apb.rpar_evt_n = ~ rpar_err;
+
       // ce_reg = rdy ? 0 : acc (同一笔不重复触发)
       if (rdy) begin
          v_apb.ce_reg = 1'b0;
@@ -311,15 +347,18 @@ module apb2mbus #(
    // pready: 正常 ack / 越界即回 / timeout 强制完成 / drain 快速失败.
    // 各支路统一 acc 限定: pready 本就只在 acc (psel&penable) 期间被采样,
    // 规范内行为等价; 限定后空闲拍恒 0, fault 态 spurious rdy 也不会在
-   // 总线空闲时误抬 pready
+   // 总线空闲时误抬 pready. 回程奇偶错不改 pready 语义 (当拍完成 + pslverr).
    assign apb_pready  = acc && ((rdy && !r_apb.drain) || inst_bad || to_fire || r_apb.drain);
-   assign apb_pslverr = acc && (inst_bad || to_fire || r_apb.drain);
+   assign apb_pslverr = acc && (inst_bad || to_fire || r_apb.drain || rpar_err);
 
-   // 读数据直采: rdat_cap 自 ce 拍静止, rdy 距 ce >= 2 个 apb 拍 (不变量 3)
-   assign apb_prdata  = (rdy && !r_apb.drain) ? r_mb.rdat_cap : 32'b0;
+   // 读数据直采: rdat_cap 自 ce 拍静止, rdy 距 ce >= 2 个 apb 拍 (不变量 3).
+   // 回程奇偶失配时驱 0 (坏数据不外送, SW 收 bus error 后重读)
+   assign apb_prdata  = (rdy && !r_apb.drain && !rpar_bad) ? r_mb.rdat_cap : 32'b0;
 
    assign hang_evt    = r_apb.hang_evt;
    assign hang_evt_n  = r_apb.hang_evt_n;
+   assign rpar_evt    = r_apb.rpar_evt;
+   assign rpar_evt_n  = r_apb.rpar_evt_n;
 
    // =========================================================================
    // mbus 域: 只剩单 bit 控制 —— 请求 toggle 同步 + ce 生成 + 读采样 + ack
@@ -356,9 +395,10 @@ module apb2mbus #(
          v_mb.ce_flag = 1'b0;
       end
 
-      // ce 当拍完成: 采样读数据 + 翻转 ack
+      // ce 当拍完成: 采样读数据 (+ 回程奇偶, 同沿) + 翻转 ack
       if (r_mb.ce_flag) begin
          v_mb.rdat_cap = rdata;
+         v_mb.rpar_cap = rpar;
          v_mb.ack_flag = ~r_mb.ack_flag;
       end
 

@@ -10,8 +10,8 @@ toggle 同步, 同步一律例化标准 sync 单元)。
 | 组 | 信号 | 说明 |
 |----|------|------|
 | APB3 (apb_clk) | paddr[15:0] / psel / penable / pwrite / pwdata → prdata / pready / pslverr | 标准 APB3 从端 |
-| mbus (mbus_clk) | ce / wr / addr[15:0] / wdata[31:0] / par → rdata[31:0] | 主端, 叶端零等待 (组合读/单拍写) |
-| 事件 (apb_clk) | hang_evt / hang_evt_n | hang 超时单拍脉冲, 双轨反相送 ESM |
+| mbus (mbus_clk) | ce / wr / addr[15:0] / wdata[31:0] / par → rdata[31:0] / rpar | 主端, 叶端零等待 (组合读/单拍写); rpar = ^rdata 叶端回程偶校验 |
+| 事件 (apb_clk) | hang_evt / hang_evt_n / rpar_evt / rpar_evt_n | hang 超时 / 读回程奇偶错单拍脉冲, 双轨反相送 ESM |
 
 越界实例: `paddr[15:8] ≥ NP` 时不发起 mbus 传输, 立即 pready + pslverr。
 
@@ -84,6 +84,32 @@ ack 回程级数下限说明: rdy 扇出到 pready/ce_reg/wait_ack/drain 四个
 (早期"par 由 paddr_q 在 mbus 采样沿组合生成"的方案对保持寄存器 SEU
 漏检 — 同源一致损坏; 已随 par_q 锁存修正。)
 
+### 3.1.1 读回程奇偶 (rpar)
+
+命令 par 保护去程 (APB→叶端), rpar 补齐回程 (叶端→APB) 的对称覆盖:
+此前 rdat_cap 直采后 **无任何校验**, 读数据在返回通路上的单 bit 损坏
+会静默进入 CPU。
+
+- **叶端契约**: 每个 mbus 叶端 IP 无条件组合驱动 `rpar = ^rdata`
+  (不做 wr 门控; 未选中叶端 rdata=0 → rpar=0, 与 rdata 同为 OR 网合
+  并, 不需要额外使能)。
+- **主端检查**: 本桥 ce 拍与 rdat_cap 同沿采样 `rpar_cap`, 完成拍比对
+  `^rdat_cap != rpar_cap` → rpar_bad。**只查读** (`pwrite_q=0`):
+  写周期叶端 rdata 无消费语义, 写向在途保护已由命令 par 承担。
+- **检出处理 (fail-safe)**: 该笔 APB 读以 pready + pslverr 完成,
+  prdata 驱 0 (坏数据不外送); `rpar_evt` / `rpar_evt_n` 双轨单拍脉冲
+  送 ESM 独立通道 (rdy 单拍 → 事件单拍, 与 hang_evt 同模式)。SW 收
+  bus error 后重读目标寄存器即可恢复 (瞬时翻转重读成功; 叶内持久损坏
+  由各叶自己的 STA_PAR 报)。
+- **drain / 越界路径不触发**: 那两笔本身已 SLVERR, 语义是"完成状态
+  未知", 不与回程奇偶混淆。
+- **CDC 安全性**: rpar_cap 与 rdat_cap 同沿锁存、ce 拍后同样静止;
+  rpar_bad 是 rdat_cap / rpar_cap / pwrite_q 三个静态寄存器的纯组合
+  函数 → 直采安全性与 rdat_cap 完全相同 (§2.1 不变量 3 原文适用),
+  无新同步结构。
+- **覆盖能力**: 回程任意单 bit 翻转 (rdata 1bit 或 rpar 自身); 双翻转
+  (数据+奇偶同时) 为 parity 极限, 文档化残余风险 (与命令 par 同级)。
+
 ### 3.2 APB 域 hang 看门狗 (bus-level hang protection)
 
 mbus 叶端全部零等待, mbus 传输本身永不 hang; 唯一 hang 源是 CDC 链路:
@@ -147,6 +173,9 @@ set_max_delay -datapath_only \
 # 返回方向: rdat_cap -> apb 域 prdata 消费 FF
 set_max_delay -datapath_only \
   -from [get_cells {rdat_cap*}] -to [apb 域 prdata 消费 FF]  15
+# 回程奇偶: 叶端 rpar XOR 树 -> mbus 域 rpar_cap 捕获 FF (与 rdata 网同类)
+set_max_delay -datapath_only \
+  -from [mbus 叶端 rpar 驱动] -to [get_cells {rpar_cap*}]  100
 ```
 
 CDC 工具 (SpyGlass 等): 上述数据声明为 **MCP / quasi-static data**,
@@ -163,7 +192,7 @@ sync 单元分支选择 (common_modules/sync_2dff.sv / sync_dff.sv):
 ## 4. 验证
 
 `sim/tb_apb2mbus.sv` (VCS 与 iverilog 双过), hang 看门狗专项 +
-常时检查, 28 checks 全过 (TB 对 CDC 实现透明, MCP 直采化后原样全过):
+常时检查, 62 checks 全过 (VCS 2026-11-08 实测, TOGGLE 排除后 100%) (TB 对 CDC 实现透明, MCP 直采化后原样全过):
 
 | 组 | 内容 |
 |----|------|
@@ -175,6 +204,7 @@ sync 单元分支选择 (common_modules/sync_2dff.sv / sync_dff.sv):
 | T6 | hang_evt/hang_evt_n 双轨互补常时检查 |
 | T7 | ce 拍命令奇偶 par == ^{addr,wr,wdata} 常时检查 |
 | T8 | slave 恢复瞬间立即访问: drain 未释放窗内立即 SLVERR (不挂死); 迟到 ack 消化 (drain 自清) 后访问恢复正常 |
+| T11 | 读回程奇偶 rpar (§3.1.1): 好读通过 / 坏 rpar 读 → pready+pslverr+prdata 驱 0 + rpar_evt 单拍 (双轨) / 坏 rpar 写不触发 (只查读) / drain 窗迟到 ack 坏 rpar 不触发 / 坏读后重读恢复 / rpar_evt_n 互补常时检查 |
 
 **drain 释放时序** (T8 的重点): mbus_clk 恢复后, 被延误的请求要先走
 同步链→ce→ack (~5 个 mbus 拍), ack 再经同步链回 apb 域产生 rdy 脉冲才
