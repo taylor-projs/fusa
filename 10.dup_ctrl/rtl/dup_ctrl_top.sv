@@ -57,6 +57,7 @@ module dup_ctrl_top #(
    input  logic [31:0]           wdata,
    input  logic                  par,
    output logic [31:0]           rdata,
+   output logic                  rpar,       // ^rdata 读回程偶校验
 
    // ---------------- DCLS 侧 ----------------
    input  logic [NUM_ERR-1:0]    err_i,      // 各 err_fusadcls_* (功能域, 异步)
@@ -100,6 +101,7 @@ module dup_ctrl_top #(
       .wdata          (wdata          ),
       .par            (par            ),
       .rdata          (rdata          ),
+      .rpar           (rpar           ),
       .err_sync       (err_sync       ),
       .fi             (fi_o           ),
       .esm_err        (esm_err        ),

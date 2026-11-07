@@ -69,7 +69,7 @@
 //   P23 payload variety (a-TB P26 port): full-range addr/id/len/size/
 //       burst/prot, junk W data + walking strobes, island junk s_bid /
 //       SLVERR injection (collector resp relax)
-//   P24 mid-sim reset (a-TB P27 port): rst 0->1->0 + mbus_rstn 1->0->1 -
+//   P24 mid-sim reset (a-TB P27 port): rstn 1->0->1 + mbus_rstn 1->0->1 -
 //       sync_dff/sync_2dff reset pins, rst-only stickies (sk_fault_q)
 //   P25 wskid payload sweep (a-TB P28 port): deterministic complement
 //       pairs under island_awstall framing - wbuf/sbuf/wpar 1->0 holes,
@@ -98,7 +98,7 @@ module tb_hang_prot_b_wrap;
     localparam realtime T_ACLK = 10ns;
 
     logic mbus_clk = 0, aclk = 0;
-    logic mbus_rstn = 0, rst = 1;
+    logic mbus_rstn = 0, rstn = 0;
     logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
@@ -107,6 +107,15 @@ module tb_hang_prot_b_wrap;
     logic        mbus_ce, mbus_wr, mbus_par;
     logic [15:0] mbus_addr;
     logic [31:0] mbus_wdata, mbus_rdata;
+    logic        mbus_rpar;
+
+    // rpar leaf contract: rpar must track ^rdata at every mbus edge
+    integer rpar_bad = 0;
+    always @(posedge mbus_clk) begin
+        if (mbus_rpar !== ^mbus_rdata) begin
+            rpar_bad = rpar_bad + 1;
+        end
+    end
 
     // ---- m side AXI (master BFM = MAIN, killable) ----------------------------
     logic        m_arvalid, m_arready, m_rvalid, m_rready, m_rlast;
@@ -194,9 +203,10 @@ module tb_hang_prot_b_wrap;
         .mbus_wdata(mbus_wdata),
         .mbus_par  (mbus_par  ),
         .mbus_rdata(mbus_rdata),
+        .mbus_rpar (mbus_rpar ),
 
         .ia_bus_aclk(aclk     ),
-        .rst        (rst      ),
+        .rstn       (rstn     ),
         .scan_mode  (scan_mode),
 
         .m_arvalid(m_arvalid),
@@ -521,7 +531,7 @@ module tb_hang_prot_b_wrap;
     endtask
 
     // response collectors (S1: id legality + resp class)
-    always @(posedge aclk) if (rst === 0) begin
+    always @(posedge aclk) if (rstn === 1) begin
         if (m_rvalid && m_rready) begin
             if (!id_used[m_rid]) begin
                 $display("[%0t] ERR: unexpected m_rid %0d", $time, m_rid);
@@ -720,12 +730,12 @@ module tb_hang_prot_b_wrap;
 `ifndef IVERILOG
     // dummy VALIDs held until handshake OR the QSR withdrawal cycle
     property p_r_hold;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         (m_rvalid && !m_rready) |=> (m_rvalid || !block_active);
     endproperty
     a_r_hold: assert property (p_r_hold);
     property p_b_hold;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         (m_bvalid && !m_bready) |=> (m_bvalid || !block_active);
     endproperty
     a_b_hold: assert property (p_b_hold);
@@ -738,20 +748,20 @@ module tb_hang_prot_b_wrap;
     // comment). The original "no VALID at all after exit" form contradicts
     // that documented corner.
     property p_qsr_withdraw;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         $fell(block_active) |=>
             ((!m_rvalid || s_rvalid) && (!m_bvalid || s_bvalid));
     endproperty
     a_qsr_withdraw: assert property (p_qsr_withdraw);
     // S2: quarantine never wedges the island (absorb both channels)
     property p_island_drain;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         block_active |-> (s_rready && s_bready);
     endproperty
     a_island_drain: assert property (p_island_drain);
     // block mode: no new request accepted from the m side
     property p_block_stall;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         block_active |-> (!m_arready && !m_awready);
     endproperty
     a_block_stall: assert property (p_block_stall);
@@ -788,7 +798,7 @@ module tb_hang_prot_b_wrap;
     logic ev_q, blk_q, tc_q, srv_q, srr_q, qp_q, sbv_q, mbv_q, mrv_q;
     logic [3:0] st0_q, st1_q;
     logic swl_q;
-    always @(posedge aclk) if (rst === 0) begin
+    always @(posedge aclk) if (rstn === 1) begin
         if (err_event !== ev_q || block_active !== blk_q
             || (to_clear_dbg !== tc_q) || (s_rvalid !== srv_q)
             || (s_rready_dbg !== srr_q) || (qp_dbg !== qp_q)
@@ -858,7 +868,7 @@ module tb_hang_prot_b_wrap;
 
     // dummy R burst length sampling: block-mode beats BEFORE the closing
     // RLAST (sampled pre-increment so the 1-beat dummy hits bin 0)
-    always @(posedge aclk) if (rst === 0) begin
+    always @(posedge aclk) if (rstn === 1) begin
         if (m_rvalid && m_rready && block_active) begin
             if (m_rlast) begin cg3.sample(); dum_len = 0; end
             else                                 dum_len++;
@@ -1024,26 +1034,26 @@ module tb_hang_prot_b_wrap;
     initial begin : stim
         int k;
 
-        rst = 1; mbus_rstn = 0; main_alive = 1;
+        rstn = 0; mbus_rstn = 0; main_alive = 1;
         m_rready = 0; m_bready = 0;
         mbus_ce = 0; mbus_wr = 0; mbus_par = 0; mbus_addr = '0; mbus_wdata = '0;
         repeat (5) @(negedge aclk);
         mbus_rstn = 1;
         repeat (5) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (5) @(negedge aclk);
 
         // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
-        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
         scan_mode = 1;
-        rst = 1;
+        rstn = 0;
         #1;                                   // settle, no clock edge needed
-        if (u_dut.u_hang_prot_core.rst_s !== 1'b1) begin
+        if (u_dut.u_hang_prot_core.rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
         end
-        rst = 0;
+        rstn = 1;
         #1;
-        if (u_dut.u_hang_prot_core.rst_s !== 1'b0) begin
+        if (u_dut.u_hang_prot_core.rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
         end
         scan_mode = 0;
@@ -2635,7 +2645,7 @@ module tb_hang_prot_b_wrap;
         scn_sample();
 
         // ====================================================================
-        // P24: mid-sim reset (a-TB P27 port) - rst 0->1->0 plus mbus_rstn
+        // P24: mid-sim reset (a-TB P27 port) - rstn 1->0->1 plus mbus_rstn
         //      1->0->1 at full quiescence. Toggles the reset pin of every
         //      sync_dff/sync_2dff (regfile CDC chain, monitor u_rst_sync)
         //      and clears the rst-only sticky state (sk_fault_q is
@@ -2645,11 +2655,11 @@ module tb_hang_prot_b_wrap;
         // ====================================================================
         scn = 24; $display("[%0t] --- P24 ---", $time);
         @(negedge aclk);
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (8) @(negedge aclk);
         mbus_rstn = 1;
         repeat (8) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (8) @(negedge aclk);
         mb_wr_wait(8'h14, 32'd32);           // r2a (P1 redo)
         mb_wr_wait(8'h18, 32'd24);           // r2r
@@ -2997,6 +3007,10 @@ module tb_hang_prot_b_wrap;
         scn_sample();
 
         // ---- summary -----------------------------------------------------------
+        if (rpar_bad != 0) begin
+            $display("ERR: mbus_rpar ^= mbus_rdata violated %0d times", rpar_bad);
+            errors++;
+        end
         if (errors == 0)
             $display("TB_B PASS: all scenario checks clean (P1..P29)");
         else

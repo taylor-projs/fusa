@@ -35,6 +35,7 @@ module reset_checker_top #(
     input  logic [31:0]           wdata,
     input  logic                  par,
     output logic [31:0]           rdata,
+    output logic                  rpar,          // ^rdata read-path even parity
 
     // duplicated reset rails under test (async, same-polarity, active-low:
     // both low = reset asserted, both high = released, p != m = fault)
@@ -114,6 +115,7 @@ module reset_checker_top #(
         .wdata           (wdata           ),
         .par             (par             ),
         .rdata           (rdata           ),
+        .rpar            (rpar            ),
         .cfg_en          (cfg_en          ),
         .cfg_fi          (cfg_fi          ),
         .err_w1c         (err_w1c         ),

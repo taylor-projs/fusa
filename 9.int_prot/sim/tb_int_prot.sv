@@ -60,6 +60,15 @@ module tb_int_prot;
    logic [31:0] wdata = 32'h0;
    logic        par = 1'b0;
    logic [31:0] rdata;
+   logic        rpar;
+
+   // rpar leaf contract: rpar must track ^rdata at every clk edge
+   integer rpar_bad = 0;
+   always @(posedge clk) begin
+      if (rpar !== ^rdata) begin
+         rpar_bad = rpar_bad + 1;
+      end
+   end
 
    //--------------------------------------------------------------------------
    // 被监视信号 (异步, TB 在 negedge 驱动)
@@ -89,6 +98,7 @@ module tb_int_prot;
       .wdata          (wdata          ),
       .par            (par            ),
       .rdata          (rdata          ),
+      .rpar           (rpar           ),
       .spi            (spi            ),
       .spi_chk        (spi_chk        ),
       .spi_sync       (spi_sync       ),
@@ -679,6 +689,7 @@ module tb_int_prot;
 
       //---------------------------------------------------------------- 收尾
       repeat (10) @(negedge clk);
+      chk1("rpar leaf contract (^rdata)", (rpar_bad == 0), 1'b1);
       $display("==================================================");
       if ((errors == 0) && (rail_errs == 0)) begin
          $display("PASS: all checks passed (rail checks clean)");

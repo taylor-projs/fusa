@@ -114,6 +114,7 @@ module cmm_regfile #(
     input  logic [31:0]           wdata,
     input  logic                  par,
     output logic [31:0]           rdata,
+    output logic                  rpar,          // ^rdata read-path even parity (mbus leaf contract)
 
     // ---- monitor domain ----------------------------------------------------
     input  logic                  clk_ref,
@@ -894,6 +895,10 @@ module cmm_regfile #(
         end
     end
     assign rdata = (sel && par_ok) ? rdata_mux : 32'h0;
+    // rpar leaf contract: unconditional combinational ^rdata (unselected
+    // reads return 0 -> rpar=0, OR-merged net needs no extra enable;
+    // checked by apb2mbus at the ce beat on reads)
+    assign rpar = ^rdata;
 
     //=========================================================================
     // clk_ref domain: request sync + apply + ack-follow

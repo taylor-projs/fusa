@@ -58,10 +58,11 @@ module hang_prot_main2mcu_top #(
     input  logic [31:0]          mbus_wdata,
     input  logic                 mbus_par,         // ^({addr, wr, wdata})
     output logic [31:0]          mbus_rdata,       // combinational, zero-wait
+    output logic                 mbus_rpar,        // ^mbus_rdata read-path even parity
 
     // ---- island clock / reset ----------------------------------------------
     input  logic                 ia_bus_aclk,
-    input  logic                 rst,              // async, active-high
+    input  logic                 rstn,             // async, active-low
     input  logic                 scan_mode,        // DFT: bypass core reset sync
 
     // ---- AXI4 m side (main = master via ADB400; unit = slave) --------------
@@ -189,9 +190,10 @@ module hang_prot_main2mcu_top #(
         .wdata    (mbus_wdata),
         .par      (mbus_par  ),
         .rdata    (mbus_rdata),
+        .rpar     (mbus_rpar ),
 
         .aclk(ia_bus_aclk),
-        .rst (rst        ),
+        .rstn(rstn       ),
 
         .cfg_wr            (cfg_wr            ),
         .cfg_key           (cfg_key           ),
@@ -282,8 +284,8 @@ module hang_prot_main2mcu_top #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge ia_bus_aclk or posedge rst) begin : seq
-        if (rst) begin
+    always_ff @(posedge ia_bus_aclk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;
@@ -307,7 +309,7 @@ module hang_prot_main2mcu_top #(
         .WSKID_BEATS(WSKID_BEATS )
     ) u_hang_prot_bdry_in (
         .clk(ia_bus_aclk),
-        .rst(rst        ),
+        .rstn(rstn       ),
 
         .recover_req(recover_req),
         .quiesce_rel(qsr_rel    ),
@@ -391,7 +393,7 @@ module hang_prot_main2mcu_top #(
         .REQ2RESP_RST  (REQ2RESP_RST  )
     ) u_hang_prot_core (
         .clk      (ia_bus_aclk),
-        .rst      (rst        ),
+        .rstn     (rstn       ),
         .scan_mode(scan_mode  ),
 
         .axi_arvalid(m_arvalid),

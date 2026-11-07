@@ -57,7 +57,7 @@
 //       park-kill dummy-length sweep (len 0/3/7/8/255, all 3 classes)
 //   P23 payload variety: full-range addr/id/len/size/burst/prot reads and
 //       writes with junk data/strobes, slave SLVERR + junk-bid injection
-//   P24 mid-sim reset (rst + mbus_rstn) at full quiescence: sync_dff reset
+//   P24 mid-sim reset (rstn + mbus_rstn) at full quiescence: sync_dff reset
 //       pins toggle, rst-only stickies clear; P1 config re-applied
 //   P25 W-skid payload sweep: deterministic complement pairs (pv_const)
 //       buffered under an s-AW stall -> slot0/slot1 alternation
@@ -92,7 +92,7 @@ module tb_hang_prot_gen_wrap;
     localparam realtime T_ACLK = 10ns;     // 100 MHz
 
     logic mbus_clk = 0, aclk = 0;
-    logic mbus_rstn = 0, rst = 1;
+    logic mbus_rstn = 0, rstn = 0;
     logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
@@ -101,6 +101,15 @@ module tb_hang_prot_gen_wrap;
     logic        mbus_ce, mbus_wr, mbus_par;
     logic [15:0] mbus_addr;
     logic [31:0] mbus_wdata, mbus_rdata;
+    logic        mbus_rpar;
+
+    // rpar leaf contract: rpar must track ^rdata at every mbus edge
+    integer rpar_bad = 0;
+    always @(posedge mbus_clk) begin
+        if (mbus_rpar !== ^mbus_rdata) begin
+            rpar_bad = rpar_bad + 1;
+        end
+    end
 
     // ---- AXI master side (master BFM drives, DUT receives) ------------------
     logic        m_arvalid, m_arready;
@@ -192,9 +201,10 @@ module tb_hang_prot_gen_wrap;
         .mbus_wdata(mbus_wdata),
         .mbus_par  (mbus_par  ),
         .mbus_rdata(mbus_rdata),
+        .mbus_rpar (mbus_rpar ),
 
         .ia_bus_aclk(aclk      ),
-        .rst        (rst       ),
+        .rstn       (rstn      ),
         .scan_mode  (scan_mode ),
         .s_in_rst   (s_in_rst  ),
         .s_in_rst_n (s_in_rst_n),
@@ -394,7 +404,7 @@ module tb_hang_prot_gen_wrap;
 
     // bookkeeping (sampling stable negedge-driven values at posedge)
     always @(posedge aclk) begin : slv_book
-        if (rst) begin
+        if (!rstn) begin
             b_pend <= 0;
         end else begin
             if (s_arvalid && s_arready) rd_q.push_back({s_arid, s_arlen});
@@ -601,10 +611,10 @@ module tb_hang_prot_gen_wrap;
                          u_dut.cfg_ena, u_dut.cfg_req2accept_max,
                          u_dut.cfg_req2resp_max);
             if (u_dut.u_hang_prot_core.r.ena_q !== ena_q_prev) begin
-                $display("[%0t] ENATRACE ena_q %h -> %h  wr_ok=%b cfg_ok=%b cfg_ena=%h rst_s=%b",
+                $display("[%0t] ENATRACE ena_q %h -> %h  wr_ok=%b cfg_ok=%b cfg_ena=%h rstn_s=%b",
                          $time, ena_q_prev, u_dut.u_hang_prot_core.r.ena_q,
                          u_dut.u_hang_prot_core.ena_wr_ok, u_dut.u_hang_prot_core.cfg_ok,
-                         u_dut.cfg_ena, u_dut.u_hang_prot_core.rst_s);
+                         u_dut.cfg_ena, u_dut.u_hang_prot_core.rstn_s);
                 ena_q_prev <= u_dut.u_hang_prot_core.r.ena_q;
             end
         end
@@ -844,13 +854,13 @@ module tb_hang_prot_gen_wrap;
     bit id_used [16];               // ids ever accepted on AR/AW
     int b0 = 0, r0 = 0;             // per-phase scorebook bases
 
-    always @(posedge aclk) if (rst === 1'b0) begin
+    always @(posedge aclk) if (rstn === 1'b1) begin
         if (m_arvalid && m_arready) begin reads_fired++;  id_used[m_arid] = 1; end
         if (m_awvalid && m_awready) begin writes_fired++; id_used[m_awid] = 1; end
     end
 
     // response collector (id legality + resp class + retire counts)
-    always @(posedge aclk) if (rst === 1'b0) begin
+    always @(posedge aclk) if (rstn === 1'b1) begin
         if (m_rvalid && m_rready) begin
             if (!id_used[m_rid]) begin
                 $display("[%0t] ERR: unexpected m_rid %0d (no such issue)",
@@ -918,7 +928,7 @@ module tb_hang_prot_gen_wrap;
     // S4, precisely: at every recover_done (= exit decision: mode && otd==0
     // && slots FREE) the ledgers must read zero and both slots be FREE.
     // Pre-NBA sampling at the posedge = the exact values the exit used.
-    always @(posedge aclk) if (rst === 1'b0 && recover_done) begin
+    always @(posedge aclk) if (rstn === 1'b1 && recover_done) begin
         if (rd_otd_i != 0 || wr_otd_i != 0) begin
             $display("[%0t] ERR: exit with otd rd=%0d wr=%0d",
                      $time, rd_otd_i, wr_otd_i); errors++;
@@ -1149,22 +1159,22 @@ module tb_hang_prot_gen_wrap;
         m_arvalid = 0; m_rready = 0; m_awvalid = 0; m_wvalid = 0; m_bready = 0;
         mbus_ce = 0; mbus_wr = 0; mbus_par = 0; mbus_addr = '0; mbus_wdata = '0;
         s_in_rst = 0; s_in_rst_n = 1;           // ESM rails: main NOT in reset
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (5) @(negedge aclk);
-        @(negedge mbus_clk); mbus_rstn = 1; rst = 0;
+        @(negedge mbus_clk); mbus_rstn = 1; rstn = 1;
         repeat (10) @(negedge aclk);
 
         // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
-        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
         scan_mode = 1;
-        rst = 1;
+        rstn = 0;
         #1;                                   // settle, no clock edge needed
-        if (u_dut.u_hang_prot_core.rst_s !== 1'b1) begin
+        if (u_dut.u_hang_prot_core.rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
         end
-        rst = 0;
+        rstn = 1;
         #1;
-        if (u_dut.u_hang_prot_core.rst_s !== 1'b0) begin
+        if (u_dut.u_hang_prot_core.rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
         end
         scan_mode = 0;
@@ -2762,7 +2772,7 @@ module tb_hang_prot_gen_wrap;
         $display("P23: payload variety clean");
 
         // ====================================================================
-        // P24: mid-sim reset - rst 0->1->0 plus mbus_rstn 1->0->1 at full
+        // P24: mid-sim reset - rstn 1->0->1 plus mbus_rstn 1->0->1 at full
         //      quiescence. Toggles the reset pin of every sync_dff/sync_2dff
         //      (regfile CDC chain, monitor u_rst_sync) and clears the
         //      rst-only sticky state (sk_fault/iflt rails still latched from
@@ -2772,11 +2782,11 @@ module tb_hang_prot_gen_wrap;
         // ====================================================================
         $display("\n--- P24: mid-sim reset ---");
         @(negedge aclk);
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (8) @(negedge aclk);
         mbus_rstn = 1;
         repeat (8) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (8) @(negedge aclk);
         mb_wr_wait(16'h0014, 32'd15);           // r2a (P2 redo)
         mb_wr_wait(16'h0018, 32'd20);           // r2r
@@ -3076,11 +3086,11 @@ module tb_hang_prot_gen_wrap;
         // (entries 4..7 first stored post-P24: 0->1 only) get their 1->0
         // here. Config re-applied for P29/P30 (thr 128).
         @(negedge aclk);
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (8) @(negedge aclk);
         mbus_rstn = 1;
         repeat (8) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (8) @(negedge aclk);
         mb_wr_wait(16'h0014, 32'd128);          // r2a
         mb_wr_wait(16'h0018, 32'd128);          // r2r
@@ -3363,6 +3373,10 @@ module tb_hang_prot_gen_wrap;
 
         // ---- summary ------------------------------------------------------------
         check_closure();
+        if (rpar_bad != 0) begin
+            $display("ERR: mbus_rpar ^= mbus_rdata violated %0d times", rpar_bad);
+            errors++;
+        end
         repeat (20) @(negedge aclk);
         $display("\n=============================================");
         if (errors == 0) $display("TB_GEN PASS: all scenario checks clean (P1..P31)");

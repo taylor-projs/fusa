@@ -41,6 +41,7 @@ module int_prot_top #(
    input  logic [31:0]           wdata,
    input  logic                  par,
    output logic [31:0]           rdata,
+   output logic                  rpar,           // ^rdata 读回程偶校验
 
    // ---------------- 被监视信号 (异步) ----------------
    input  logic [NUM_INT-1:0]    spi,
@@ -77,6 +78,7 @@ module int_prot_top #(
       .wdata          (wdata          ),
       .par            (par            ),
       .rdata          (rdata          ),
+      .rpar           (rpar           ),
       .en             (en             ),
       .inj_spi        (inj_spi        ),
       .inj_chk        (inj_chk        ),

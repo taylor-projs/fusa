@@ -75,6 +75,7 @@ module cmm_top #(
     input  logic [31:0]       mbus_wdata,
     input  logic              mbus_par,
     output logic [31:0]       mbus_rdata,
+    output logic              mbus_rpar,      // ^mbus_rdata read-path even parity
     // safety outputs
     output logic              nerr_n,         // active-low level -> PMIC
     output logic              cmm_err,        // dual rail -> ESM
@@ -473,6 +474,7 @@ module cmm_top #(
         .wdata          (mbus_wdata     ),
         .par            (mbus_par       ),
         .rdata          (mbus_rdata     ),
+        .rpar           (mbus_rpar      ),
         .clk_ref        (clk_ref        ),
         .rst_ref_n      (rst_ref_n      ),
         .cfg_en         (cfg_en         ),

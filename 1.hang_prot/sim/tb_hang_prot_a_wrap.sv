@@ -80,7 +80,7 @@ module tb_hang_prot_a_wrap;
     localparam realtime T_ACLK = 10ns;
 
     logic mbus_clk = 0, aclk = 0;
-    logic mbus_rstn = 0, rst = 1;
+    logic mbus_rstn = 0, rstn = 0;
     logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
@@ -89,6 +89,15 @@ module tb_hang_prot_a_wrap;
     logic        mbus_ce, mbus_wr, mbus_par;
     logic [15:0] mbus_addr;
     logic [31:0] mbus_wdata, mbus_rdata;
+    logic        mbus_rpar;
+
+    // rpar leaf contract: rpar must track ^rdata at every mbus edge
+    integer rpar_bad = 0;
+    always @(posedge mbus_clk) begin
+        if (mbus_rpar !== ^mbus_rdata) begin
+            rpar_bad = rpar_bad + 1;
+        end
+    end
 
     // ---- m side AXI (master BFM = island NIC) -------------------------------
     logic        m_arvalid, m_arready, m_rvalid, m_rready, m_rlast;
@@ -187,9 +196,10 @@ module tb_hang_prot_a_wrap;
         .mbus_wdata(mbus_wdata),
         .mbus_par  (mbus_par  ),
         .mbus_rdata(mbus_rdata),
+        .mbus_rpar (mbus_rpar ),
 
         .ia_bus_aclk(aclk      ),
-        .rst        (rst       ),
+        .rstn       (rstn      ),
         .scan_mode  (scan_mode ),
         .s_in_rst   (s_in_rst  ),
         .s_in_rst_n (s_in_rst_n),
@@ -377,7 +387,7 @@ module tb_hang_prot_a_wrap;
     //   m-side RLAST record {rid, total beats (real + dummy)}
     int  rb_beats = 0;
     int  rb_rid_q [$], rb_beats_q [$];
-    always @(posedge aclk) if (rst === 0 && m_rvalid && m_rready) begin
+    always @(posedge aclk) if (rstn === 1 && m_rvalid && m_rready) begin
         rb_beats <= rb_beats + 1;
         if (m_rlast) begin
             rb_rid_q.push_back(m_rid);
@@ -652,7 +662,7 @@ module tb_hang_prot_a_wrap;
                 u_dut.u_hang_prot_top.u_hang_prot_recover.recover_enter,
                 u_dut.u_hang_prot_top.u_hang_prot_recover.int_dis,
                 u_dut.u_hang_prot_top.u_hang_prot_recover.wsk_all_free };
-        if (scn == 22 && !rst && cur !== trc_prev)
+        if (scn == 22 && rstn && cur !== trc_prev)
             $display("[%0t] TRC rec=%b mode=%b aw(v,r)=%b%b w=%b%b b=%b%b ar=%b%b r=%b%b wrotd=%0d rdotd=%0d st=%h/%h ap=%b wr/owed/bp=%0d/%0d/%0d exit=%b enter=%b idis=%b afr=%b brcv=%0d sb=%b%b",
                      $time, recover_active,
                      u_dut.u_hang_prot_top.u_hang_prot_recover.r.mode_r,
@@ -686,7 +696,7 @@ module tb_hang_prot_a_wrap;
                 u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].wr_cnt_a_f,
                 u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].wr_cnt_r_f,
                 u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].r.rd_cnt_r[3:0] };
-        if (scn == 23 && !rst && cur !== cf_prev)
+        if (scn == 23 && rstn && cur !== cf_prev)
             $display("[%0t] CFDBG r2acf=%b r2rcf=%b wa_cf=%b wr_cf=%b fusrc[5:3]=%b cntf(r/a/wr)=%b%b%b rcntr[3:0]=%h",
                      $time, cur[13], cur[12], cur[11], cur[10], cur[9:7],
                      cur[6], cur[5], cur[4], cur[3:0]);
@@ -707,7 +717,7 @@ module tb_hang_prot_a_wrap;
                 u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].r.wr_dlv,
                 u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].r.wr_cnt_r[15:0],
                 2'b0 };
-        if (scn == 24 && !rst) begin
+        if (scn == 24 && rstn) begin
             p24_cyc++;
             if (cur !== p24_prev || (p24_cyc % 512) == 0)
                 $display("[%0t] P24DBG rec=%b req=%b skint=%b idis=%b ena=%b wrotd=%0d wrdlv=%0d wrcntr=%0d",
@@ -720,7 +730,7 @@ module tb_hang_prot_a_wrap;
 
     // response collectors (scorebook S1: id legality, resp class, counts)
     logic [1:0] rresp_q, bresp_q;
-    always @(posedge aclk) if (rst === 0) begin
+    always @(posedge aclk) if (rstn === 1) begin
         if (m_rvalid && m_rready) begin
             if (!id_used[m_rid]) begin
                 $display("[%0t] ERR: unexpected m_rid %0d (no such issue)",
@@ -821,25 +831,25 @@ module tb_hang_prot_a_wrap;
 `ifndef IVERILOG
     // dummy VALIDs are held until handshake (AXI-legal backpressure)
     property p_r_hold;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         (m_rvalid && !m_rready) |=> m_rvalid;
     endproperty
     a_r_hold: assert property (p_r_hold);
     property p_b_hold;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         (m_bvalid && !m_bready) |=> m_bvalid;
     endproperty
     a_b_hold: assert property (p_b_hold);
     // replay held while the (dead) slave stalls it; cleared ONLY inside the
     // s_in_rst window (force_clear)
     property p_w_hold;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         (s_wvalid && !s_wready) |=> (s_wvalid || s_in_rst);
     endproperty
     a_w_hold: assert property (p_w_hold);
     // in recovery: no new request is offered to the s side
     property p_mode_silent;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         recover_active |-> (!s_arvalid && !s_awvalid);
     endproperty
     a_mode_silent: assert property (p_mode_silent);
@@ -849,13 +859,13 @@ module tb_hang_prot_a_wrap;
     // s_wvalid in between is the doc's R1-class residual (recover.sv header:
     // "safe: the counterparty is in reset, the transaction is system-dead").
     property p_esm_silent;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         s_in_rst |-> ##[1:16] (!s_arvalid && !s_awvalid && !s_wvalid);
     endproperty
     a_esm_silent: assert property (p_esm_silent);
     // exit pulse -> mode drops the next cycle
     property p_done_exit;
-        @(posedge aclk) disable iff (rst)
+        @(posedge aclk) disable iff (!rstn)
         recover_done |=> !recover_active;
     endproperty
     a_done_exit: assert property (p_done_exit);
@@ -900,7 +910,7 @@ module tb_hang_prot_a_wrap;
 
     // dummy R burst length sampling: recover-mode beats BEFORE the closing
     // RLAST (sampled pre-increment so the 1-beat dummy hits bin 0)
-    always @(posedge aclk) if (rst === 0) begin
+    always @(posedge aclk) if (rstn === 1) begin
         if (m_rvalid && m_rready && recover_active) begin
             if (m_rlast) begin cg3.sample(); dum_len = 0; end
             else                                 dum_len++;
@@ -952,7 +962,7 @@ module tb_hang_prot_a_wrap;
     // over mode_r && rd_otd==0 && wr_otd==0 && all_free) the ledgers must
     // read zero and both slots FREE. Pre-NBA sampling at the posedge = the
     // exact values the exit condition used.
-    always @(posedge aclk) if (rst === 0 && recover_done) begin
+    always @(posedge aclk) if (rstn === 1 && recover_done) begin
         if (rd_otd_i != 0 || wr_otd_i != 0) begin
             $display("[%0t] ERR: exit with otd rd=%0d wr=%0d",
                      $time, rd_otd_i, wr_otd_i); errors++;
@@ -1008,27 +1018,27 @@ module tb_hang_prot_a_wrap;
         logic [1:0] rr;
         int k, j;
 
-        rst = 1; mbus_rstn = 0; slv_alive = 1; main_rst = 0; s_in_rst = 0;
+        rstn = 0; mbus_rstn = 0; slv_alive = 1; main_rst = 0; s_in_rst = 0;
         m_rready = 0; m_bready = 0;
         s_rresp = 2'b00; s_bresp = 2'b00; s_bid = 4'h0;
         mbus_ce = 0; mbus_wr = 0; mbus_par = 0; mbus_addr = '0; mbus_wdata = '0;
         repeat (5) @(negedge aclk);
         mbus_rstn = 1;
         repeat (5) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (5) @(negedge aclk);
 
         // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
-        // (rst_sync output mux: scan_mode=1 -> rst_s follows raw rst directly)
+        // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
         scan_mode = 1;
-        rst = 1;
+        rstn = 0;
         #1;                                   // settle, no clock edge needed
-        if (u_dut.u_hang_prot_top.u_hang_prot_core.rst_s !== 1'b1) begin
+        if (u_dut.u_hang_prot_top.u_hang_prot_core.rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
         end
-        rst = 0;
+        rstn = 1;
         #1;
-        if (u_dut.u_hang_prot_top.u_hang_prot_core.rst_s !== 1'b0) begin
+        if (u_dut.u_hang_prot_top.u_hang_prot_core.rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
         end
         scan_mode = 0;
@@ -2564,7 +2574,7 @@ module tb_hang_prot_a_wrap;
         scn_sample();
 
         // ====================================================================
-        // P27: mid-sim reset - rst 0->1->0 plus mbus_rstn 1->0->1 at full
+        // P27: mid-sim reset - rstn 1->0->1 plus mbus_rstn 1->0->1 at full
         //      quiescence. Toggles the reset pin of every sync_dff/sync_2dff
         //      (regfile CDC chain, monitor u_rst_sync) and clears the
         //      rst-only sticky state (sk_fault_q/iflt_q/edgeflt_q are still
@@ -2574,11 +2584,11 @@ module tb_hang_prot_a_wrap;
         // ====================================================================
         scn = 27; $display("[%0t] --- P27 ---", $time);
         @(negedge aclk);
-        rst = 1; mbus_rstn = 0;
+        rstn = 0; mbus_rstn = 0;
         repeat (8) @(negedge aclk);
         mbus_rstn = 1;
         repeat (8) @(negedge aclk);
-        rst = 0;
+        rstn = 1;
         repeat (8) @(negedge aclk);
         mb_wr_wait(8'h14, 32'd32);           // r2a (P1 redo)
         mb_wr_wait(8'h18, 32'd24);           // r2r
@@ -3102,6 +3112,10 @@ module tb_hang_prot_a_wrap;
 
         // ---- summary -------------------------------------------------------
         check_closure();
+        if (rpar_bad != 0) begin
+            $display("ERR: mbus_rpar ^= mbus_rdata violated %0d times", rpar_bad);
+            errors++;
+        end
         if (errors == 0)
             $display("TB_A PASS: all scenario checks clean (scenarios P1..P31)");
         else

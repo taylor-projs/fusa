@@ -56,10 +56,11 @@ module hang_prot_mcu2main_top #(
     input  logic [31:0]          mbus_wdata,
     input  logic                 mbus_par,         // ^({addr, wr, wdata})
     output logic [31:0]          mbus_rdata,       // combinational, zero-wait
+    output logic                 mbus_rpar,        // ^mbus_rdata read-path even parity
 
     // ---- island clock / reset ----------------------------------------------
     input  logic                 ia_bus_aclk,
-    input  logic                 rst,              // async, active-high
+    input  logic                 rstn,             // async, active-low
     input  logic                 scan_mode,        // DFT: bypass core reset sync
     // ---- ESM: main-domain reset hold (LEVEL, aclk domain, DUAL RAIL v3.2) --
     //   ESM must drive the pair complementarily (same reset-held source);
@@ -173,9 +174,10 @@ module hang_prot_mcu2main_top #(
         .mbus_wdata(mbus_wdata),
         .mbus_par  (mbus_par  ),
         .mbus_rdata(mbus_rdata),
+        .mbus_rpar (mbus_rpar ),
 
         .ia_bus_aclk(ia_bus_aclk),
-        .rst        (rst        ),
+        .rstn       (rstn       ),
         .scan_mode  (scan_mode  ),
         .s_in_rst   (s_in_rst   ),
         .s_in_rst_n (s_in_rst_n ),

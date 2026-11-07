@@ -72,9 +72,9 @@
 //   (route to DIFFERENT ESM groups so a broken monitor is never
 //    indistinguishable from a caught bus timeout)
 //
-// RESET: mbus_rstn (mbus_clk) and rst (ia_bus_aclk) must be asserted
+// RESET: mbus_rstn (mbus_clk) and rstn (ia_bus_aclk) must be asserted
 //   together at system level (CDC handshake alignment, see regfile.sv
-//   header). rst is async active-high; the monitor synchronizes its
+//   header). rstn is async active-low; the monitor synchronizes its
 //   release internally.
 //============================================================================
 module hang_prot_top #(
@@ -103,10 +103,11 @@ module hang_prot_top #(
     input  logic [31:0]          mbus_wdata,
     input  logic                 mbus_par,         // ^({addr, wr, wdata})
     output logic [31:0]          mbus_rdata,       // combinational, zero-wait
+    output logic                 mbus_rpar,        // ^mbus_rdata read-path even parity
 
     // ---- monitor clock / reset ---------------------------------------------
     input  logic                 ia_bus_aclk,
-    input  logic                 rst,              // async, active-high
+    input  logic                 rstn,             // async, active-low
     input  logic                 scan_mode,        // DFT: bypass core reset sync
     // ---- s-domain reset hold (ESM; ia_bus_aclk domain, LEVEL) ---------------
     // "the s-side (interconnect/main) domain is held in reset": forces a
@@ -245,9 +246,10 @@ module hang_prot_top #(
         .wdata    (mbus_wdata),
         .par      (mbus_par  ),
         .rdata    (mbus_rdata),
+        .rpar     (mbus_rpar ),
 
         .aclk(ia_bus_aclk),
-        .rst (rst        ),
+        .rstn(rstn       ),
 
         .cfg_wr            (cfg_wr            ),
         .cfg_key           (cfg_key           ),
@@ -343,8 +345,8 @@ module hang_prot_top #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge ia_bus_aclk or posedge rst) begin : seq
-        if (rst) begin
+    always_ff @(posedge ia_bus_aclk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;
@@ -371,7 +373,7 @@ module hang_prot_top #(
         .WSKID_BEATS     (WSKID_BEATS     )
     ) u_hang_prot_recover (
         .clk(ia_bus_aclk),
-        .rst(rst        ),
+        .rstn(rstn       ),
 
         .recover_req(recover_req),
         .rd_otd_mon (rd_otd_mon ),
@@ -478,7 +480,7 @@ module hang_prot_top #(
         .REQ2RESP_RST  (REQ2RESP_RST  )
     ) u_hang_prot_core (
         .clk      (ia_bus_aclk),
-        .rst      (rst        ),
+        .rstn     (rstn       ),
         .scan_mode(scan_mode  ),
 
         .axi_arvalid(m_arvalid),

@@ -94,6 +94,7 @@ module int_prot_regfile #(
    input  logic [31:0]           wdata,
    input  logic                  par,       // 命令负载偶校验 (apb2mbus 同深度同步)
    output logic [31:0]           rdata,
+   output logic                  rpar,      // ^rdata 读回程偶校验 (mbus leaf 契约)
 
    // ---------------- cfg -> int_prot ----------------
    output logic                  en,        // 监测使能 (4bit 码解码, 非法默认开)
@@ -431,6 +432,12 @@ module int_prot_regfile #(
          endcase
       end
    end
+
+   //--------------------------------------------------------------------------
+   // rpar 读回程偶校验 (mbus leaf 契约): 无条件组合 ^rdata — 未选中/坏命令
+   // 读回 0 -> rpar=0, OR 网合并不需要额外使能; apb2mbus ce 拍采样, 读时检查
+   //--------------------------------------------------------------------------
+   assign rpar = ^rdata;
 
    //--------------------------------------------------------------------------
    // 输出: 使能解码 + 注错门控 + ESM 双轨

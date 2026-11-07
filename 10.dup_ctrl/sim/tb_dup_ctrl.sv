@@ -64,6 +64,15 @@ module tb_dup_ctrl;
    logic [31:0] wdata = 32'h0;
    logic        par = 1'b0;
    logic [31:0] rdata;
+   logic        rpar;
+
+   // rpar leaf contract: rpar must track ^rdata at every clk edge
+   integer rpar_bad = 0;
+   always @(posedge clk) begin
+      if (rpar !== ^rdata) begin
+         rpar_bad = rpar_bad + 1;
+      end
+   end
 
    //--------------------------------------------------------------------------
    // DCLS 侧 (err 异步, TB 在 negedge+#3 时刻驱动)
@@ -89,6 +98,7 @@ module tb_dup_ctrl;
       .wdata          (wdata          ),
       .par            (par            ),
       .rdata          (rdata          ),
+      .rpar           (rpar           ),
       .err_i          (err_i          ),
       .fi_o           (fi_o           ),
       .esm_err        (esm_err        ),
@@ -421,6 +431,7 @@ module tb_dup_ctrl;
       //================ 汇总 ================================
       repeat (4) @(negedge clk);
       run_check = 1'b0;
+      chk1("rpar leaf contract (^rdata)", (rpar_bad == 0), 1'b1);
       if ((errors == 0) && (rail_errs == 0)) begin
          $display("TB PASS: all checks passed");
       end else begin

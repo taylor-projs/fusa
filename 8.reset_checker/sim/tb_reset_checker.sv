@@ -77,6 +77,15 @@ module tb_reset_checker;
     logic [31:0] mbus_wdata = 0;
     logic        mbus_par   = 0;
     logic [31:0] mbus_rdata;
+    logic        mbus_rpar;
+
+    // rpar leaf contract: rpar must track ^rdata at every mbus edge
+    integer rpar_bad = 0;
+    always @(posedge mbus_clk) begin
+        if (mbus_rpar !== ^mbus_rdata) begin
+            rpar_bad = rpar_bad + 1;
+        end
+    end
 
     // safety outputs
     logic rst_por_n_err, rst_por_n_err_n, rchk_par_fault, rchk_par_fault_n;
@@ -100,6 +109,7 @@ module tb_reset_checker;
         .wdata           (mbus_wdata      ),
         .par             (mbus_par        ),
         .rdata           (mbus_rdata      ),
+        .rpar            (mbus_rpar       ),
         .reset_p         (reset_p         ),
         .reset_m         (reset_m         ),
         .rst_por_n_err   (rst_por_n_err   ),
@@ -940,6 +950,8 @@ module tb_reset_checker;
         mb_rd(A_CTRL, rd);
         chk(rd[3:0] == 4'b0001, "T106 back to NORMAL");
         repeat (2) @(posedge mbus_clk);
+
+        chk(rpar_bad == 0, "rpar leaf contract (mbus_rpar === ^mbus_rdata)");
 
         if (nerrs == 0) begin
             $display("================================================================");

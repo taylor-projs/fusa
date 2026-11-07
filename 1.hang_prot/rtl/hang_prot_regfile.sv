@@ -173,10 +173,11 @@
 //              periodic SW readback is not single-shot, so this is safe).
 //   All synchronizer chains instantiate the standard sync cell wraps
 //   (fusa 单一源 common_modules/sync_2dff.sv / sync_dff.sv - FuSa-wide CDC rule);
-//   the aclk domain reset is active-high, adapted at the cell rstn port.
+//   the aclk domain reset rstn is active-low, same polarity as the cell
+//   rstn port (直连, 无需本地反相).
 //
 // RESET:
-//   mbus_rstn (mbus_clk domain, async assert) and rst (aclk domain, async
+//   mbus_rstn (mbus_clk domain, async assert) and rstn (aclk domain, async
 //   assert) MUST be asserted together at system level so the CDC toggle
 //   handshake starts aligned. An mbus-only reset while aclk runs would
 //   de-synchronize the handshake - system-level constraint, documented
@@ -213,10 +214,11 @@ module hang_prot_regfile #(
     input  logic [31:0]              wdata,
     input  logic                     par,            // ^({addr, wr, wdata})
     output logic [31:0]              rdata,          // combinational, zero-wait
+    output logic                     rpar,           // ^rdata read-path even parity (mbus leaf contract)
 
     // ---- monitor domain (aclk) ---------------------------------------------
     input  logic                     aclk,
-    input  logic                     rst,            // async, active-high
+    input  logic                     rstn,           // async, active-low
 
     // ---- to monitor (aclk domain) ------------------------------------------
     output logic                     cfg_wr,         // 1-aclk-cycle load pulse
@@ -393,21 +395,19 @@ module hang_prot_regfile #(
     //--------------------------------------------------------------------------
     // aclk domain: request 2-flop sync + registered edge detect (metastable
     // glitch-tolerant), decode, apply, ack toggle - sync cell wraps; the
-    // cells take active-low rstn, the aclk reset is active-high -> local
-    // inversion (async assert / sync release both preserved)
+    // aclk reset rstn is active-low, same polarity as the cell rstn port
+    // (直连; async assert / sync release both preserved)
     //--------------------------------------------------------------------------
-    logic rstn_a;
-    assign rstn_a = ~rst;
     logic req_t_s2, req_t_d;
     sync_2dff #(.WIDTH(1)) u_req_sync (
         .clk (aclk      ),
-        .rstn(rstn_a    ),
+        .rstn(rstn      ),
         .d   (r_mb.req_t),
         .q   (req_t_s2  )
     );
     sync_dff #(.WIDTH(1)) u_req_dly (
         .clk (aclk    ),
-        .rstn(rstn_a  ),
+        .rstn(rstn    ),
         .d   (req_t_s2),
         .q   (req_t_d )
     );
@@ -516,8 +516,8 @@ module hang_prot_regfile #(
     //--------------------------------------------------------------------------
     // aclk 域时序进程: 只做复位装载与 r_a <= rin_a
     //--------------------------------------------------------------------------
-    always_ff @(posedge aclk or posedge rst) begin : seq_a
-        if (rst) begin
+    always_ff @(posedge aclk or negedge rstn) begin : seq_a
+        if (!rstn) begin
             r_a <= REG_A_RST;
         end else begin
             r_a <= rin_a;
@@ -529,7 +529,7 @@ module hang_prot_regfile #(
         .RESET(4'b1111)
     ) u_c_ena (                                   // SCMCNTRL.ENA shadow
         .clk         (aclk                                    ),
-        .rst_n       (rstn_a                                  ),
+        .rst_n       (rstn                                    ),
         .wdata       (r_mb.wdata_q[3:0]                       ),
         .wr          (cfg4_wr                                 ),
         .rdata       (ena_sh                                  ),
@@ -542,7 +542,7 @@ module hang_prot_regfile #(
         .RESET(REQ2ACCEPT_RST)
     ) u_c_thresh0 (                                   // SCMTHRESH0 shadow
         .clk         (aclk                                    ),
-        .rst_n       (rstn_a                                  ),
+        .rst_n       (rstn                                    ),
         .wdata       (r_mb.wdata_q[15:0]                      ),
         .wr          (cfg5_wr                                 ),
         .rdata       (thr_a_sh                                ),
@@ -555,7 +555,7 @@ module hang_prot_regfile #(
         .RESET(REQ2RESP_RST)
     ) u_c_thresh1 (                                   // SCMTHRESH1 shadow
         .clk         (aclk                                    ),
-        .rst_n       (rstn_a                                  ),
+        .rst_n       (rstn                                    ),
         .wdata       (r_mb.wdata_q[15:0]                      ),
         .wr          (cfg6_wr                                 ),
         .rdata       (thr_r_sh                                ),
@@ -662,7 +662,7 @@ module hang_prot_regfile #(
     // its own clock domain - see header. mbus-domain image wrappers
     // below; aclk config wrappers above (u_c_ena/u_c_thresh0/u_c_thresh1).
     // (reg_wrap/sync cells: fusa 单一源 common_modules/, 统一异步低有效
-    //  rst_n - aclk 域高有效复位经 rstn_a = ~rst 适配。)
+    //  rst_n - aclk 域复位 rstn 同为低有效, 直连。)
     //--------------------------------------------------------------------------
 
     logic r0_flt, r1_flt, r2_flt, r3_flt, r4_flt, r5_flt,
@@ -957,5 +957,14 @@ module hang_prot_regfile #(
             endcase
         end
     end
+
+    //--------------------------------------------------------------------------
+    // Read-path even parity (rpar, mbus leaf contract): unconditional
+    // combinational ^rdata - no wr gating. Unselected / bad-parity reads
+    // return rdata=0 -> rpar=0, so the OR-merged rpar net needs no extra
+    // enable; apb2mbus samples it at the ce beat and checks it on reads
+    // (writes have no consumed rdata semantics; see apb2mbus rpar header).
+    //--------------------------------------------------------------------------
+    assign rpar = ^rdata;
 
 endmodule

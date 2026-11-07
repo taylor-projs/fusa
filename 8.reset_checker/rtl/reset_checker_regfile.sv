@@ -81,6 +81,7 @@ module reset_checker_regfile #(
     input  logic [31:0]           wdata,
     input  logic                  par,
     output logic [31:0]           rdata,
+    output logic                  rpar,          // ^rdata read-path even parity (mbus leaf contract)
 
     // ---- config out (same domain; engine runs on mbus_clk) -----------------
     output logic                  cfg_en,       // checker enable
@@ -345,6 +346,10 @@ module reset_checker_regfile #(
         endcase
     end
     assign rdata = (sel && par_ok) ? rdata_mux : 32'h0;
+    // rpar leaf contract: unconditional combinational ^rdata (unselected
+    // reads return 0 -> rpar=0, OR-merged net needs no extra enable;
+    // checked by apb2mbus at the ce beat on reads)
+    assign rpar = ^rdata;
 
     //=========================================================================
     // mbus 域组合进程: 本地 sticky 下一拍值 (默认保持)

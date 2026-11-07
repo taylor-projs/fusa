@@ -100,6 +100,15 @@ module tb_cmm_top;
     logic [31:0] mbus_wdata = 0;
     logic        mbus_par   = 0;
     logic [31:0] mbus_rdata;
+    logic        mbus_rpar;
+
+    // rpar leaf contract: rpar must track ^rdata at every mbus edge
+    integer rpar_bad = 0;
+    always @(posedge mbus_clk) begin
+        if (mbus_rpar !== ^mbus_rdata) begin
+            rpar_bad = rpar_bad + 1;
+        end
+    end
 
     // safety outputs
     logic nerr_n, cmm_err, cmm_err_n, cmm_fu, cmm_fu_n;
@@ -133,6 +142,7 @@ module tb_cmm_top;
         .mbus_wdata     (mbus_wdata     ),
         .mbus_par       (mbus_par       ),
         .mbus_rdata     (mbus_rdata     ),
+        .mbus_rpar      (mbus_rpar      ),
         .nerr_n         (nerr_n         ),
         .cmm_err        (cmm_err        ),
         .cmm_err_n      (cmm_err_n      ),
@@ -1521,6 +1531,7 @@ module tb_cmm_top;
         // report
         // ------------------------------------------------------------------
         #1000;
+        chk(rpar_bad == 0, "rpar leaf contract (mbus_rpar === ^mbus_rdata)");
         $display("==========================================================");
         if (nerrs == 0)
             $display("ALL %0d CHECKS PASSED", nchecks);
