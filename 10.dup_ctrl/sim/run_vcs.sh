@@ -19,6 +19,7 @@ mkdir -p "$OUT"
 # filelist (公共单元走 fusa 根 common_modules/ 单一源)
 cat > "$OUT/filelist.f" <<EOF
 $ROOT/../common_modules/sync_2dff.sv
+$ROOT/../common_modules/sync_dff.sv
 $ROOT/../common_modules/rst_sync.sv
 $ROOT/../common_modules/reg_wrap.sv
 $RTL/dup_ctrl_regfile.sv

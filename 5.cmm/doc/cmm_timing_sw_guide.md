@@ -134,6 +134,51 @@ T_ref slowest legal interval (2× margin) ✓. Non-integer E dithers the count
 by ±1 edge; total measurement error (dither + CDC ±1 + boundary ≤1) ≈ ±0.1%
 ≪ 5% band.
 
+### 4.1 Trip-frequency boundaries — what the LO/HI counts mean in MHz
+
+The register band is in counts; the frequency it gates is counts × the
+count quantum. With **Δf = 1 LSB = f_ref·2^(PSC+1)/N_WIN** (the frequency
+equivalent of one counted edge per window), the programmed band maps to
+three boundary pairs:
+
+```
+nominal trip    : f < LO·Δf   or  f > HI·Δf      (HI·Δf = f_dut·(1+tol) exactly
+                                                    when E·(1+tol) rounds clean;
+                                                    LO·Δf within ½ count of
+                                                    f_dut·(1−tol))
+guaranteed trip : f ≤ (LO−3)·Δf  or  f ≥ (HI+3)·Δf   (worst −3 count error
+                                                       still outside the band)
+possible false  : f ≤ (LO+3)·Δf  or  f ≥ (HI−3)·Δf   (a healthy frequency can
+                                                       read up to 3 counts off)
+```
+
+The ±3Δf uncertainty comes from the three ±1 LSB measurement terms
+(non-integer-E dither, CDC 2FF quantization, window-boundary edge loss);
+inside the ±3Δf skirt the verdict depends on error direction. N_DEB still
+applies on top (three consecutive bad windows — time filtering, it does not
+move the frequency boundary).
+
+| dut | Δf (1 LSB) | nominal low / high | guaranteed low / high | possible-false low / high |
+|-----|-----------|--------------------|-----------------------|---------------------------|
+| 20 MHz (PSC 3) | 11.72 kHz | 18.9961 / 21.0000 MHz | 18.9609 / 21.0352 MHz | 19.0312 / 20.9648 MHz |
+| 200 MHz (PSC 6) | 93.75 kHz | 190.0312 / 210.0000 MHz | 189.7500 / 210.2812 MHz | 190.3125 / 209.7188 MHz |
+| 1 GHz (PSC 8) | 375 kHz | 949.875 / 1050.000 MHz | 948.750 / 1051.125 MHz | 951.000 / 1048.875 MHz |
+| 2 GHz (PSC 9) | 750 kHz | 1899.750 / 2100.000 MHz | 1897.500 / 2102.250 MHz | 1902.000 / 2097.750 MHz |
+
+Read the guaranteed columns as the FAIL_FREQ detection statement (1 GHz
+row): a drift beyond −5.13% / +5.11% is certain to alarm within N_DEB
+windows; a frequency inside −4.90% / +4.89% is certain not to; between
+those skirts (≈ ±3Δf ≈ ±0.11% around each nominal boundary) the verdict
+depends on error direction.
+
+Machine-checkable: **`doc/cmm_win_calc.py <f_dut_MHz>`** prints PSC/E/
+precision/LO/HI (with actual post-rounding percentages)/all three boundary
+pairs/NDEAD/latencies and the keyed register write values (WKEY<<28). Its
+output for the four rows above reproduces this table exactly (regression
+2026-11-07). Reminder: PSC is an elaboration parameter (`DUT_PSC[4i+:4]`) —
+if the computed tap differs from the instantiated one, change the RTL and
+resynthesize; LO/HI writes alone cannot retune the divider.
+
 Detection latencies at these settings:
 
 | Event | Latency | Value here |

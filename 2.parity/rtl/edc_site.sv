@@ -19,10 +19,14 @@
 //   payload 与 EDC 在父级同一个寄存器记录里同沿打拍, 站点不再持有状态,
 //   整条通道的控制 FF 只剩一个 vld.
 //
-// 注错 (仅 CHK 模式有效):
-//   i_inj_pos[i]    (i < DW)   : 翻转数据位 i
-//   i_inj_pos[DW+j] (j < EDCW) : 翻转校验位 j
-//   i_inj_force                : 强制该站点报错
+// 注错:
+//   CHK: i_inj_pos[i] (i<DW) 翻数据位 i, i_inj_pos[DW+j] (DW+j<64) 翻
+//        校验位 j, i_inj_force 强制该站点报错 -> o_err (vld 门控在父级);
+//   GEN: 只翻 EDC 位 (数据位槽位刻意忽略 —— 生成端永不破坏 payload,
+//        错误只造在 EDC 侧, 由链路对端 CHK 检出, 生成端本地不置位):
+//        i_inj_pos[DW+j] 翻 EDC 位 j, i_inj_force 翻转整个 EDC
+//        (force 优先于 pos); DW=64 站校验位槽位 >=64 不可达 (同 CHK),
+//        只支持 force.
 // ============================================================================
 module edc_site #(
    parameter integer DW   = 64,
@@ -56,9 +60,19 @@ module edc_site #(
       .edc  (c_edc    )
    );
 
-   // GEN 时寄存新算的 EDC, CHK 时 o_edc 直传随路 EDC (父级 CHK 装载走
+   // ---------------- GEN 注错 (只翻 EDC 位, 见文件头) ----------------
+   // inj_pos_e: 同 CHK 的 128bit 扩展 (校验位槽位 DW+j 落在扩展域,
+   // DW=64 站自然读到 0 —— pos 不可达, 只剩 force)
+   logic [127:0] inj_pos_e;
+   assign inj_pos_e = {64'b0, i_inj_pos};
+   logic [EDCW-1:0] gen_msk;
+   assign gen_msk = i_inj_en ? inj_pos_e[DW +: EDCW] : '0;
+   logic [EDCW-1:0] gen_edc;
+   assign gen_edc = i_inj_force ? ~c_edc : (c_edc ^ gen_msk);
+
+   // GEN 输出新算 (可含注错) EDC; CHK 直传随路 EDC (父级 CHK 装载走
    // 总线 user 位, 不用此口; 保持对称接线, 两模式同一份实例代码)
-   assign o_edc = (MODE == 0) ? c_edc : i_edc;
+   assign o_edc = (MODE == 0) ? gen_edc : i_edc;
 
    // ---------------- 检查 (仅 CHK 模式) ----------------
    logic [127:0] inj_pos_g;

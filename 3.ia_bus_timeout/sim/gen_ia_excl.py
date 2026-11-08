@@ -10,6 +10,10 @@ FAMILY = [
     (re.compile(r"^cfg_key"), "cfg_key 绑 key 比较器常量"),
     (re.compile(r"^mbus_rdata|^rdata(\[|$)"), "读恒 0 保留位"),
     (re.compile(r"par_l_dup_f"), "双轨副本失步检测臂"),
+    (re.compile(r"^wdata(\[|$)"), "聚合 sticky wrap 高位恒 0 (NUM_CORE<32 拼装)"),
+    (re.compile(r"^r\.data_q|^rin\.data_q"), "聚合 sticky wrap 存储高位恒 0"),
+    (re.compile(r"^sta_\w+_r(\[|$)"), "聚合器 sticky [31:NUM_CORE] 恒 0"),
+    (re.compile(r"^sta_par_rb"), "聚合器 STA_PAR 读出拼接高位恒 0"),
 ]
 
 def family_of(sig):

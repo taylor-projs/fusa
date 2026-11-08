@@ -12,6 +12,9 @@
 //   cf. edc_regfile/cmm_regfile). Bad-parity command: writes blocked, read
 //   returns 0, PERR_CMD latched (STA_PAR[12]). rdata combinational,
 //   0 when not selected / bad parity (distributed OR-bus at integration).
+//   rpar = ^rdata 无条件组合驱动 (mbus leaf 回程偶校验契约: apb2mbus
+//   读命令检出回程单 bit 翻转; 未选中/坏命令时 rdata=0 -> rpar=0, 集成
+//   侧 OR 网合并天然成立).
 //   There is NO wait / error channel on mbus: unaligned, out-of-range and
 //   RO-target writes are dropped silently (SW bug; the old APB pslverr
 //   cases), and a config write arriving while the CDC handshake is busy is
@@ -21,14 +24,14 @@
 //
 // REGISTER MAP (32-bit words, word-aligned mbus accesses only):
 //   OFF   NAME          ACC   RESET       DESCRIPTION
-//   0x00  SCMIAERR0STAT W1C/R 0x00000000  [NUM_IA-1:0] req2accept timeout
-//                                            status (sticky, W1C)
-//   0x04  SCMIAERR1STAT W1C/R 0x00000000  [NUM_IA-1:0] req2resp timeout
-//                                            status (sticky, W1C)
-//   0x08  SCMIASTAT     R     -           [NUM_IA-1:0] IA activity
-//                                            (pending transactions)
-//   0x0C  SCMOTD        R     -           [NUM_IA*OTD_W-1:0] per-IA
-//                                            outstanding depth
+//   0x00  SCMIAERR0STAT W1C/R 0x00000000  [1:0] req2accept timeout status
+//                                            (sticky, W1C; bit0=RD, bit1=WR)
+//   0x04  SCMIAERR1STAT W1C/R 0x00000000  [1:0] req2resp timeout status
+//                                            (sticky, W1C)
+//   0x08  SCMIASTAT     R     -           [1:0] IA activity (pending
+//                                            transactions)
+//   0x0C  SCMOTD        R     -           [2*OTD_W-1:0] per-IA outstanding
+//                                            depth (低半 = RD, 高半 = WR)
 //   0x10  SCMCNTRL      W/R   0x0000000F  [7:4]  KEY - must be 4'b1010
 //                                            [3:0]  ENA - coded enable
 //                                                   0xF on / 0x0 off
@@ -53,11 +56,13 @@
 //                                            [5] WR_DROPPED (W1C, sticky):
 //                                                a write arrived while busy
 //                                                and was dropped
-//   0x20  SCMIAFUSRC    W1C/R 0x00000000  [4+3*NUM_M-1:0] fault sources
+//   0x20  SCMIAFUSRC    W1C/R 0x00000000  [6:0] fault sources
 //                                            (nonzero write clears
 //                                            FU_FAULT + FUSRC; a live
 //                                            source re-sets next cycle)
-//                                            [3+3*NUM_M] OTDSAT: outstanding
+//                                            [0] ENA  [1] THRA [2] THRR
+//                                            [3] CNT  [4] CMP  [5] STAT
+//                                            [6] OTDSAT: outstanding
 //                                            ledger saturated (depth hit
 //                                            OTD_MAX mid-handshake) ->
 //                                            depth under-counts; do a
@@ -107,7 +112,8 @@
 //                                                   no target, ignored)
 //                                            [5]    PAR_SELFTEST (pulse)
 //                                            [11:8] REGSEL
-//   0xFC  ID            R     0x4941_0001  "IA" v1 (殿后, house standard)
+//   0xFC  ID            R     0x4941_0002  "IA" v1.3 单口两流版 (殿后, house
+//                                            standard; v1 = 多主端口向量版)
 //
 // REGISTER PARITY (FuSa): every register lives in ITS OWN clock domain
 //  as an independent reg_wrap instance (see reg_wrap.sv) = storage +
@@ -188,8 +194,6 @@
 //     SCMIAFUSTAT[5] WR_DROPPED (W1C).
 //============================================================================
 module ia_bus_timeo_regfile #(
-    parameter int          NUM_M          = 4,
-    parameter int          NUM_IA         = 2*NUM_M,
     parameter int          OTD_MAX        = 8,
     parameter int          OTD_W          = $clog2(OTD_MAX+1),
     parameter logic [15:0] REQ2ACCEPT_RST = 16'h000F,
@@ -205,6 +209,7 @@ module ia_bus_timeo_regfile #(
     input  logic [31:0]              wdata,
     input  logic                     par,            // ^({addr, wr, wdata})
     output logic [31:0]              rdata,          // combinational, zero-wait
+    output logic                     rpar,           // ^rdata 回程偶校验 (mbus leaf 契约)
 
     // ---- monitor domain (aclk) ---------------------------------------------
     input  logic                     aclk,
@@ -219,15 +224,15 @@ module ia_bus_timeo_regfile #(
     output logic                     to_clear,       // 1-aclk-cycle pulses
     output logic                     selftest_key,
     output logic                     fu_selftest,
-    output logic [NUM_IA-1:0]        r2a_w1c,
-    output logic [NUM_IA-1:0]        r2r_w1c,
+    output logic [1:0]               r2a_w1c,
+    output logic [1:0]               r2r_w1c,
     output logic                     fu_w1c,
 
     // ---- from monitor (aclk domain) ----------------------------------------
-    input  logic [NUM_IA-1:0]        r2a_err_status,
-    input  logic [NUM_IA-1:0]        r2r_err_status,
-    input  logic [NUM_IA-1:0]        ia_active,
-    input  logic [NUM_IA*OTD_W-1:0]  otd,
+    input  logic [1:0]               r2a_err_status,
+    input  logic [1:0]               r2r_err_status,
+    input  logic [1:0]               ia_active,
+    input  logic [2*OTD_W-1:0]       otd,
     input  logic [15:0]              thr_rd_r2a,     // effective readback
     input  logic [15:0]              thr_rd_r2r,
     input  logic [3:0]               ena_rd,
@@ -235,34 +240,36 @@ module ia_bus_timeo_regfile #(
     input  logic                     err_event_n,
     input  logic                     fu_fault,
     input  logic                     fu_fault_n,
-    input  logic [4+3*NUM_M-1:0]     fu_src,
+    input  logic [6:0]               fu_src,
 
     // ---- register parity fault to ESM (mbus_clk domain, dual rail) ----
     // own event, separate from err_event / fu_fault: a corrupted
     // SW-visible register is a distinct failure mode
     output logic                     reg_par_fault,
-    output logic                     reg_par_fault_n
+    output logic                     reg_par_fault_n,
+
+    // ---- ESM 双轨 (mbus_clk 域, rail_s2 寄存器面镜像; 供 core 顶层/聚合) ----
+    output logic                     esm_err,        // err_event 真轨
+    output logic                     esm_err_n,      // err_event 反轨
+    output logic                     esm_fault,      // fu_fault  真轨
+    output logic                     esm_fault_n     // fu_fault  反轨
 );
 
+    // single AXI port = exactly two IA streams: RD bit0 / WR bit1
+    localparam int NUM_IA   = 2;
     localparam int OTD_BW   = NUM_IA*OTD_W;
-    localparam int FU_SRC_W = 4 + 3*NUM_M;
+    localparam int FU_SRC_W = 7;      // {OTDSAT, STAT, CMP, CNT, THRR, THRA, ENA}
 
     // ID register value (house standard: 0xFC, "IA" + version)
-    localparam logic [31:0] ID_VAL = 32'h4941_0001;
+    localparam logic [31:0] ID_VAL = 32'h4941_0002;
 
     // elaboration checks: everything must fit into 32-bit RDATA
     generate
         if (IDX > 255) begin : chk_idx
             $error("IDX must fit into addr[15:8]");
         end
-        if (NUM_IA > 32) begin : chk_ia
-            $error("NUM_IA must be <= 32 (SCMIAERR/SCMIASTAT width)");
-        end
         if (OTD_BW > 32) begin : chk_otd
             $error("NUM_IA*OTD_W must be <= 32 (SCMOTD width)");
-        end
-        if (FU_SRC_W > 32) begin : chk_fusrc
-            $error("4+3*NUM_M must be <= 32 (SCMIAFUSRC width)");
         end
     endgenerate
 
@@ -704,7 +711,10 @@ module ia_bus_timeo_regfile #(
         .d   (ena_rd   ),
         .q   (ena_s1   )
     );
-    sync_dff #(.WIDTH(4))        u_rail_sync   (
+    // rail 对 (EV/EV_n, FU/FU_n) 复位即取空闲互补值 1010
+    //   ({[3]EV_n=1,[2]EV=0,[1]FU_n=1,[0]FU=0} = 无故障): 聚合器/ESM
+    //   侧逐拍查互补, 全 0 复位会在复位窗口被误判违例
+    sync_dff #(.WIDTH(4), .RST_VAL(4'b1010)) u_rail_sync (
         .clk (mbus_clk                                      ),
         .rstn(mbus_rstn                                     ),
         .d   ({err_event_n, err_event, fu_fault_n, fu_fault}),
@@ -824,7 +834,8 @@ module ia_bus_timeo_regfile #(
         .flt_w1c     (par_wrc && wdata[8]             )
     );
     reg_wrap #(
-        .W(4)
+        .W    (4       ),
+        .RESET(4'b1010)                              // 空闲互补: 见 u_rail_sync
     ) u_r_fustat (                                   // 0x1C SCMIAFUSTAT rails
         .clk         (mbus_clk                        ),
         .rst_n       (mbus_rstn                       ),
@@ -920,5 +931,22 @@ module ia_bus_timeo_regfile #(
             endcase
         end
     end
+
+    //--------------------------------------------------------------------------
+    // rpar 读回程偶校验 (mbus leaf 契约): 无条件组合 ^rdata.
+    // (未选中 / 坏命令时 rdata = 0 -> rpar = 0, 集成侧 OR 网合并天然成立;
+    //  与 rdata 同为组合直采类, SDC datapath_only 集合同类 +1 bit)
+    //--------------------------------------------------------------------------
+    assign rpar = ^rdata;
+
+    //--------------------------------------------------------------------------
+    // ESM 双轨 (mbus_clk 域): rail_s2 = {EV_n, EV, FU_n, FU} 的寄存器面
+    // 镜像 (u_r_fustat rdata, 奇偶保护存储) —— core 顶层透传 / 聚合器
+    // 采样同一寄存器面, 不再另起同步链
+    //--------------------------------------------------------------------------
+    assign esm_err     = rail_s2[2];
+    assign esm_err_n   = rail_s2[3];
+    assign esm_fault   = rail_s2[0];
+    assign esm_fault_n = rail_s2[1];
 
 endmodule

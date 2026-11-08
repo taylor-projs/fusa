@@ -31,8 +31,8 @@ module int_prot_top #(
    parameter integer FUSA_STA_INT_TIMEOUT  = 16,
    parameter bit     POSEDGE_DETECT_ONLY   = 1'b1
 )(
-   input  logic                  clk,
-   input  logic                  rstn,           // 异步低有效
+   input  logic                  mbus_clk,
+   input  logic                  mbus_rstn,           // 异步低有效
 
    // ---------------- mbus (24MHz) ----------------
    input  logic                  ce,
@@ -70,8 +70,8 @@ module int_prot_top #(
       .IDX    (IDX    ),
       .NUM_INT(NUM_INT)
    ) u_int_prot_regfile (
-      .clk            (clk            ),
-      .rstn           (rstn           ),
+      .clk            (mbus_clk       ),
+      .rstn           (mbus_rstn      ),
       .ce             (ce             ),
       .wr             (wr             ),
       .addr           (addr           ),
@@ -101,15 +101,15 @@ module int_prot_top #(
       .FUSA_STA_INT_TIMEOUT(FUSA_STA_INT_TIMEOUT),
       .POSEDGE_DETECT_ONLY (POSEDGE_DETECT_ONLY )
    ) u_int_prot (
-      .clk     (clk     ),
-      .rstn    (rstn    ),
-      .enable  (en      ),
-      .spi     (spi     ),
-      .spi_chk (spi_chk ),
-      .spi_inj (inj_spi ),
-      .chk_inj (inj_chk ),
-      .spi_err (spi_err ),
-      .spi_sync(spi_sync)
+      .clk     (mbus_clk     ),
+      .rstn    (mbus_rstn    ),
+      .enable  (en           ),
+      .spi     (spi          ),
+      .spi_chk (spi_chk      ),
+      .spi_inj (inj_spi      ),
+      .chk_inj (inj_chk      ),
+      .spi_err (spi_err      ), // 1cycle pulse
+      .spi_sync(spi_sync     )
    );
 
 endmodule

@@ -19,16 +19,21 @@ $ROOT/../../common_modules/sync_dff.sv
 $ROOT/../../common_modules/sync_2dff.sv
 $ROOT/../../common_modules/rst_sync.sv
 $ROOT/../../common_modules/reg_wrap.sv
-$ROOT/../rtl/ia_bus_timeo_core.sv
+$ROOT/../rtl/ia_bus_timeo_mon.sv
 $ROOT/../rtl/ia_bus_timeo_regfile.sv
+$ROOT/../rtl/ia_bus_timeo_core.sv
 $ROOT/../rtl/ia_bus_timeo_top.sv
 $ROOT/tb_ia_timeo_gen_wrap.sv
 EOF
 
-# 覆盖率只统计 DUT (tb_ia_timeo_gen_wrap.u_dut), 排除测试台自身
+# 覆盖率只统计 dut0 (全激励叶端) + u_agg 聚合器, 排除测试台自身。
+# dut1 是同一叶端模块的第二实例: 星型译码/OR 合并/per-core sticky 的
+# 功能行为由 P2b/P9/P12/P16 测到, 但其实例域 bin 需整套 P3-P14 镜像
+# 激励才有意义 —— 不重复采集, 模块定义域由 dut0+agg 全覆盖。
 cat > "$OUT/cov.cfg" <<EOF
 -tree tb_ia_timeo_gen_wrap
-+tree tb_ia_timeo_gen_wrap.u_dut
++tree tb_ia_timeo_gen_wrap.dut0
++tree tb_ia_timeo_gen_wrap.u_agg
 EOF
 
 # 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)
