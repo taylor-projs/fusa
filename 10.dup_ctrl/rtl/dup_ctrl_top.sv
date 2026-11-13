@@ -27,8 +27,10 @@
 //   共源 rstn 异步断言, mod 域释放经 regfile 内 rst_sync 对齐 mod_clk
 //   (scan_mode DFT 旁路, 本顶层透传).
 //
-//   ESM 双轨 (mbus 域): esm_err/_n (DCLS 检错 = STA_ERR 寄存器面),
-//   reg_par_fault/_n (寄存器/通路奇偶). 双轨互补, ESM 侧逐拍校验.
+//   ESM 双轨 (mbus 域, 2026-11-13 全仓三轨统一): esm_err/_n (DCLS
+//   检错 = 监控职责错误), esm_fault/_n (监视器自身故障: 在途命令
+//   奇偶/在途写锁存奇偶/忙丢/自测位, 查询面 STA_FAULT 0x20),
+//   reg_par_fault/_n (寄存器面奇偶). 双轨互补, ESM 侧逐拍校验.
 // ============================================================================
 module dup_ctrl_top #(
    parameter integer IDX            = 0,     // mbus 实例号 (addr[15:8])
@@ -56,6 +58,8 @@ module dup_ctrl_top #(
    // ---------------- ESM (双轨) ----------------
    output logic        esm_err,
    output logic        esm_err_n,
+   output logic        esm_fault,
+   output logic        esm_fault_n,
    output logic        reg_par_fault,
    output logic        reg_par_fault_n
 );
@@ -79,6 +83,8 @@ module dup_ctrl_top #(
       .fi_o           (fi_o           ),
       .esm_err        (esm_err        ),
       .esm_err_n      (esm_err_n      ),
+      .esm_fault      (esm_fault      ),
+      .esm_fault_n    (esm_fault_n    ),
       .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );

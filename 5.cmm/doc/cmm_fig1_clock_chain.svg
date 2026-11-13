@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <pattern id="dutp" width="7" height="14" patternUnits="userSpaceOnUse">
+      <rect width="7" height="14" fill="#F1F5F9"/>
+      <line x1="0" y1="0" x2="0" y2="14" stroke="#64748B" stroke-width="1"/>
+    </pattern>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 11px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .wv    { fill: none; stroke: #0F172A; stroke-width: 1.5; }
+      .grid  { stroke: #CBD5E1; stroke-width: 1; stroke-dasharray: 3 4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="440" fill="#FFFFFF"/>
+  <text x="640" y="28" class="title" text-anchor="middle">时钟链 (§3.1) — ref = 24 MHz, dut = 1 GHz, PSC = 8 (÷512)</text>
+
+  <!-- 时间刻度: x = 190 + 0.8*t(ns), 全窗 1024 ns -->
+  <text x="190" y="50" class="sm" text-anchor="middle">0</text>
+  <text x="395" y="50" class="sm" text-anchor="middle">256</text>
+  <text x="600" y="50" class="sm" text-anchor="middle">512</text>
+  <text x="804" y="50" class="sm" text-anchor="middle">768</text>
+  <text x="1009" y="50" class="sm" text-anchor="middle">1024 ns</text>
+  <line x1="190" y1="56" x2="190" y2="372" class="grid"/>
+  <line x1="395" y1="56" x2="395" y2="372" class="grid"/>
+  <line x1="600" y1="56" x2="600" y2="372" class="grid"/>
+  <line x1="804" y1="56" x2="804" y2="372" class="grid"/>
+  <line x1="1009" y1="56" x2="1009" y2="372" class="grid"/>
+
+  <!-- ref_clk 24MHz -->
+  <text x="170" y="94" class="txt" text-anchor="end">ref_clk 24MHz</text>
+  <path class="wv" d="M190,97 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v-14 h16.67 v14 h16.67 v14"/>
+  <text x="1026" y="94" class="sm">T_ref = 41.67 ns</text>
+
+  <!-- clk_dut 1GHz: 过密, 用密纹带表示 -->
+  <text x="170" y="144" class="txt" text-anchor="end">clk_dut 1GHz</text>
+  <rect x="190" y="133" width="819" height="14" fill="url(#dutp)" stroke="#94A3B8"/>
+  <text x="600" y="143" class="sm" text-anchor="middle">1024 cycles in this span</text>
+  <text x="1026" y="144" class="sm">T_dut = 1 ns</text>
+
+  <!-- psc_cnt[8]: 纯文字行 -->
+  <text x="170" y="189" class="txt" text-anchor="end">psc_cnt[8]</text>
+  <line x1="190" y1="189" x2="1009" y2="189" stroke="#CBD5E1" stroke-dasharray="4 4"/>
+  <text x="600" y="185" class="txt" text-anchor="middle">toggles every 512 dut cycles</text>
+
+  <!-- dut_sq -->
+  <text x="170" y="248" class="txt" text-anchor="end">dut_sq</text>
+  <polyline class="wv" points="190,237 395,237 395,251 600,251 600,237 804,237 804,251 1009,251"/>
+  <text x="1026" y="238" class="sm">f_sq = 1.953 MHz</text>
+  <text x="1026" y="252" class="sm">(half-period 256 ns)</text>
+
+  <!-- sq_s (2FF): 标称 +2 T_ref, 跳变带 ±1 T_ref 抖动 -->
+  <text x="170" y="308" class="txt" text-anchor="end">sq_s (2FF)</text>
+  <rect x="223" y="290" width="67" height="28" fill="#FEF08A" opacity="0.35"/>
+  <rect x="428" y="290" width="67" height="28" fill="#FEF08A" opacity="0.35"/>
+  <rect x="633" y="290" width="67" height="28" fill="#FEF08A" opacity="0.35"/>
+  <rect x="838" y="290" width="67" height="28" fill="#FEF08A" opacity="0.35"/>
+  <text x="256" y="284" class="sm" text-anchor="middle">±1 T_ref</text>
+  <polyline class="wv" points="190,311 257,311 257,297 461,297 461,311 666,311 666,297 871,297 871,311 1009,311"/>
+  <text x="1026" y="300" class="sm">2 T_ref delay, ±1 T_ref jitter</text>
+  <text x="1026" y="314" class="sm">&#8592; the CDC quantization term</text>
+
+  <!-- edge_det: sq_s 上升沿后 1 拍脉冲 -->
+  <text x="170" y="363" class="txt" text-anchor="end">edge_det</text>
+  <polyline class="wv" points="190,366 257,366 257,352 290,352 290,366 666,366 666,352 700,352 700,366 1009,366"/>
+  <text x="1026" y="363" class="sm">one pulse per 12.288 T_ref</text>
+
+  <!-- 因果标注: dut_sq 上升 -> sq_s 上升 (+2 T_ref 标称) -->
+  <path d="M608,252 Q632,276 658,296" fill="none" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#aS)"/>
+  <text x="706" y="272" class="sm">+2 T_ref (nominal)</text>
+
+  <!-- 底部 512 ns 括号 (相邻 edge_det 脉冲间距) -->
+  <line x1="257" y1="400" x2="666" y2="400" stroke="#475569" stroke-width="1.2" marker-start="url(#aS)" marker-end="url(#aS)"/>
+  <text x="461" y="392" class="sm" text-anchor="middle">512 ns</text>
+</svg>

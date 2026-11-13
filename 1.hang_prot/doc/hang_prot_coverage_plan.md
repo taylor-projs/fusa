@@ -37,7 +37,7 @@
 | 缺口 | 位置 | 补充激励（建议追加为 TB 的 P11，或waiver） |
 |---|---|---|
 | 寄存器奇偶错路径 | reg_wrap/regfile `reg_par_fault` | 注错：force `u_dut.u_hang_prot_regfile.<par_reg>` 的存储位翻转 1 拍，读回触发 parity 报警；tb_hang_prot_gen_wrap 若已有则直接merge |
-| FU 自测路径 | regfile `selftest_key/fu_selftest` | mbus 写 SCMCNTRL selftest 键控字，确认 fu_fault 置位与 W1C 清除 |
+| FU 自测路径 | regfile `selftest_key/fu_selftest` | mbus 写 SCMCNTRL selftest 键控字，确认 esm_fault 置位与 W1C 清除 |
 | CDC toggle 握手反方向 | regfile 同步器 | 正常 mbus 读写已覆盖主向；反向（aclk 侧状态→mbus 读）由 SCMOTD/状态读回覆盖 |
 | m_wready 溢出保护分支 | wskid `fill_cnt == WSKID_BEATS` | TB 中 WSKID_BEATS=8 而最长 burst len=7：把某次写 len 设为 >WSKID-1 且不回 WLAST 的保护分支仅在参数故意调小（如 WSKID_BEATS=2, len=3）的第三套编译里可达——建议waiver（协议非法配置）或加参数变体编译 |
 | dummy R 的 `rdum_last` 长 burst 溢出 | bdry_in rbeat_cnt | TB-B P3 用 len=3；P6 用 len=7 已采到 b8 bin |

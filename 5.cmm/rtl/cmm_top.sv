@@ -28,6 +28,22 @@
 // fail-visible choice here (a dead ref is caught by REF_STALE in the
 // mbus domain; switch-away is always possible).
 //
+// FIRST-EDGE ARMING + NEVER_ARMED (boot-race immunity): each channel
+// arms on its first synchronized DUT edge after reset / EN-off / TST_CLR
+// (disarm) and stays armed through clock death; while unarmed neither
+// DEAD nor FAIL_FREQ can fire (see cmm_core). The complementary hole -
+// an ENABLED channel whose clock never arrives - is closed by the
+// NEVER_ARMED watchdog here (scalar fu fault, FUSTAT[10]): enabled &&
+// !armed sampled once per window, N_DEB-window debounce, fires about
+// (N_DEB+1) windows after the FSM reaches RUN. Per-channel arming state
+// is readable at ARMED (0x3C).
+//
+// GATED DUT CLOCKS (EN_RST, SW enable protocol - TI DCC style): a DUT
+// clock that SoC integration gates off at reset must instantiate with
+// its EN_RST nibble = 4'h0 (born disarmed -> zero boot race); SW writes
+// the channel EN=1111 only AFTER opening the gate, and EN=0000 BEFORE
+// closing it. EN nibbles are F/0000-only constants (coded enables).
+//
 // RESET: rst_n is the async POR; rst_ref_n is generated with async assert /
 // sync release into clk_ref. mbus_rstn is the mbus-domain reset. Both must
 // assert together at system level (regfile CDC handshake alignment).
@@ -39,10 +55,14 @@
 // SAFETY OUTPUTS:
 //   nerr_n              active-low level to PMIC (ref domain, 2FF filtered,
 //                       held while any alarm/integrity fault is latched)
-//   cmm_err / _n        dual-rail: any channel alarm (FAIL_FREQ/DEAD)
-//   cmm_fu  / _n        dual-rail: monitor integrity (counter dup, compare
+//   esm_err / _n        dual-rail: any channel alarm (FAIL_FREQ/DEAD)
+//                       (监控职责错误; 2026-11-13 全仓三轨统一,
+//                       原 cmm_err 改名)
+//   esm_fault / _n      dual-rail: monitor integrity (counter dup, compare
 //                       disagree, window dup, prescaler dup, EN codeword,
-//                       FSM, config-shadow parity, key violation)
+//                       FSM, config-shadow parity, key violation,
+//                       NEVER_ARMED - enabled channel whose clock never
+//                       arrived, 在途命令奇偶 PERR11/PERR12; 原 cmm_fu)
 //   reg_par_fault / _n  dual-rail: register parity (mbus domain, regfile)
 //   cfg_hang / _n       dual-rail: config-path liveness (ack timeout /
 //                       ref-stale / dropped write)
@@ -56,6 +76,12 @@ module cmm_top #(
     parameter logic [1:0]  N_DEB       = 2'd3,      // FAIL_FREQ debounce [win]
     parameter logic [3:0]  WKEY        = 4'h5,      // config write key [31:28]
     parameter logic [4*N_DUT-1:0] DUT_PSC = {N_DUT{4'd3}}, // per-ch presc tap
+    parameter logic [63:0] EN_RST      = {16{4'hF}},  // per-ch EN nibble reset:
+                                                      //   nibble i = ch i; 4'hF =
+                                                      //   monitored-on (default) /
+                                                      //   4'h0 = gated clock born
+                                                      //   disarmed; nibbles >=
+                                                      //   N_DUT ignored (read 0)
     parameter int          HANG_TO     = 1024,        // cfg handshake timeout [mbus cyc]
     parameter int          WIN_ALIVE_MAX = 131072,      // window-alive timeout [mbus cyc]
     parameter int          IDX         = 0            // mbus instance id
@@ -78,10 +104,10 @@ module cmm_top #(
     output logic              mbus_rpar,      // ^mbus_rdata read-path even parity
     // safety outputs
     output logic              nerr_n,         // active-low level -> PMIC
-    output logic              cmm_err,        // dual rail -> ESM
-    output logic              cmm_err_n,
-    output logic              cmm_fu,
-    output logic              cmm_fu_n,
+    output logic              esm_err,        // dual rail -> ESM (was cmm_err,
+    output logic              esm_err_n,      //  2026-11-13 全仓三轨统一改名)
+    output logic              esm_fault,
+    output logic              esm_fault_n,
     output logic              reg_par_fault,  // dual rail -> ESM (mbus domain)
     output logic              reg_par_fault_n,
     output logic              cfg_hang,       // dual rail -> ESM (mbus domain)
@@ -101,9 +127,10 @@ module cmm_top #(
     logic [CNT_W*N_DUT-1:0] cfg_winlo, cfg_winhi, cfg_ndead;
     logic [N_DUT-1:0]      cfgpar_flt;
     logic                  reg_prot_lvl;
+    logic                  iflt_lvl;
     logic                  tst_clr;
     logic [N_DUT-1:0]      clr_fail, clr_dead, clr_fucnt, clr_fucmp, clr_fupsc;
-    logic                  clr_fuwin, clr_fuhierr, clr_fufsm;
+    logic                  clr_fuwin, clr_fuhierr, clr_fufsm, clr_neva;
     logic                  inj_cnt, inj_cmp, inj_psc;
 
     // status into the regfile (this domain)
@@ -130,16 +157,18 @@ module cmm_top #(
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
     // 单时钟域 (clk_ref): 窗计数器 / FSM / sticky 状态锁存 / nERR 滤波
     //=========================================================================
-    localparam logic [2:0] FSM_ARM = 3'b001,
-                           FSM_RUN = 3'b010,
-                           FSM_ERR = 3'b100;
+    typedef enum logic [2:0] {
+       FSM_ARM = 3'b001,
+       FSM_RUN = 3'b010,
+       FSM_ERR = 3'b100
+    } state_e;   // lifecycle FSM (one-hot; enum, TB 注错走 force 绕类型检查)
 
     typedef struct packed {
         logic [15:0]      win_cnt;     // window counter + inverted dup
         logic [15:0]      win_cnt_n;
         logic             window_fire; // registered window_end (verdict beat)
         logic             win_tog;     // window-alive toggle -> REF_STALE
-        logic [2:0]       fsm_state;   // lifecycle FSM (one-hot)
+        state_e           fsm_state;   // lifecycle FSM (one-hot)
         logic [N_DUT-1:0] fail_q;      // sticky alarms + inverted dups
         logic [N_DUT-1:0] fail_qn;
         logic [N_DUT-1:0] dead_q;
@@ -156,6 +185,9 @@ module cmm_top #(
         logic             hierr_ln;
         logic             fsm_l;
         logic             fsm_ln;
+        logic [1:0]       never_deb;   // NEVER_ARMED window debounce
+        logic             never_l;     // NEVER_ARMED sticky + inverted dup
+        logic             never_ln;
         logic [1:0]       alm_ff;      // nERR 2FF glitch filter
     } ref_reg_t;
 
@@ -181,6 +213,9 @@ module cmm_top #(
         hierr_ln    : 1'b1,
         fsm_l       : 1'b0,
         fsm_ln      : 1'b1,
+        never_deb   : N_DEB,
+        never_l     : 1'b0,
+        never_ln    : 1'b1,
         alm_ff      : 2'b00
     };
 
@@ -231,6 +266,15 @@ module cmm_top #(
     endgenerate
 
     //=========================================================================
+    // first-edge arming control (see cmm_core): disarm while the channel
+    // is disabled (coded-enable decode says off) or a TST_CLR lands.
+    // EN-off (SW gate protocol, EN_RST route) keeps the channel fully
+    // quiet: no DEAD, no FAIL_FREQ, no NEVER_ARMED.
+    //=========================================================================
+    logic [N_DUT-1:0] disarm;
+    assign disarm = ~en_v | {N_DUT{tst_clr}};
+
+    //=========================================================================
     // test-injection sync (quasi-static levels) + per-channel select
     //=========================================================================
     // sync cell wraps (6.apb2mbus/rtl); quasi-static mbus-domain levels
@@ -257,6 +301,7 @@ module cmm_top #(
     //=========================================================================
     logic [N_DUT-1:0] fail_lvl, dead_lvl;
     logic [N_DUT-1:0] fu_cnt_lvl, fu_cmp_lvl, fu_psc_lvl;
+    logic [N_DUT-1:0] core_armed;
 
     cmm_core #(
         .N_DUT  (N_DUT  ),
@@ -275,6 +320,7 @@ module cmm_top #(
         .inj_cmp    (inj_s2[1]    ),
         .inj_psc    (inj_s2[0]    ),
         .dbgsel     (dbs_s2       ),
+        .disarm     (disarm       ),
         .window_end (window_end   ),
         .window_fire(r.window_fire),
         .fail_lvl   (fail_lvl     ),
@@ -282,6 +328,7 @@ module cmm_top #(
         .fu_cnt_lvl (fu_cnt_lvl   ),
         .fu_cmp_lvl (fu_cmp_lvl   ),
         .fu_psc_lvl (fu_psc_lvl   ),
+        .armed      (core_armed   ),
         .dbg_shadow (dbg_shadow   ),
         .dbg_noedge (dbg_noedge   ),
         .dbg_edgecnt(dbg_edgecnt  )
@@ -333,9 +380,29 @@ module cmm_top #(
                        & ~(clr_fufsm | tst_clr);
 
     //=========================================================================
+    // NEVER_ARMED watchdog (arming backstop): an ENABLED channel that has
+    // not produced a single edge since enable/reset, sampled once per
+    // window (window_fire) with an N_DEB-window debounce. Closes the hole
+    // the unarmed verdict masking opens: EN=1 + clock never arrives must
+    // alarm even though DEAD/FAIL_FREQ are both inhibited while !armed.
+    // Fires about (N_DEB+1) windows after the FSM reaches RUN (ARM state
+    // reloads; EN-off channels reload through en_v). Scalar fault: which
+    // channel is diagnosed via ARMED (0x3C).
+    //=========================================================================
+    logic never_src;
+    assign never_src = |(en_v & ~core_armed)
+                       & (r.fsm_state == FSM_RUN);
+    logic never_set;
+    assign never_set = (r.never_deb == 2'd0);
+
+    logic never_nxt;
+    assign never_nxt = (r.never_l | never_set | (r.never_ln != ~r.never_l))
+                       & ~(clr_neva | tst_clr);
+
+    //=========================================================================
     // aggregation + safety outputs
     //=========================================================================
-    // reg_prot (mbus domain) -> cmm_fu, sync cell wrap (6.apb2mbus/rtl)
+    // reg_prot (mbus domain) -> esm_fault, sync cell wrap (6.apb2mbus/rtl)
     logic rp_s2;
     sync_2dff #(.WIDTH(1)) u_rp_sync (
         .clk (clk_ref     ),
@@ -344,15 +411,26 @@ module cmm_top #(
         .q   (rp_s2       )
     );
 
+    // 在途命令奇偶事件 (PERR11 lane + PERR12 cmd sticky, mbus 粘滞电平)
+    // -> esm_fault (2026-11-13 三轨统一: 在途事件属监视器自身故障,
+    // 不再并入 reg_par_fault; 粘滞电平 2FF 同步安全)
+    logic iflt_s2;
+    sync_2dff #(.WIDTH(1)) u_iflt_sync (
+        .clk (clk_ref ),
+        .rstn(rst_ref_n),
+        .d   (iflt_lvl ),
+        .q   (iflt_s2  )
+    );
+
     assign alarm_any = (|r.fail_q) || (|r.dead_q);
     assign fu_any    = (|r.fu_cnt_q) || (|r.fu_cmp_q) || (|r.fu_psc_q)
-                       || r.win_l || r.hierr_l || r.fsm_l
-                       || (|cfgpar_flt) || rp_s2;
+                       || r.win_l || r.hierr_l || r.fsm_l || r.never_l
+                       || (|cfgpar_flt) || rp_s2 || iflt_s2;
 
-    assign cmm_err   =  alarm_any;
-    assign cmm_err_n = ~alarm_any;
-    assign cmm_fu    =  fu_any;
-    assign cmm_fu_n  = ~fu_any;
+    assign esm_err     =  alarm_any;
+    assign esm_err_n   = ~alarm_any;
+    assign esm_fault   =  fu_any;
+    assign esm_fault_n = ~fu_any;
     assign cmm_active = active;
 
     // nERR: 2FF glitch filter on the merged alarm, level held until cleared
@@ -424,6 +502,22 @@ module cmm_top #(
         v.hierr_ln  = ~hierr_nxt;
         v.fsm_l     = fsm_nxt;
         v.fsm_ln    = ~fsm_nxt;
+        v.never_l   = never_nxt;
+        v.never_ln  = ~never_nxt;
+
+        // NEVER_ARMED watchdog debounce (window-sampled; tst_clr and any
+        // unarmed/EN-off/not-RUN sample reload the N_DEB count)
+        if (tst_clr) begin
+            v.never_deb = N_DEB;
+        end else if (r.window_fire) begin
+            if (never_src) begin
+                if (r.never_deb != 2'd0) begin
+                    v.never_deb = r.never_deb - 2'd1;
+                end
+            end else begin
+                v.never_deb = N_DEB;
+            end
+        end
 
         // nERR glitch filter (shift)
         v.alm_ff = {r.alm_ff[0], alarm_any || fu_any};
@@ -451,14 +545,15 @@ module cmm_top #(
             assign fu_mon[3*i +: 3] = {r.fu_psc_q[i], r.fu_cmp_q[i], r.fu_cnt_q[i]};
         end
     endgenerate
-    logic [5:0] fu_bits;
-    assign fu_bits = {r.fsm_l, r.hierr_l, |r.fu_psc_q, r.win_l,
+    logic [6:0] fu_bits;
+    assign fu_bits = {r.never_l, r.fsm_l, r.hierr_l, |r.fu_psc_q, r.win_l,
                       |r.fu_cmp_q, |r.fu_cnt_q};
 
     cmm_regfile #(
         .N_DUT        (N_DUT        ),
         .CNT_W        (CNT_W        ),
         .WKEY         (WKEY         ),
+        .EN_RST       (EN_RST       ),
         .WIN_LO_RST   (WIN_LO_RST   ),
         .WIN_HI_RST   (WIN_HI_RST   ),
         .NDEAD_RST    (NDEAD_RST    ),
@@ -486,6 +581,7 @@ module cmm_top #(
         .cfg_refsel     (cfg_refsel     ),
         .dbgsel         (dbgsel         ),
         .reg_prot_lvl   (reg_prot_lvl   ),
+        .iflt_lvl       (iflt_lvl       ),
         .tst_clr        (tst_clr        ),
         .clr_fail       (clr_fail       ),
         .clr_dead       (clr_dead       ),
@@ -495,11 +591,13 @@ module cmm_top #(
         .clr_fuwin      (clr_fuwin      ),
         .clr_fuhierr    (clr_fuhierr    ),
         .clr_fufsm      (clr_fufsm      ),
+        .clr_neva       (clr_neva       ),
         .inj_cnt        (inj_cnt        ),
         .inj_cmp        (inj_cmp        ),
         .inj_psc        (inj_psc        ),
         .sts_fail       (r.fail_q       ),
         .sts_dead       (r.dead_q       ),
+        .armed          (core_armed     ),
         .fu_mon         (fu_mon         ),
         .fu_bits        (fu_bits        ),
         .fsm_state      (r.fsm_state    ),

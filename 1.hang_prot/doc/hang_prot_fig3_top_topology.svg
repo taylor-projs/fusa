@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="440" fill="#FFFFFF"/>
+  <text x="600" y="30" class="title" text-anchor="middle">hang_prot_top 拓扑 — 观察点在 bridge m 侧</text>
+
+  <!-- mbus_clk 域 -->
+  <rect x="120" y="56" width="300" height="212" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="132" y="80" class="dom">mbus_clk 域</text>
+  <rect x="140" y="96" width="260" height="136" rx="8" class="box"/>
+  <text x="270" y="122" class="bt" text-anchor="middle">hang_prot_regfile</text>
+  <text x="270" y="144" class="sub" text-anchor="middle">(SCM 寄存器 + 逐寄存器 parity)</text>
+  <line x1="60" y1="140" x2="140" y2="140" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="100" y="130" class="sm" text-anchor="middle">mbus</text>
+  <line x1="270" y1="232" x2="270" y2="300" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="282" y="270" class="txt">reg_par_fault</text>
+
+  <!-- ia_bus_aclk 域 -->
+  <rect x="520" y="56" width="540" height="212" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="532" y="80" class="dom">ia_bus_aclk 域</text>
+
+  <rect x="560" y="100" width="140" height="70" rx="8" class="box"/>
+  <text x="630" y="128" class="bt" text-anchor="middle">monitor</text>
+  <text x="630" y="148" class="sub" text-anchor="middle">(观测)</text>
+
+  <rect x="810" y="100" width="150" height="70" rx="8" class="box"/>
+  <text x="885" y="132" class="bt" text-anchor="middle">recover bridge</text>
+
+  <line x1="810" y1="135" x2="700" y2="135" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="755" y="123" class="sm" text-anchor="middle">otd</text>
+
+  <path d="M630,170 L630,215 L885,215 L885,172" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="638" y="190" class="sm">esm_err</text>
+  <text x="757" y="205" class="sm" text-anchor="middle">recover_req (边沿脉冲)</text>
+
+  <!-- CDC (在 regfile 内) -->
+  <text x="460" y="78" class="cdc" text-anchor="middle">CDC(在 regfile 内)</text>
+  <line x1="420" y1="110" x2="520" y2="110" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="470" y="100" class="cdc" text-anchor="middle">写: toggle 握手</text>
+  <line x1="520" y1="140" x2="420" y2="140" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="470" y="154" class="cdc" text-anchor="middle">读: 2FF 同步</text>
+
+  <!-- 数据通路行 -->
+  <rect x="40" y="320" width="100" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="90" y="348" class="bt" text-anchor="middle">master</text>
+  <line x1="140" y1="342" x2="560" y2="342" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="350" y="332" class="sm" text-anchor="middle">m_axi_*</text>
+
+  <rect x="560" y="320" width="160" height="44" rx="6" fill="#FFFFFF" stroke="#334155" stroke-width="1.5"/>
+  <text x="640" y="348" class="bt" text-anchor="middle">bridge m 侧</text>
+  <rect x="805" y="320" width="160" height="44" rx="6" fill="#FFFFFF" stroke="#334155" stroke-width="1.5"/>
+  <text x="885" y="348" class="bt" text-anchor="middle">bridge s 侧</text>
+  <line x1="720" y1="342" x2="805" y2="342" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <line x1="965" y1="342" x2="1000" y2="342" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="982" y="332" class="sm" text-anchor="middle">s_axi_*</text>
+  <rect x="1000" y="320" width="170" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="1085" y="348" class="bt" text-anchor="middle">interconnect/slave</text>
+
+  <line x1="640" y1="268" x2="640" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="885" y1="268" x2="885" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="640" y="384" class="sub" text-anchor="middle">(监控观察点在这里!)</text>
+</svg>

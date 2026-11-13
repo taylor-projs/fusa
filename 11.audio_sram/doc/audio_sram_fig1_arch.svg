@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 780" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="780" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">audio_sram 顶层结构 — 双时钟域 · 规则 23 (regfile 唯一双域模块)</text>
+
+  <!-- 域背景 -->
+  <rect x="16" y="48" width="336" height="620" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="72" class="dom">mbus 域 — 寄存器面 (SW)</text>
+  <rect x="392" y="48" width="672" height="620" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="404" y="72" class="dom">sram_clk 域 — 音频主设备 / 引擎 / 宏</text>
+  <line x1="382" y1="48" x2="382" y2="668" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="382" y="120" class="cdc" text-anchor="middle">CDC 边界</text>
+
+  <!-- mbus 从口 -->
+  <rect x="44" y="92" width="260" height="56" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="174" y="113" class="bt" text-anchor="middle">mbus 总线从口</text>
+  <text x="174" y="132" class="sub" text-anchor="middle" font-size="9.5">ce · wr · addr · wdata · par → rdata · rpar</text>
+  <line x1="174" y1="148" x2="174" y2="176" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 音频主设备 -->
+  <rect x="736" y="92" width="300" height="56" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="886" y="113" class="bt" text-anchor="middle">音频主设备 (DMA / CPU)</text>
+  <text x="886" y="132" class="sub" text-anchor="middle" font-size="9.5">s_req · s_wen · s_addr · s_wdata (零等待)</text>
+
+  <!-- regfile 跨域大框 -->
+  <rect x="44" y="178" width="620" height="240" rx="8" class="box"/>
+  <text x="354" y="202" class="bt" text-anchor="middle">audio_sram_regfile (唯一双域模块)</text>
+  <text x="354" y="218" class="sub" text-anchor="middle">全部 CDC 收编于此 (规则 23)</text>
+  <line x1="56" y1="226" x2="652" y2="226" stroke="#CBD5E1"/>
+  <line x1="382" y1="230" x2="382" y2="410" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="56" y="246" class="txt">· mbus 域: image 面 + 读出面</text>
+  <text x="56" y="266" class="txt">· 命令/在途奇偶 PERR5 · PERR6</text>
+  <text x="56" y="286" class="txt">· wr_fire 锁存 {wsel,wdata,wpar}</text>
+  <text x="56" y="306" class="txt">  + req_t 翻转 (命令跨域)</text>
+  <text x="56" y="326" class="txt">· 忙丢 WR_DROPPED · STA_CDC poll</text>
+  <text x="56" y="346" class="txt">· rst_sync → sram_rstn (scan 旁路)</text>
+  <text x="56" y="366" class="txt">· ESM 三对双轨聚合 · rpar 回程</text>
+  <text x="424" y="246" class="txt">· sram 域: req_edge 译码</text>
+  <text x="424" y="266" class="txt">· 影子 / 粘滞 / 快照 / 计数器</text>
+  <text x="424" y="286" class="txt">· ack_t 翻回应答</text>
+  <text x="424" y="306" class="txt">· perr + lat_addr 源捕获</text>
+  <text x="424" y="326" class="txt">· CNT_ERR 计数器 Q/Q_n 自检</text>
+  <line x1="300" y1="290" x2="396" y2="290" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="348" y="282" class="cdc" text-anchor="middle">req_t</text>
+  <line x1="396" y1="320" x2="300" y2="320" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="348" y="340" class="cdc" text-anchor="middle">ack_t</text>
+  <text x="354" y="402" class="sm" text-anchor="middle">mbus_rstn 两域共源异步断言 · sram 域释放经 rst_sync</text>
+
+  <!-- ESM 输出 -->
+  <rect x="44" y="470" width="300" height="120" rx="8" fill="#FEF2F2" stroke="#F87171"/>
+  <text x="194" y="494" class="bt" text-anchor="middle" font-size="12.5">ESM 三对双轨输出 (mbus 域)</text>
+  <text x="194" y="516" class="txt" text-anchor="middle">esm_err / _n = DET|ORG (|STA_ERR)</text>
+  <text x="194" y="536" class="txt" text-anchor="middle">esm_fault / _n = 自身故障 (0x0C 查询)</text>
+  <text x="194" y="556" class="txt" text-anchor="middle">reg_par_fault / _n = 寄存器面 PERR</text>
+  <text x="194" y="576" class="sm" text-anchor="middle">rpar = ^rdata 读回程 (叶端契约)</text>
+  <line x1="194" y1="418" x2="194" y2="468" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- core -->
+  <rect x="460" y="448" width="580" height="100" rx="8" class="box"/>
+  <text x="750" y="472" class="bt" text-anchor="middle">audio_sram_core — 写拼位 / 读比较 (只检不纠)</text>
+  <text x="476" y="494" class="txt">写: p = ^{addr, data} 拼位 33b + 注错 (真实通路落宏)</text>
+  <text x="476" y="514" class="txt">读: 意图地址重拼比较 → perr 脉冲 + lat_addr 快照; 数据原样交付 (不纠正)</text>
+  <text x="476" y="534" class="txt">存储向量 {p, data[31:0]} 33bit · 单口零等待直通</text>
+
+  <!-- macro -->
+  <rect x="460" y="596" width="580" height="56" rx="8" class="box"/>
+  <text x="750" y="620" class="bt" text-anchor="middle">audio_sram_macro (33bit)</text>
+  <text x="750" y="638" class="sub" text-anchor="middle">ASIC 换编译器宏 (§9) · bit interleave 强制 (§9.1) · SEU 背门 seu_flip</text>
+
+  <!-- 主设备 ↔ core -->
+  <line x1="850" y1="148" x2="850" y2="446" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="858" y="272" class="sm">s_req · s_wen · s_addr</text>
+  <text x="858" y="290" class="sm">s_wdata</text>
+  <line x1="960" y1="446" x2="960" y2="148" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="952" y="330" class="sm" text-anchor="end">s_rdata · s_rvalid</text>
+
+  <!-- regfile → core: 复位 / 配置 / 事件回程 -->
+  <line x1="520" y1="418" x2="520" y2="446" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#aS)"/>
+  <text x="528" y="428" class="sm" fill="#64748B">sram_rstn</text>
+  <line x1="620" y1="418" x2="620" y2="446" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="628" y="440" class="sm">cfg 影子: mon_en / inj_on / pos</text>
+  <line x1="700" y1="446" x2="700" y2="420" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="708" y="428" class="cdc">perr + lat_addr</text>
+
+  <!-- core ↔ macro -->
+  <line x1="620" y1="548" x2="620" y2="594" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="630" y="572" class="sm">33b 写 (拼位+注错)</text>
+  <line x1="900" y1="594" x2="900" y2="548" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="892" y="572" class="sm" text-anchor="end">33b 读 (重算比较)</text>
+
+  <!-- 图例 -->
+  <rect x="16" y="690" width="1048" height="72" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="28" y="710" class="txt">命令跨域 (红 →): wr_fire 拍锁存 {wsel,wdata,wpar} + req_t 翻转; sram 侧 2FF + req_edge 译码 — 飞行窗口静止, 无亚稳</text>
+  <text x="28" y="728" class="txt">状态回程 (红 ←): ack_t 应答 · perr 事件 + lat_addr 快照 + CNT 计数 — sync_dff / sync_2dff 链回 mbus 读出面</text>
+  <text x="28" y="746" class="txt">复位: mbus_rstn 两域共源异步断言; sram 域释放经 regfile 内 rst_sync (scan_mode 旁路) → sram_rstn 喂 core/macro</text>
+</svg>

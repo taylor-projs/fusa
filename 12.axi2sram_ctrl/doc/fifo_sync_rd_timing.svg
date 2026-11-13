@@ -1,0 +1,262 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 832" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+      .ph    { font-size: 13px; font-weight: bold; fill: #1E3A8A; }
+      .sig   { font-size: 10.5px; fill: #334155; }
+      .clab  { font-size: 9.5px; fill: #94A3B8; }
+      .val   { font-size: 9px; fill: #0F172A; }
+      .wlab  { font-size: 9px; font-weight: bold; fill: #2563EB; }
+      .vlab  { font-size: 9.5px; font-weight: bold; fill: #DC2626; }
+      .note  { font-size: 9.5px; fill: #475569; }
+      .hold  { font-size: 8.5px; fill: #92400E; }
+      .vbx   { fill: #DBEAFE; stroke: #2563EB; }
+      .hbx   { fill: #FEF3C7; stroke: #D97706; stroke-dasharray: 3 2; }
+      .gbx   { fill: #D1FAE5; stroke: #059669; }
+      .rbx   { fill: #FEE2E2; stroke: #DC2626; }
+      .zbx   { fill: #F1F5F9; stroke: #94A3B8; }
+      .clk   { fill: none; stroke: #0F172A; stroke-width: 1.4; }
+      .hi    { stroke: #059669; stroke-width: 3; }
+      .lo    { stroke: #64748B; stroke-width: 3; }
+      .grid  { stroke: #E2E8F0; stroke-width: 1; }
+      .pbox  { fill: #F8FAFC; stroke: #CBD5E1; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="832" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">fifo_sync (golden) 读接口时序与有效数据计数 — FWFT 头拍 / ghost 弹出 / 直通 / ff 脉冲 (M=2, DEPTH=4)</text>
+
+  <!-- ================= Panel A: 读接口 ================= -->
+  <rect x="20" y="42" width="1040" height="448" rx="8" class="pbox"/>
+  <text x="36" y="64" class="ph">A. 读接口全行为 — 推入 5 词 (W1..W5) + 逐拍弹出/悬挂/直通再入</text>
+
+  <line x1="140" y1="84" x2="1036" y2="84" class="grid"/>
+  <text x="172" y="80" class="clab" text-anchor="middle">c0</text>
+  <text x="236" y="80" class="clab" text-anchor="middle">c1</text>
+  <text x="300" y="80" class="clab" text-anchor="middle">c2</text>
+  <text x="364" y="80" class="clab" text-anchor="middle">c3</text>
+  <text x="428" y="80" class="clab" text-anchor="middle">c4</text>
+  <text x="492" y="80" class="clab" text-anchor="middle">c5</text>
+  <text x="556" y="80" class="clab" text-anchor="middle">c6</text>
+  <text x="620" y="80" class="clab" text-anchor="middle">c7</text>
+  <text x="684" y="80" class="clab" text-anchor="middle">c8</text>
+  <text x="748" y="80" class="clab" text-anchor="middle">c9</text>
+  <text x="812" y="80" class="clab" text-anchor="middle">c10</text>
+  <text x="876" y="80" class="clab" text-anchor="middle">c11</text>
+  <text x="940" y="80" class="clab" text-anchor="middle">c12</text>
+  <text x="1004" y="80" class="clab" text-anchor="middle">c13</text>
+
+  <!-- 关键拍着色: c2 直通后 ghost / c5 满格 / c9 ghost 弹 / c11 直通再入 -->
+  <rect x="268" y="88" width="64" height="312" fill="#DBEAFE" opacity="0.35"/>
+  <rect x="460" y="88" width="64" height="312" fill="#FEF3C7" opacity="0.55"/>
+  <rect x="716" y="88" width="64" height="312" fill="#FEF08A" opacity="0.45"/>
+  <rect x="844" y="88" width="64" height="312" fill="#DBEAFE" opacity="0.35"/>
+
+  <text x="132" y="104" class="sig" text-anchor="end">clk</text>
+  <path class="clk" d="M140 106 V92 H172 V106 H204 V92 H236 V106 H268 V92 H300 V106 H332 V92 H364 V106 H396 V92 H428 V106 H460 V92 H492 V106 H524 V92 H556 V106 H588 V92 H620 V106 H652 V92 H684 V106 H716 V92 H748 V106 H780 V92 H812 V106 H844 V92 H876 V106 H908 V92 H940 V106 H972 V92 H1004 V106 H1036"/>
+
+  <text x="132" y="136" class="sig" text-anchor="end">wr (d)</text>
+  <text x="236" y="122" class="wlab" text-anchor="middle">W1</text>
+  <text x="300" y="122" class="wlab" text-anchor="middle">W2</text>
+  <text x="364" y="122" class="wlab" text-anchor="middle">W3</text>
+  <text x="428" y="122" class="wlab" text-anchor="middle">W4</text>
+  <text x="876" y="122" class="wlab" text-anchor="middle">W5</text>
+  <line x1="140" y1="128" x2="1036" y2="128" class="lo"/>
+  <line x1="206" y1="128" x2="266" y2="128" class="hi"/>
+  <line x1="270" y1="128" x2="330" y2="128" class="hi"/>
+  <line x1="334" y1="128" x2="394" y2="128" class="hi"/>
+  <line x1="398" y1="128" x2="458" y2="128" class="hi"/>
+  <line x1="846" y1="128" x2="906" y2="128" class="hi"/>
+
+  <text x="132" y="164" class="sig" text-anchor="end">wptr [2:0]</text>
+  <rect x="142" y="152" width="60" height="15" rx="3" class="zbx"/><text x="172" y="163" class="val" text-anchor="middle">0</text>
+  <rect x="206" y="152" width="60" height="15" rx="3" class="zbx"/><text x="236" y="163" class="val" text-anchor="middle">0</text>
+  <rect x="270" y="152" width="60" height="15" rx="3" class="vbx"/><text x="300" y="163" class="val" text-anchor="middle">1</text>
+  <rect x="334" y="152" width="60" height="15" rx="3" class="vbx"/><text x="364" y="163" class="val" text-anchor="middle">2</text>
+  <rect x="398" y="152" width="60" height="15" rx="3" class="vbx"/><text x="428" y="163" class="val" text-anchor="middle">3</text>
+  <rect x="462" y="152" width="60" height="15" rx="3" class="vbx"/><text x="492" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="526" y="152" width="60" height="15" rx="3" class="vbx"/><text x="556" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="590" y="152" width="60" height="15" rx="3" class="vbx"/><text x="620" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="654" y="152" width="60" height="15" rx="3" class="vbx"/><text x="684" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="718" y="152" width="60" height="15" rx="3" class="vbx"/><text x="748" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="782" y="152" width="60" height="15" rx="3" class="vbx"/><text x="812" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="846" y="152" width="60" height="15" rx="3" class="vbx"/><text x="876" y="163" class="val" text-anchor="middle">4</text>
+  <rect x="910" y="152" width="60" height="15" rx="3" class="vbx"/><text x="940" y="163" class="val" text-anchor="middle">5</text>
+  <rect x="974" y="152" width="60" height="15" rx="3" class="vbx"/><text x="1004" y="163" class="val" text-anchor="middle">5</text>
+
+  <text x="132" y="192" class="sig" text-anchor="end">rptr [2:0]</text>
+  <rect x="142" y="180" width="60" height="15" rx="3" class="zbx"/><text x="172" y="191" class="val" text-anchor="middle">0</text>
+  <rect x="206" y="180" width="60" height="15" rx="3" class="zbx"/><text x="236" y="191" class="val" text-anchor="middle">0</text>
+  <rect x="270" y="180" width="60" height="15" rx="3" class="vbx"/><text x="300" y="191" class="val" text-anchor="middle">1</text>
+  <rect x="334" y="180" width="60" height="15" rx="3" class="vbx"/><text x="364" y="191" class="val" text-anchor="middle">1</text>
+  <rect x="398" y="180" width="60" height="15" rx="3" class="vbx"/><text x="428" y="191" class="val" text-anchor="middle">1</text>
+  <rect x="462" y="180" width="60" height="15" rx="3" class="vbx"/><text x="492" y="191" class="val" text-anchor="middle">1</text>
+  <rect x="526" y="180" width="60" height="15" rx="3" class="vbx"/><text x="556" y="191" class="val" text-anchor="middle">2</text>
+  <rect x="590" y="180" width="60" height="15" rx="3" class="vbx"/><text x="620" y="191" class="val" text-anchor="middle">3</text>
+  <rect x="654" y="180" width="60" height="15" rx="3" class="vbx"/><text x="684" y="191" class="val" text-anchor="middle">3</text>
+  <rect x="718" y="180" width="60" height="15" rx="3" class="vbx"/><text x="748" y="191" class="val" text-anchor="middle">4</text>
+  <rect x="782" y="180" width="60" height="15" rx="3" class="vbx"/><text x="812" y="191" class="val" text-anchor="middle">4</text>
+  <rect x="846" y="180" width="60" height="15" rx="3" class="vbx"/><text x="876" y="191" class="val" text-anchor="middle">4</text>
+  <rect x="910" y="180" width="60" height="15" rx="3" class="vbx"/><text x="940" y="191" class="val" text-anchor="middle">5</text>
+  <rect x="974" y="180" width="60" height="15" rx="3" class="vbx"/><text x="1004" y="191" class="val" text-anchor="middle">5</text>
+
+  <text x="132" y="220" class="sig" text-anchor="end">occ = wptr−rptr</text>
+  <rect x="142" y="208" width="60" height="15" rx="3" class="zbx"/><text x="172" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="206" y="208" width="60" height="15" rx="3" class="zbx"/><text x="236" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="270" y="208" width="60" height="15" rx="3" class="gbx"/><text x="300" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="334" y="208" width="60" height="15" rx="3" class="gbx"/><text x="364" y="219" class="val" text-anchor="middle">1</text>
+  <rect x="398" y="208" width="60" height="15" rx="3" class="gbx"/><text x="428" y="219" class="val" text-anchor="middle">2</text>
+  <rect x="462" y="208" width="60" height="15" rx="3" class="hbx"/><text x="492" y="219" class="val" text-anchor="middle">3</text>
+  <rect x="526" y="208" width="60" height="15" rx="3" class="gbx"/><text x="556" y="219" class="val" text-anchor="middle">2</text>
+  <rect x="590" y="208" width="60" height="15" rx="3" class="gbx"/><text x="620" y="219" class="val" text-anchor="middle">1</text>
+  <rect x="654" y="208" width="60" height="15" rx="3" class="gbx"/><text x="684" y="219" class="val" text-anchor="middle">1</text>
+  <rect x="718" y="208" width="60" height="15" rx="3" class="gbx"/><text x="748" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="782" y="208" width="60" height="15" rx="3" class="gbx"/><text x="812" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="846" y="208" width="60" height="15" rx="3" class="gbx"/><text x="876" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="910" y="208" width="60" height="15" rx="3" class="gbx"/><text x="940" y="219" class="val" text-anchor="middle">0</text>
+  <rect x="974" y="208" width="60" height="15" rx="3" class="gbx"/><text x="1004" y="219" class="val" text-anchor="middle">0</text>
+
+  <text x="132" y="248" class="sig" text-anchor="end">fe (空标志)</text>
+  <line x1="140" y1="240" x2="1036" y2="240" class="lo"/>
+  <line x1="142" y1="240" x2="330" y2="240" class="hi"/>
+  <line x1="718" y1="240" x2="1034" y2="240" class="hi"/>
+
+  <text x="132" y="276" class="sig" text-anchor="end">vld</text>
+  <line x1="140" y1="268" x2="1036" y2="268" class="lo"/>
+  <line x1="270" y1="268" x2="778" y2="268" class="hi"/>
+  <line x1="908" y1="268" x2="1034" y2="268" class="hi"/>
+
+  <text x="132" y="304" class="sig" text-anchor="end">q (读数据)</text>
+  <rect x="142" y="292" width="124" height="15" rx="3" class="zbx"/><text x="204" y="303" class="val" text-anchor="middle">—</text>
+  <rect x="270" y="292" width="188" height="15" rx="3" class="vbx"/><text x="364" y="303" class="val" text-anchor="middle">W1</text>
+  <rect x="462" y="292" width="60" height="15" rx="3" class="vbx"/><text x="492" y="303" class="val" text-anchor="middle">W1</text>
+  <rect x="526" y="292" width="60" height="15" rx="3" class="vbx"/><text x="556" y="303" class="val" text-anchor="middle">W2</text>
+  <rect x="590" y="292" width="124" height="15" rx="3" class="vbx"/><text x="652" y="303" class="val" text-anchor="middle">W3</text>
+  <rect x="718" y="292" width="188" height="15" rx="3" class="hbx"/><text x="812" y="303" class="hold" text-anchor="middle">W4 → W4 陈旧 (vld=0)</text>
+  <rect x="910" y="292" width="124" height="15" rx="3" class="vbx"/><text x="972" y="303" class="val" text-anchor="middle">W5</text>
+
+  <text x="132" y="332" class="sig" text-anchor="end">rdy</text>
+  <line x1="140" y1="324" x2="1036" y2="324" class="lo"/>
+  <line x1="462" y1="324" x2="586" y2="324" class="hi"/>
+  <line x1="654" y1="324" x2="906" y2="324" class="hi"/>
+  <line x1="974" y1="324" x2="1034" y2="324" class="hi"/>
+
+  <text x="132" y="360" class="sig" text-anchor="end">rd (内部)</text>
+  <line x1="140" y1="352" x2="1036" y2="352" class="lo"/>
+  <line x1="206" y1="352" x2="266" y2="352" class="hi"/>
+  <line x1="462" y1="352" x2="586" y2="352" class="hi"/>
+  <line x1="654" y1="352" x2="714" y2="352" class="hi"/>
+  <line x1="846" y1="352" x2="906" y2="352" class="hi"/>
+
+  <text x="132" y="390" class="sig" text-anchor="end">有效词数 occ+vld</text>
+  <rect x="142" y="378" width="124" height="16" rx="3" class="zbx"/><text x="204" y="390" class="val" text-anchor="middle">0</text>
+  <rect x="270" y="378" width="60" height="16" rx="3" class="gbx"/><text x="300" y="390" class="val" text-anchor="middle">1</text>
+  <rect x="334" y="378" width="60" height="16" rx="3" class="gbx"/><text x="364" y="390" class="val" text-anchor="middle">2</text>
+  <rect x="398" y="378" width="60" height="16" rx="3" class="gbx"/><text x="428" y="390" class="val" text-anchor="middle">3</text>
+  <rect x="462" y="378" width="60" height="16" rx="3" class="gbx"/><text x="492" y="390" class="val" text-anchor="middle" font-weight="bold">4</text>
+  <rect x="526" y="378" width="60" height="16" rx="3" class="gbx"/><text x="556" y="390" class="val" text-anchor="middle">3</text>
+  <rect x="590" y="378" width="60" height="16" rx="3" class="gbx"/><text x="620" y="390" class="val" text-anchor="middle">2</text>
+  <rect x="654" y="378" width="60" height="16" rx="3" class="gbx"/><text x="684" y="390" class="val" text-anchor="middle">2</text>
+  <rect x="718" y="378" width="60" height="16" rx="3" class="gbx"/><text x="748" y="390" class="val" text-anchor="middle">1</text>
+  <rect x="782" y="378" width="124" height="16" rx="3" class="zbx"/><text x="844" y="390" class="val" text-anchor="middle">0</text>
+  <rect x="910" y="378" width="124" height="16" rx="3" class="gbx"/><text x="972" y="390" class="val" text-anchor="middle">1</text>
+
+  <text x="300" y="416" class="vlab" text-anchor="middle">①</text>
+  <text x="492" y="416" class="vlab" text-anchor="middle">②</text>
+  <text x="620" y="416" class="vlab" text-anchor="middle">③</text>
+  <text x="748" y="416" class="vlab" text-anchor="middle">④</text>
+  <text x="876" y="416" class="vlab" text-anchor="middle">⑤</text>
+
+  <text x="150" y="438" class="note">① 推空直通 (c1 推 W1): rd=1 双指针同进, 词直接进 q 不落 mem — occ 仍 0 而有效词数=1 (ghost 词在指针账面外)</text>
+  <text x="150" y="456" class="note">② 普通弹出 (fe=0): rd=1 → rptr+1, q 同沿预取下一词 (FWFT 头拍即有效); ③ rdy=0 悬挂: q=W3 头拍保持不丢</text>
+  <text x="150" y="474" class="note">④ ghost 弹出 (fe=1 &amp; vld=1): 消费者取走 q=W4 但 rd=0 无指针动作, vld 下拍落 — 最后一个词从未进 mem; ⑤ 推入直通 (vld=0): 同①</text>
+
+  <!-- ================= Panel B: ff 脉冲与别名 ================= -->
+  <rect x="20" y="506" width="1040" height="306" rx="8" class="pbox"/>
+  <text x="36" y="528" class="ph">B. 发起早推入 1 拍 → ff 退化为 1 拍脉冲 (同拍停推则为稳电平) — 持续无弹出连推 5+1 词</text>
+
+  <line x1="140" y1="548" x2="780" y2="548" class="grid"/>
+  <text x="180" y="544" class="clab" text-anchor="middle">c0</text>
+  <text x="260" y="544" class="clab" text-anchor="middle">c1</text>
+  <text x="340" y="544" class="clab" text-anchor="middle">c2</text>
+  <text x="420" y="544" class="clab" text-anchor="middle">c3</text>
+  <text x="500" y="544" class="clab" text-anchor="middle">c4</text>
+  <text x="580" y="544" class="clab" text-anchor="middle">c5</text>
+  <text x="660" y="544" class="clab" text-anchor="middle">c6</text>
+  <text x="740" y="544" class="clab" text-anchor="middle">c7</text>
+
+  <rect x="540" y="552" width="80" height="182" fill="#FEF3C7" opacity="0.55"/>
+  <rect x="700" y="552" width="80" height="182" fill="#FEE2E2" opacity="0.6"/>
+
+  <text x="132" y="568" class="sig" text-anchor="end">clk</text>
+  <path class="clk" d="M140 570 V556 H180 V570 H220 V556 H260 V570 H300 V556 H340 V570 H380 V556 H420 V570 H460 V556 H500 V570 H540 V556 H580 V570 H620 V556 H660 V570 H700 V556 H740 V570 H780"/>
+
+  <text x="132" y="600" class="sig" text-anchor="end">wr (d)</text>
+  <text x="260" y="586" class="wlab" text-anchor="middle">W1</text>
+  <text x="340" y="586" class="wlab" text-anchor="middle">W2</text>
+  <text x="420" y="586" class="wlab" text-anchor="middle">W3</text>
+  <text x="500" y="586" class="wlab" text-anchor="middle">W4</text>
+  <text x="580" y="586" class="wlab" text-anchor="middle">W5</text>
+  <text x="740" y="586" class="wlab" text-anchor="middle" fill="#DC2626">W6</text>
+  <line x1="140" y1="592" x2="780" y2="592" class="lo"/>
+  <line x1="222" y1="592" x2="538" y2="592" class="hi"/>
+  <line x1="702" y1="592" x2="778" y2="592" class="hi"/>
+
+  <text x="132" y="630" class="sig" text-anchor="end">wptr [2:0]</text>
+  <rect x="148" y="618" width="64" height="15" rx="3" class="zbx"/><text x="180" y="629" class="val" text-anchor="middle">0</text>
+  <rect x="228" y="618" width="64" height="15" rx="3" class="zbx"/><text x="260" y="629" class="val" text-anchor="middle">0</text>
+  <rect x="308" y="618" width="64" height="15" rx="3" class="vbx"/><text x="340" y="629" class="val" text-anchor="middle">1</text>
+  <rect x="388" y="618" width="64" height="15" rx="3" class="vbx"/><text x="420" y="629" class="val" text-anchor="middle">2</text>
+  <rect x="468" y="618" width="64" height="15" rx="3" class="vbx"/><text x="500" y="629" class="val" text-anchor="middle">3</text>
+  <rect x="548" y="618" width="64" height="15" rx="3" class="vbx"/><text x="580" y="629" class="val" text-anchor="middle">4</text>
+  <rect x="628" y="618" width="64" height="15" rx="3" class="vbx"/><text x="660" y="629" class="val" text-anchor="middle">5</text>
+  <rect x="708" y="618" width="64" height="15" rx="3" class="vbx"/><text x="740" y="629" class="val" text-anchor="middle">5</text>
+
+  <text x="132" y="658" class="sig" text-anchor="end">rptr [2:0]</text>
+  <rect x="148" y="646" width="64" height="15" rx="3" class="zbx"/><text x="180" y="657" class="val" text-anchor="middle">0</text>
+  <rect x="228" y="646" width="64" height="15" rx="3" class="zbx"/><text x="260" y="657" class="val" text-anchor="middle">0</text>
+  <rect x="308" y="646" width="64" height="15" rx="3" class="vbx"/><text x="340" y="657" class="val" text-anchor="middle">1</text>
+  <rect x="388" y="646" width="64" height="15" rx="3" class="vbx"/><text x="420" y="657" class="val" text-anchor="middle">1</text>
+  <rect x="468" y="646" width="64" height="15" rx="3" class="vbx"/><text x="500" y="657" class="val" text-anchor="middle">1</text>
+  <rect x="548" y="646" width="64" height="15" rx="3" class="vbx"/><text x="580" y="657" class="val" text-anchor="middle">1</text>
+  <rect x="628" y="646" width="64" height="15" rx="3" class="vbx"/><text x="660" y="657" class="val" text-anchor="middle">1</text>
+  <rect x="708" y="646" width="64" height="15" rx="3" class="vbx"/><text x="740" y="657" class="val" text-anchor="middle">1</text>
+
+  <text x="132" y="686" class="sig" text-anchor="end">occ</text>
+  <rect x="148" y="674" width="144" height="15" rx="3" class="zbx"/><text x="220" y="685" class="val" text-anchor="middle">0</text>
+  <rect x="308" y="674" width="64" height="15" rx="3" class="gbx"/><text x="340" y="685" class="val" text-anchor="middle">0</text>
+  <rect x="388" y="674" width="64" height="15" rx="3" class="gbx"/><text x="420" y="685" class="val" text-anchor="middle">1</text>
+  <rect x="468" y="674" width="64" height="15" rx="3" class="gbx"/><text x="500" y="685" class="val" text-anchor="middle">2</text>
+  <rect x="548" y="674" width="64" height="15" rx="3" class="hbx"/><text x="580" y="685" class="val" text-anchor="middle">3</text>
+  <rect x="628" y="674" width="64" height="15" rx="3" class="hbx"/><text x="660" y="685" class="val" text-anchor="middle">4</text>
+  <rect x="708" y="674" width="64" height="15" rx="3" class="hbx"/><text x="740" y="685" class="val" text-anchor="middle">4</text>
+
+  <text x="132" y="714" class="sig" text-anchor="end">ff</text>
+  <line x1="140" y1="706" x2="780" y2="706" class="lo"/>
+  <line x1="542" y1="706" x2="618" y2="706" class="hi"/>
+  <text x="660" y="702" class="vlab" text-anchor="middle">↓ 别名掉 0</text>
+
+  <text x="132" y="742" class="sig" text-anchor="end">有效词数</text>
+  <rect x="148" y="730" width="144" height="16" rx="3" class="zbx"/><text x="220" y="742" class="val" text-anchor="middle">0</text>
+  <rect x="308" y="730" width="64" height="16" rx="3" class="gbx"/><text x="340" y="742" class="val" text-anchor="middle">1</text>
+  <rect x="388" y="730" width="64" height="16" rx="3" class="gbx"/><text x="420" y="742" class="val" text-anchor="middle">2</text>
+  <rect x="468" y="730" width="64" height="16" rx="3" class="gbx"/><text x="500" y="742" class="val" text-anchor="middle">3</text>
+  <rect x="548" y="730" width="64" height="16" rx="3" class="gbx"/><text x="580" y="742" class="val" text-anchor="middle">4</text>
+  <rect x="628" y="730" width="64" height="16" rx="3" class="gbx"/><text x="660" y="742" class="val" text-anchor="middle" font-weight="bold">5</text>
+  <rect x="708" y="730" width="64" height="16" rx="3" class="rbx"/><text x="740" y="742" class="val" text-anchor="middle">5†</text>
+
+  <text x="800" y="572" class="note" font-weight="bold">ff@T+1 = [本拍结算占用 == 3]</text>
+  <text x="800" y="590" class="note">(严格相等, 寄存 1 拍; == 4 不置位)</text>
+  <text x="800" y="616" class="note">· c4 推 W4 后占用 3 → ff@c5 = 1</text>
+  <text x="800" y="634" class="note">· c5 推 W5 后占用 4 → ff@c6 = 0</text>
+  <text x="800" y="652" class="vlab">→ 真满时 ff 反而掉 0 (别名)</text>
+  <text x="800" y="678" class="note">· c6: 纯 ff 门重开 (ff=0) → 引擎</text>
+  <text x="800" y="696" class="note">  发起第 6 读, W6 于 c7 落推</text>
+  <text x="800" y="714" class="vlab">· c7: W6 写 mem[1] 覆写未弹 W2</text>
+  <text x="800" y="732" class="vlab">  静默丢失 (T19a 实测 FAIL)</text>
+  <text x="800" y="758" class="note">† 有效词数 5 = ghost(q) + 4×mem,</text>
+  <text x="800" y="776" class="note">  第 6 词起必覆写 (容量别名)</text>
+
+  <text x="150" y="780" class="note">fifo 内部不挡满 (wr 无条件写 mem); 同拍可停的推口 (~ff 门控) occ 冻在 3 → ff 稳为电平</text>
+  <text x="150" y="798" class="note">引擎门控的是"发起"(早推入 1 拍, 在途数据必须落地), 故须 rd_room = !ff &amp;&amp; rcnt_eff&lt;4 — 镜像锁住持续满窗口</text>
+</svg>

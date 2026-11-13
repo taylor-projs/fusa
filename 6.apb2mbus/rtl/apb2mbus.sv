@@ -1,6 +1,6 @@
 // ============================================================================
 // apb2mbus: APB3 slave -> mbus master 桥 (APB clk <-> mbus 24MHz)
-//           MCP 直采 CDC + FuSa hang 看门狗
+//           MCP 直采 CDC + FuSa hang 看门狗 + 事件粘滞面 (fchm 电平双轨)
 //
 // ======================= CDC 结构 (MCP: 静态数据直采 + toggle 同步) =======
 // 数据通路一律直采"静止的电平", 不加同步 FF; 同步 FF 只用于两个单 bit
@@ -56,9 +56,9 @@
 // rdata 无消费语义 (写向在途保护已由命令 par 承担). 检出处理 (fail-safe):
 //   * 该笔 APB 读以 pready + pslverr 完成, prdata 驱 0 (坏数据不外送,
 //     与越界/hang/drain 路径同语义: SW 收 bus error 后重读目标寄存器);
-//   * rpar_evt / rpar_evt_n 双轨单拍脉冲送 ESM 独立通道 (rdy 单拍 -> 事件
-//     单拍, 与 hang_evt 同模式). drain/越界路径不触发 (那两笔本身已
-//     SLVERR, 语义是"完成状态未知", 不与回程奇偶混淆).
+//   * rpar_flt / rpar_flt_n 粘滞电平双轨送 fchm (W1C 清, 见"事件粘滞"
+//     节). drain/越界路径不触发 (那两笔本身已 SLVERR, 语义是"完成状态
+//     未知", 不与回程奇偶混淆).
 // CDC 安全性: rpar_cap 与 rdat_cap 同沿锁存、ce 拍后同样静止, rpar_bad 是
 // 两个静态寄存器的纯组合函数 -> 直采安全性与 rdat_cap 完全相同 (不变量 3
 // 原文适用), 无新同步结构. SDC: rpar 归入 rdata 同一 set_max_delay
@@ -73,7 +73,7 @@
 //     对端死掉时仍然存活的时钟), 故做在本桥内而不是各叶端:
 //   * req 发出 (req_flag 翻转) 后 ack 未在 HANG_TO 个 apb_clk 内返回
 //     -> to_fire: 当拍完成该笔 APB (pready=1, pslverr=1), CPU 收
-//     bus error 而不是挂死; hang_evt 单拍脉冲 (双轨) 送 ESM.
+//     bus error 而不是挂死; 置 hang 粘滞 (hang_flt 电平双轨送 fchm).
 //   * DRAIN 重对齐: timeout 后被延误的 ack 可能迟到 (如 mbus_clk 抖动),
 //     迟到 toggle 若被误认为下一笔的 ack 会造成 rdata 错位 -> 进入
 //     drain: 屏蔽新 req 发起, 新访问立即 pready+pslverr 快速失败,
@@ -91,6 +91,39 @@
 //     toggle 对错: 仅 mbus 域复位 -> req_flag 残留, 复位释放后 ce 重放
 //     (写命令可能重复生效); 仅 apb 域复位 -> spurious ce/rdy 脉冲. 若系统
 //     需分域复位, 须额外加 toggle 重对齐机制 (当前架构假设不支持).
+//
+// ======================= 事件粘滞 + 0xFF 本地寄存器面 (apb_clk) ============
+// hang/rpar 检出后, 除当拍 fail-safe 总线行为外, 置粘滞寄存器: 电平双轨
+// 送 fchm + SW 读出/清除/注错面. 粘滞寄存器与本地面全部在 apb_clk 域:
+// to_fire/rpar_err 本就是 apb 域单拍脉冲, 捕获零 CDC (寄存器在对域的
+// dup_ctrl 才需要规则 23 全套跨域握手, 这里结构上不需要).
+//
+// 寄存器面挂在从越界空间雕出的本地实例 0xFF (NP 因此收紧 <=255):
+// paddr[15:8]==FF -> 本地应答, 不进 req_flag/toggle 链; 零等待 pready,
+// 且不受 drain 屏蔽 (mbus 半死时恰最需要读状态). 偏移 ([7:2]):
+//   0x00 ID       RO  32'h0000_424D ("BM")
+//   0x04 STA_EVT      [0]FAULT=HANG|RPAR [1]FAULT_N (RO)
+//                     [2]HANG W1C [3]RPAR W1C      静息读 0x2
+//   0x08 CFG_INJ      [3:0]key=1010 (错 key 整写忽略, fail-safe 拒写)
+//                     [4]HANG_INJ [5]RPAR_INJ: 写 1 单拍命令, 读回 0
+//   其余本地偏移: pready+pslverr (与越界同 fail-visible 语义)
+//
+// 粘滞寄存器 = 双寄存器互补存 (q 与 q_n 独立 FF, 同源同项、次态互补,
+// 端口直出寄存器; 端口处组合取反做不到): 存储单翻 (SEU) -> 两轨失配,
+// fchm 侧轨校验可检. 次态 set 优先 (同拍事件压 W1C; 合法 APB 操作下
+// set 源=远端事务、W1C=本地面写, 单事务串行不可同拍, 优先写法为防御式):
+//   q_hang   = (to_fire|inj_h) | (q_hang   & ~w1c_h)
+//   q_hang_n =~(to_fire|inj_h) & (q_hang_n |  w1c_h)   (互补恒可证)
+//
+// 注错 OR 在 set 项 (检测源侧), 与真实事件共用 寄存器->端口->W1C 同一条
+// 通路: 注错会真实抬 fchm 端口电平 (运行期注错窗口协调进 safety case);
+// 不进 to_fire/rpar_err 组合项 -> 不假完成传输/不进 drain/不污染当笔
+// prdata/pslverr.
+//
+// 语义认账: 粘滞清除前的多笔事件合并, 无 per-event 边沿 (每笔 hang 本
+// 就伴随总线 SLVERR, SW 有逐笔证据; fchm 需计数自行打边沿). W1C 连端
+// 口一起清, apb2mbus 侧完全 SW 可控 (fchm 内部若再锁存, 清除属 fchm
+// 自己的流程). 本地访问不置 wait_ack -> 不触发看门狗.
 // ============================================================================
 module apb2mbus #(
    // 注: 不设 AW/DW 参数 — mbus 协议定宽 (addr[15:8]=实例号 / [7:0]=偏移,
@@ -121,28 +154,31 @@ module apb2mbus #(
    input  logic [31:0]    rdata,
    input  logic           rpar,       // 读回程偶校验 ^rdata (叶端无条件组合驱动)
 
-   // ---------------- hang / rpar 事件 (apb_clk 域, 送 ESM) ----------------
-   output logic           hang_evt,   // timeout 单拍脉冲
-   output logic           hang_evt_n, // 双轨反相 (传输完整性, ESM 侧校验)
-   output logic           rpar_evt,   // 读回程奇偶错单拍脉冲 (完成拍, 随 pslverr)
-   output logic           rpar_evt_n  // 双轨反相 (传输完整性, ESM 侧校验)
+   // ------------- hang / rpar 故障 (apb_clk 域, 粘滞电平, 送 fchm) --------
+   output logic           hang_flt,   // hang 超时粘滞 (置位优先, W1C 清)
+   output logic           hang_flt_n, // 双轨反相 (独立寄存, fchm 侧校验)
+   output logic           rpar_flt,   // 读回程奇偶错粘滞 (W1C 清)
+   output logic           rpar_flt_n  // 双轨反相 (独立寄存, fchm 侧校验)
 );
 
    // hang 看门狗计数位宽
    localparam integer HCW = (HANG_TO > 1) ? $clog2(HANG_TO+1) : 1;
    localparam [HCW-1:0] HANG_LAST = HANG_TO-1;
-   // NP 无符号化 (要求 NP<=256): 供 inst_bad 比较, 避免与有符号 integer 混比
-   localparam logic [8:0] NP_UB = NP;
+   // NP 无符号化 (要求 NP<=255, 0xFF 留给本地面): 供 inst_bad 比较,
+   // 避免与有符号 integer 混比
+   localparam logic [8:0]  NP_UB  = NP;
+   localparam logic [31:0] LOC_ID = 32'h0000_424D;   // 本地面 ID "BM"
 
    // 参数合法性检查 (elaboration 期一次, 无硬件开销):
-   //   NP>256 -> NP_UB 截断, inst_bad 译码静默错; NP<1 -> 无实例无意义
+   //   NP>255 -> NP_UB 截断/inst_bad 译码静默错, 且 0xFF 本地面与真实例
+   //             相撞; NP<1 -> 无实例无意义
    //   HANG_TO<2 -> HANG_LAST<=0 退化, 看门狗 req 一发出即误触发
    //   (HANG_TO 不设上限: 大值只是计数器宽几级, 无功能错误; 下限之外的
    //    裕量要求 = ">=4x 正常往返", 依赖时钟比, elaboration 拿不到, 属集成评审)
 `ifndef SYNTHESIS
    initial begin
-      assert (NP >= 1 && NP <= 256)
-         else $fatal(1, "apb2mbus: NP=%0d out of range [1,256]", NP);
+      assert (NP >= 1 && NP <= 255)
+         else $fatal(1, "apb2mbus: NP=%0d out of range [1,255] (0xFF = local plane)", NP);
       assert (HANG_TO >= 2)
          else $fatal(1, "apb2mbus: HANG_TO=%0d must be >= 2", HANG_TO);
    end
@@ -156,16 +192,16 @@ module apb2mbus #(
       logic [HCW-1:0] hang_cnt_n;  // 双轨反相 (fail-visible)
       logic           wait_ack;    // req 已发出, ack 未归
       logic           drain;       // timeout 后等迟到 ack 重对齐
-      logic           hang_evt;    // timeout 单拍脉冲 -> ESM
-      logic           hang_evt_n;  // 双轨反相
       logic           ce_reg;      // acc 打拍; rdy 当拍清 0, 同一笔不重复触发
       logic           req_flag;    // 请求 toggle -> mbus 域
       logic [15:0]    paddr_q;     // 请求保持寄存器 (MCP 直采负载)
       logic [31:0]    pwdata_q;
       logic           pwrite_q;
       logic           par_q;       // 命令负载偶校验 (req_fire 同沿锁存)
-      logic           rpar_evt;    // 读回程奇偶错单拍脉冲 -> ESM
-      logic           rpar_evt_n;  // 双轨反相
+      logic           q_hang;      // hang 粘滞 (fchm 电平双轨 + W1C 面)
+      logic           q_hang_n;    // 双轨反相 (独立寄存)
+      logic           q_rpar;      // rpar 粘滞 (fchm 电平双轨 + W1C 面)
+      logic           q_rpar_n;    // 双轨反相 (独立寄存)
    } apb_reg_t;
 
    typedef struct packed {
@@ -180,16 +216,16 @@ module apb2mbus #(
       hang_cnt_n : {HCW{1'b1}},
       wait_ack   : 1'b0,
       drain      : 1'b0,
-      hang_evt   : 1'b0,
-      hang_evt_n : 1'b1,
       ce_reg     : 1'b0,
       req_flag   : 1'b0,
       paddr_q    : 16'b0,
       pwdata_q   : 32'b0,
       pwrite_q   : 1'b0,
       par_q      : 1'b0,     // ^{16'b0, 1'b0, 32'b0} = 0, 复位态自洽
-      rpar_evt   : 1'b0,
-      rpar_evt_n : 1'b1
+      q_hang     : 1'b0,     // 粘滞复位清 0, 双轨互补复位
+      q_hang_n   : 1'b1,
+      q_rpar     : 1'b0,
+      q_rpar_n   : 1'b1
    };
 
    localparam mbus_reg_t MBUS_REG_RST = '{
@@ -223,19 +259,52 @@ module apb2mbus #(
    assign rpar_bad = !r_apb.pwrite_q && (^r_mb.rdat_cap != r_mb.rpar_cap);
    assign rpar_err = rdy && !r_apb.drain && rpar_bad;
 
+   // ------------------------------------------------------------------
+   // 0xFF 本地寄存器面译码 (apb_clk 域, 零 CDC; 见文件头"事件粘滞"节)
+   // ------------------------------------------------------------------
+   logic        loc_sel;      // 本地面选中: paddr[15:8]==0xFF
+   logic        loc_acc;      // 本地访问 (acc 且选中)
+   logic        loc_wr;       // 本地写
+   logic [5:0]  loc_off;      // 本地偏移 paddr[7:2]
+   logic        a_id;         // 0x00 ID
+   logic        a_sta;        // 0x04 STA_EVT
+   logic        a_inj;        // 0x08 CFG_INJ
+   logic        loc_mapped;   // 已映射偏移 (其余本地偏移 SLVERR)
+   logic        key_ok;       // CFG_INJ 写 key [3:0]==1010
+   logic        w1c_h;        // STA_EVT W1C 命中 [2]
+   logic        w1c_r;        // STA_EVT W1C 命中 [3]
+   logic        inj_h;        // 注错命令命中 [4] (key 对才生效)
+   logic        inj_r;        // 注错命令命中 [5]
+   logic [31:0] loc_rdata;    // 本地面读出 (组合, 零等待)
+
+   assign loc_sel     = (apb_paddr[15:8] == 8'hFF);
+   assign loc_acc     = acc && loc_sel;
+   assign loc_off     = apb_paddr[7:2];
+   assign a_id        = (loc_off == 6'h00);
+   assign a_sta       = (loc_off == 6'h01);
+   assign a_inj       = (loc_off == 6'h02);
+   assign loc_mapped  = a_id | a_sta | a_inj;
+   assign loc_wr      = loc_acc && apb_pwrite;
+   assign key_ok      = (apb_pwdata[3:0] == 4'b1010);
+   assign w1c_h       = loc_wr && a_sta && apb_pwdata[2];
+   assign w1c_r       = loc_wr && a_sta && apb_pwdata[3];
+   assign inj_h       = loc_wr && a_inj && key_ok && apb_pwdata[4];
+   assign inj_r       = loc_wr && a_inj && key_ok && apb_pwdata[5];
+
    logic ack_s2;                  // ack toggle: sync 输出
    logic ack_s3;                  // ack toggle: 边沿检测延迟级
    logic flag_s2;                 // req toggle: sync 输出
    logic flag_s3;                 // req toggle: 边沿检测延迟级
 
    assign acc      = apb_psel && apb_penable;
-   assign inst_bad = ({1'b0, apb_paddr[15:8]} >= NP_UB);
+   // 越界: 实例号超 NP (0xFF 本地面除外, 本地应答不走此路)
+   assign inst_bad = !loc_sel && ({1'b0, apb_paddr[15:8]} >= NP_UB);
    assign rdy      = ack_s2 ^ ack_s3;
 
-   // 本拍发起新 req: acc 上升沿, 非越界, 非 drain (越界实例不发起 mbus
-   // 传输; drain 屏蔽新请求, 保证 toggle 链上最多一笔在途, 迟到 ack
-   // 不会错位)
-   assign req_fire = acc && !r_apb.ce_reg && !inst_bad && !r_apb.drain;
+   // 本拍发起新 req: acc 上升沿, 非越界, 非本地 0xFF 面, 非 drain
+   // (越界/本地不发起 mbus 传输; drain 屏蔽新请求, 保证 toggle 链上
+   // 最多一笔在途, 迟到 ack 不会错位)
+   assign req_fire = acc && !r_apb.ce_reg && !inst_bad && !r_apb.drain && !loc_sel;
 
    // 看门狗触发: 计数器双轨 + 双比较 OR (任一单点翻转立即强发,
    // fail-visible, 永不漏报). rdy 同拍优先 (边界拍正常完成, 不误报;
@@ -295,12 +364,15 @@ module apb2mbus #(
          v_apb.drain = 1'b0;
       end
 
-      v_apb.hang_evt   =   to_fire;
-      v_apb.hang_evt_n = ~ to_fire;
+      // 事件粘滞 (fchm 电平双轨 + SW W1C 面): set 优先 (同拍事件压 W1C,
+      // 防御式 — 单事务串行下两者不同拍可达); 注错 OR 在 set 项, 与真实
+      // 事件共用同一条 寄存器->端口->W1C 通路. q/q_n 独立寄存互补值,
+      // 次态同源同项 -> 互补恒成立 (q_n==~q 代入可证).
+      v_apb.q_hang   =  (to_fire | inj_h) | (r_apb.q_hang   & ~w1c_h);
+      v_apb.q_hang_n = ~(to_fire | inj_h) & (r_apb.q_hang_n |  w1c_h);
 
-      // 读回程奇偶错事件: rpar_err 含 rdy (单拍) -> 事件单拍, 镜像 hang_evt
-      v_apb.rpar_evt   =   rpar_err;
-      v_apb.rpar_evt_n = ~ rpar_err;
+      v_apb.q_rpar   =  (rpar_err | inj_r) | (r_apb.q_rpar   & ~w1c_r);
+      v_apb.q_rpar_n = ~(rpar_err | inj_r) & (r_apb.q_rpar_n |  w1c_r);
 
       // ce_reg = rdy ? 0 : acc (同一笔不重复触发)
       if (rdy) begin
@@ -344,21 +416,43 @@ module apb2mbus #(
    // ------------------------------------------------------------------
    // APB 域输出
    // ------------------------------------------------------------------
-   // pready: 正常 ack / 越界即回 / timeout 强制完成 / drain 快速失败.
-   // 各支路统一 acc 限定: pready 本就只在 acc (psel&penable) 期间被采样,
-   // 规范内行为等价; 限定后空闲拍恒 0, fault 态 spurious rdy 也不会在
-   // 总线空闲时误抬 pready. 回程奇偶错不改 pready 语义 (当拍完成 + pslverr).
-   assign apb_pready  = acc && ((rdy && !r_apb.drain) || inst_bad || to_fire || r_apb.drain);
-   assign apb_pslverr = acc && (inst_bad || to_fire || r_apb.drain || rpar_err);
+   // pready: 正常 ack / 越界即回 / 本地面即回 / timeout 强制完成 / drain
+   // 快速失败. 各支路统一 acc 限定: pready 本就只在 acc (psel&penable) 期间
+   // 被采样, 规范内行为等价; 限定后空闲拍恒 0, fault 态 spurious rdy 也不
+   // 会在总线空闲时误抬 pready. 本地面零等待且不受 drain 屏蔽 (诊断需要).
+   // 回程奇偶错不改 pready 语义 (当拍完成 + pslverr).
+   assign apb_pready  = acc && (loc_acc || (rdy && !r_apb.drain) ||
+                                inst_bad || to_fire || r_apb.drain);
 
-   // 读数据直采: rdat_cap 自 ce 拍静止, rdy 距 ce >= 2 个 apb 拍 (不变量 3).
-   // 回程奇偶失配时驱 0 (坏数据不外送, SW 收 bus error 后重读)
-   assign apb_prdata  = (rdy && !r_apb.drain && !rpar_bad) ? r_mb.rdat_cap : 32'b0;
+   // pslverr: 本地已映射偏移无错, 未映射本地偏移 SLVERR (fail-visible,
+   // 与越界同语义); 远端路径照旧 (越界/timeout/drain/回程奇偶).
+   assign apb_pslverr = acc && (loc_acc ? !loc_mapped
+                                        : (inst_bad || to_fire ||
+                                           r_apb.drain || rpar_err));
 
-   assign hang_evt    = r_apb.hang_evt;
-   assign hang_evt_n  = r_apb.hang_evt_n;
-   assign rpar_evt    = r_apb.rpar_evt;
-   assign rpar_evt_n  = r_apb.rpar_evt_n;
+   // 本地面读出 (组合, 零等待; STA_EVT 为粘滞源组合读出面, 静息 0x2)
+   always_comb begin : loc_rdata_mux
+      if (a_id) begin
+         loc_rdata = LOC_ID;
+      end else if (a_sta) begin
+         loc_rdata = {28'b0, r_apb.q_rpar, r_apb.q_hang,
+                      ~(r_apb.q_hang | r_apb.q_rpar),
+                       (r_apb.q_hang | r_apb.q_rpar)};
+      end else begin
+         loc_rdata = 32'b0;     // CFG_INJ 命令位读回 0 (fail-safe 拒写驱0)
+      end
+   end
+
+   // 读数据: 本地面优先; 远端直采 rdat_cap (rdat_cap 自 ce 拍静止,
+   // rdy 距 ce >= 2 个 apb 拍, 不变量 3). 回程奇偶失配时驱 0 (坏数据
+   // 不外送, SW 收 bus error 后重读)
+   assign apb_prdata  = (loc_acc && !apb_pwrite) ? loc_rdata :
+                        (rdy && !r_apb.drain && !rpar_bad) ? r_mb.rdat_cap : 32'b0;
+
+   assign hang_flt    = r_apb.q_hang;
+   assign hang_flt_n  = r_apb.q_hang_n;
+   assign rpar_flt    = r_apb.q_rpar;
+   assign rpar_flt_n  = r_apb.q_rpar_n;
 
    // =========================================================================
    // mbus 域: 只剩单 bit 控制 —— 请求 toggle 同步 + ce 生成 + 读采样 + ack

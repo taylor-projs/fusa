@@ -16,8 +16,8 @@
 // safety-island always-on clock (its liveness is owned by the CMM layer;
 // this module owns the reset RAIL PAIR). No CDC handshake needed.
 //
-// Outputs: rst_por_n_err (+ inverted rail, house dual-rail convention) to
-// ESM; rchk_par_fault(+_n) register-parity/integrity event; rst_sync =
+// Outputs: esm_err (+ inverted rail, house dual-rail convention) to
+// ESM; reg_par_fault(+_n) register-parity/integrity event; rst_sync =
 // reset-synchronizer output of the p rail (async assert / 2FF release) for
 // downstream reset entry cells. The monitor's own reset (mbus_rstn) must
 // NOT be tapped behind this monitor.
@@ -46,10 +46,10 @@ module reset_checker_top #(
     input  logic                  scan_mode,
 
     // safety outputs
-    output logic                  rst_por_n_err,   // pair fault (active-high)
-    output logic                  rst_por_n_err_n, // inverted rail (dual rail)
-    output logic                  rchk_par_fault,  // register parity / integrity
-    output logic                  rchk_par_fault_n,
+    output logic                  esm_err,   // pair fault (active-high)
+    output logic                  esm_err_n, // inverted rail (dual rail)
+    output logic                  reg_par_fault,  // register parity / integrity
+    output logic                  reg_par_fault_n,
     // functional output: synchronized p rail for downstream reset entry
     output logic                  rst_sync
 );
@@ -86,8 +86,8 @@ module reset_checker_top #(
         .err_w1c        (err_w1c        ),
         .ev_da_w1c      (ev_da_w1c      ),
         .ev_db_w1c      (ev_db_w1c      ),
-        .rst_por_n_err  (rst_por_n_err  ),
-        .rst_por_n_err_n(rst_por_n_err_n),
+        .esm_err  (esm_err  ),
+        .esm_err_n(esm_err_n),
         .rst_sync       (rst_sync       ),
         .sts_viol       (sts_viol       ),
         .sts_div_a      (sts_div_a      ),
@@ -129,8 +129,8 @@ module reset_checker_top #(
         .sts_div_b       (sts_div_b       ),
         .sts_cnt_full    (sts_cnt_full    ),
         .sts_cnt         (sts_cnt         ),
-        .rchk_par_fault  (rchk_par_fault  ),
-        .rchk_par_fault_n(rchk_par_fault_n)
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n)
     );
 
 endmodule

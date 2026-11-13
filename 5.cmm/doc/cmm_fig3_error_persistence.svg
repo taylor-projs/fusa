@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 380" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 11px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .wv    { fill: none; stroke: #0F172A; stroke-width: 1.5; }
+      .grid  { stroke: #E2E8F0; stroke-width: 1; stroke-dasharray: 3 4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="380" fill="#FFFFFF"/>
+  <text x="640" y="28" class="title" text-anchor="middle">错误持续性 (§3.3) — 全部错误类共用的粘滞/清除语义 (N_DEB = 3)</text>
+
+  <!-- 窗口列: bad bad bad good good … -->
+  <text x="170" y="88" class="txt" text-anchor="end">windows:</text>
+  <text x="245" y="88" class="sm" text-anchor="middle">bad</text>
+  <text x="355" y="88" class="sm" text-anchor="middle">bad</text>
+  <text x="465" y="88" class="sm" text-anchor="middle">bad</text>
+  <text x="575" y="88" class="sm" text-anchor="middle">good</text>
+  <text x="685" y="88" class="sm" text-anchor="middle">good</text>
+  <text x="785" y="88" class="sm" text-anchor="middle">…</text>
+  <line x1="300" y1="95" x2="300" y2="330" class="grid"/>
+  <line x1="410" y1="95" x2="410" y2="330" class="grid"/>
+  <line x1="520" y1="95" x2="520" y2="330" class="grid"/>
+  <line x1="630" y1="95" x2="630" y2="330" class="grid"/>
+  <line x1="740" y1="95" x2="740" y2="330" class="grid"/>
+
+  <!-- N_DEB 括号 -->
+  <line x1="190" y1="118" x2="520" y2="118" stroke="#475569" stroke-width="1.2" marker-start="url(#aS)" marker-end="url(#aS)"/>
+  <text x="355" y="110" class="sm" text-anchor="middle">N_DEB = 3 consecutive bad &#8594; freq_deb 3&#8594;2&#8594;1&#8594;0</text>
+
+  <!-- fail_lvl -->
+  <text x="170" y="154" class="txt" text-anchor="end">fail_lvl</text>
+  <polyline class="wv" points="190,157 520,157 520,143 830,143"/>
+  <text x="870" y="154" class="sm">level while debounced-bad</text>
+
+  <!-- fail_q: 粘滞 -->
+  <text x="170" y="209" class="txt" text-anchor="end">fail_q</text>
+  <polyline class="wv" points="190,212 520,212 520,198 830,198"/>
+  <text x="870" y="209" class="sm">sticky: holds until W1C + TST_CLR</text>
+
+  <!-- esm_err -->
+  <text x="170" y="264" class="txt" text-anchor="end">esm_err</text>
+  <polyline class="wv" points="190,267 520,267 520,253 830,253"/>
+  <text x="870" y="264" class="sm">driven by the sticky directly</text>
+
+  <!-- nerr_n: 低有效, +2 ref cycles (2FF) -->
+  <text x="170" y="319" class="txt" text-anchor="end">nerr_n</text>
+  <polyline class="wv" points="190,308 550,308 550,322 830,322"/>
+  <text x="870" y="319" class="sm">2FF-filtered (alarm|fu), +2 ref cycles</text>
+
+  <!-- 因果: fail_lvl 上升 -> nerr_n 下降 -->
+  <path d="M526,160 Q545,240 547,304" fill="none" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#aS)"/>
+  <text x="560" y="240" class="sm">+2 ref cycles</text>
+
+  <!-- 脚注 -->
+  <text x="190" y="354" class="sm">W1C while fault present &#8594; re-sets within a window (clear never sticks)</text>
+  <text x="190" y="372" class="sm">fault gone &#8594; W1C + TST_CLR &#8594; clears and stays clear</text>
+</svg>

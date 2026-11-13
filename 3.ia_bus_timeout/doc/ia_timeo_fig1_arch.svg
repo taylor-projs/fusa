@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 656" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="656" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">ia_bus_timeout — 纯观测超时监控: 两级独立 IP 拓扑与双域结构 (§2)</text>
+
+  <!-- 域背景 -->
+  <rect x="16" y="56" width="560" height="396" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="80" class="dom">aclk 域 (axi_clk)</text>
+  <rect x="610" y="56" width="454" height="396" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="622" y="80" class="dom">mbus_clk 域</text>
+  <line x1="593" y1="56" x2="593" y2="452" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="593" y="104" class="cdc" text-anchor="middle">CDC 全收编于 regfile</text>
+
+  <!-- 被监视 AXI4 接口 -->
+  <rect x="32" y="100" width="216" height="96" rx="8" class="box"/>
+  <text x="140" y="124" class="bt" text-anchor="middle">被监视 AXI4 接口</text>
+  <text x="140" y="144" class="txt" text-anchor="middle">互连任意链路环节</text>
+  <text x="140" y="162" class="sm" text-anchor="middle">AR/AW/W/R/B 五通道</text>
+  <text x="140" y="180" class="sm" text-anchor="middle">12 标量 tap · 零干预</text>
+  <line x1="250" y1="148" x2="264" y2="148" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 监控核 -->
+  <rect x="268" y="92" width="292" height="340" rx="8" class="box"/>
+  <text x="414" y="116" class="bt" text-anchor="middle">监控核 ia_bus_timeo_mon</text>
+  <text x="414" y="134" class="sm" text-anchor="middle">(TI SCM 双计数器模型, 无 ID / 无顺序)</text>
+  <text x="414" y="160" class="txt" text-anchor="middle">读流 RD: r2a = AR 挂起, r2r = R 无进展</text>
+  <text x="414" y="182" class="txt" text-anchor="middle">写流 WR: 请求完整 = AW+WLAST (三态)</text>
+  <text x="414" y="204" class="txt" text-anchor="middle">深度账本 rd_otd / wr_otd / wr_dlv</text>
+  <text x="414" y="226" class="txt" text-anchor="middle">(饱和 OTD_MAX; 饱和即 OTDSAT 显性化)</text>
+  <text x="414" y="254" class="txt" text-anchor="middle">完整性层:</text>
+  <text x="414" y="274" class="txt" text-anchor="middle">反相副本×9 · 双比较器 · 码字使能</text>
+  <text x="414" y="296" class="txt" text-anchor="middle">keyed 阈值 · 副本失配回退复位值</text>
+  <text x="414" y="324" class="txt" text-anchor="middle">sticky: SCMIAERR0/1STAT · fu_src[6:0]</text>
+  <text x="414" y="346" class="txt" text-anchor="middle">err_event / fu_fault 双轨对</text>
+  <text x="414" y="374" class="sm" text-anchor="middle">计数器副本失配 → 强制立即触发 (绝不迟到)</text>
+  <text x="414" y="396" class="sm" text-anchor="middle">(纯观测: 不驱动任何 ready, 对总线零干预)</text>
+
+  <!-- CDC 红箭头 -->
+  <line x1="638" y1="150" x2="564" y2="150" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="600" y="138" class="cdc" text-anchor="middle">cfg/W1C/脉冲</text>
+  <line x1="562" y1="196" x2="636" y2="196" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="600" y="222" class="cdc" text-anchor="middle">状态/事件 2FF</text>
+
+  <!-- 寄存器面 -->
+  <rect x="640" y="92" width="240" height="340" rx="8" class="box"/>
+  <text x="760" y="116" class="bt" text-anchor="middle">寄存器面</text>
+  <text x="760" y="134" class="sm" text-anchor="middle">ia_bus_timeo_regfile</text>
+  <text x="760" y="160" class="txt" text-anchor="middle">SCM 模型: 0x00..0x28 + 0xFC</text>
+  <text x="760" y="182" class="txt" text-anchor="middle">每寄存器 reg_wrap 偶校验</text>
+  <text x="760" y="204" class="txt" text-anchor="middle">mbus 命令在途奇偶 PERR_CMD</text>
+  <text x="760" y="232" class="txt" text-anchor="middle">写跨域: toggle 握手</text>
+  <text x="760" y="254" class="txt" text-anchor="middle">忙时写丢弃 + WR_DROPPED</text>
+  <text x="760" y="276" class="txt" text-anchor="middle">读跨域: 2FF + rpar 回程</text>
+  <text x="760" y="304" class="txt" text-anchor="middle">ESM 双轨 = rail 镜像</text>
+  <text x="760" y="326" class="txt" text-anchor="middle">(err/fault/par 三对, 奇偶保护)</text>
+  <text x="760" y="354" class="txt" text-anchor="middle">SW 口: 阈值/使能/自测/W1C</text>
+  <text x="760" y="376" class="sm" text-anchor="middle">详见 ia_bus_timeo_regfile.md</text>
+
+  <!-- mbus 主机 -->
+  <rect x="912" y="104" width="140" height="68" rx="8" class="box"/>
+  <text x="982" y="128" class="bt" text-anchor="middle">mbus 主机 (CPU)</text>
+  <text x="982" y="150" class="sm" text-anchor="middle">leaf 命令 (ce·par)</text>
+  <line x1="910" y1="138" x2="884" y2="138" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- core 双轨 → 聚合器 -->
+  <polyline points="760,432 760,458 296,458 296,482" fill="none" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="520" y="470" class="cdc" text-anchor="middle">core_err/_n · core_fault/_n · core_par/_n (per-core 三对双轨)</text>
+
+  <!-- 聚合器 -->
+  <rect x="16" y="484" width="560" height="120" rx="8" class="box"/>
+  <text x="296" y="508" class="bt" text-anchor="middle">聚合器 ia_bus_timeo_top (mbus 域, 一例汇总全系统)</text>
+  <text x="296" y="532" class="txt" text-anchor="middle">per-core sticky: STA_ERR / STA_FAULT / STA_PARCORE (+RAW 只读面)</text>
+  <text x="296" y="554" class="txt" text-anchor="middle">输入轨互补校验 STA_RAIL → rail_fault 第 4 对 ESM 双轨</text>
+  <text x="296" y="576" class="txt" text-anchor="middle">PATH_SELFTEST 0x28: keyed 掩码 OR 进四路输出</text>
+  <text x="296" y="596" class="sm" text-anchor="middle">mbus leaf 口 · 寄存器奇偶 STA_PAR 家族布局 · ID 0x4941_2000|IDX</text>
+
+  <!-- ESM -->
+  <rect x="712" y="484" width="352" height="120" rx="8" class="box"/>
+  <text x="888" y="508" class="bt" text-anchor="middle">ESM</text>
+  <text x="888" y="532" class="txt" text-anchor="middle">四路事件: err / fault / par / rail (各带反轨)</text>
+  <text x="888" y="554" class="txt" text-anchor="middle">err 与 fault 分开路由 (真超时 ≠ 监视器坏)</text>
+  <text x="888" y="576" class="txt" text-anchor="middle">单端集成: 连正轨 · *_n 悬空 · 周期自测</text>
+  <text x="888" y="596" class="sm" text-anchor="middle">诊断间隔 DTI 入 safety case</text>
+  <line x1="578" y1="544" x2="708" y2="544" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+  <text x="643" y="534" class="sm" text-anchor="middle">四对双轨</text>
+
+  <!-- 图例 -->
+  <rect x="16" y="616" width="1048" height="28" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="28" y="634" class="txt">两级拓扑: 每个被监视 AXI4 接口例化一叶 ia_bus_timeo_core; 全系统各 core 双轨汇总于一例 ia_bus_timeo_top 送 ESM</text>
+</svg>

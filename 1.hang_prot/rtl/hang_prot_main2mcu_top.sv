@@ -131,10 +131,10 @@ module hang_prot_main2mcu_top #(
     output logic                 s_bready,
 
     // ---- ESM outputs (dual rail) --------------------------------------------
-    output logic                 err_event,
-    output logic                 err_event_n,
-    output logic                 fu_fault,
-    output logic                 fu_fault_n,
+    output logic                 esm_err,
+    output logic                 esm_err_n,
+    output logic                 esm_fault,
+    output logic                 esm_fault_n,
     output logic                 reg_par_fault,
     output logic                 reg_par_fault_n,
     output logic                 skid_fault,
@@ -161,8 +161,8 @@ module hang_prot_main2mcu_top #(
     logic [NUM_IA*OTD_W-1:0]  otd;
     logic [15:0]              thr_rd_r2a, thr_rd_r2r;
     logic [3:0]               ena_rd;
-    logic                     err_event_i, err_event_n_i;
-    logic                     fu_fault_i, fu_fault_n_i;
+    logic                     esm_err_i, esm_err_n_i;
+    logic                     esm_fault_i, esm_fault_n_i;
     logic [4+3*NUM_M-1:0]     fu_src;
 
     // recovery control (aclk domain)
@@ -215,10 +215,10 @@ module hang_prot_main2mcu_top #(
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
         .ena_rd        (ena_rd        ),
-        .err_event     (err_event_i   ),
-        .err_event_n   (err_event_n_i ),
-        .fu_fault      (fu_fault_i    ),
-        .fu_fault_n    (fu_fault_n_i  ),
+        .esm_err     (esm_err_i   ),
+        .esm_err_n   (esm_err_n_i ),
+        .esm_fault      (esm_fault_i    ),
+        .esm_fault_n    (esm_fault_n_i  ),
         .fu_src        (fu_src        ),
 
         .reg_par_fault  (reg_par_fault  ),
@@ -226,7 +226,7 @@ module hang_prot_main2mcu_top #(
     );
 
     //--------------------------------------------------------------------------
-    // Inbound boundary unit + err_event rising-edge detect (same rationale
+    // Inbound boundary unit + esm_err rising-edge detect (same rationale
     // as the outbound wrap: a level would oscillate, a rise arms once per
     // timeout event; W1C between events re-arms)
     //   FuSa v3.1 (SIL2): the edge flop is inverted-duplicated; a rail
@@ -239,15 +239,15 @@ module hang_prot_main2mcu_top #(
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
     //--------------------------------------------------------------------------
     typedef struct packed {
-        logic err_event_q;    // err_event edge-detect flop
-        logic err_event_q_n;  // inverted duplicate rail
+        logic esm_err_q;    // esm_err edge-detect flop
+        logic esm_err_q_n;  // inverted duplicate rail
         logic edgeflt_q;      // sticky edge-rail fault
         logic edgeflt_q_n;    // inverted duplicate rail
     } reg_t;
 
     localparam reg_t REG_RST = '{
-        err_event_q   : 1'b0,
-        err_event_q_n : 1'b1,
+        esm_err_q   : 1'b0,
+        esm_err_q_n : 1'b1,
         edgeflt_q     : 1'b0,
         edgeflt_q_n   : 1'b1
     };
@@ -256,9 +256,9 @@ module hang_prot_main2mcu_top #(
     reg_t rin;
 
     logic edge_dis;
-    assign edge_dis = (r.err_event_q_n != ~r.err_event_q);
+    assign edge_dis = (r.esm_err_q_n != ~r.esm_err_q);
     logic recover_req;
-    assign recover_req = (err_event_i && !r.err_event_q) || edge_dis;
+    assign recover_req = (esm_err_i && !r.esm_err_q) || edge_dis;
 
     //--------------------------------------------------------------------------
     // 组合进程: edge detect + sticky edge fault 下一拍值 (默认保持)
@@ -268,8 +268,8 @@ module hang_prot_main2mcu_top #(
 
         v = r;
 
-        v.err_event_q   =  err_event_i;
-        v.err_event_q_n = ~err_event_i;
+        v.esm_err_q   =  esm_err_i;
+        v.esm_err_q_n = ~esm_err_i;
 
         // sticky edge-rail fault: a rail mismatch latches (self-heal of the
         // pair next cycle does NOT clear the event)
@@ -429,11 +429,11 @@ module hang_prot_main2mcu_top #(
         .otd           (otd           ),
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
-        .err_event     (err_event_i   ),
-        .err_event_n   (err_event_n_i ),
+        .esm_err     (esm_err_i   ),
+        .esm_err_n   (esm_err_n_i ),
         .ena_rd        (ena_rd        ),
-        .fu_fault      (fu_fault_i    ),
-        .fu_fault_n    (fu_fault_n_i  ),
+        .esm_fault      (esm_fault_i    ),
+        .esm_fault_n    (esm_fault_n_i  ),
         .fu_src        (fu_src        )
     );
 
@@ -456,9 +456,9 @@ module hang_prot_main2mcu_top #(
     assign m_rdata   = block_active ? '0 : s_rdata;
 
     // ESM dual-rail outputs (aclk domain)
-    assign err_event   = err_event_i;
-    assign err_event_n = err_event_n_i;
-    assign fu_fault    = fu_fault_i;
-    assign fu_fault_n  = fu_fault_n_i;
+    assign esm_err   = esm_err_i;
+    assign esm_err_n = esm_err_n_i;
+    assign esm_fault    = esm_fault_i;
+    assign esm_fault_n  = esm_fault_n_i;
 
 endmodule

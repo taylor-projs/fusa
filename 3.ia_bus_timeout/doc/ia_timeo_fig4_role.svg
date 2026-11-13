@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 320" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 15px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="320" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">ia_bus_timeout 在安全功能中的角色 — 诊断通道 (§1.1)</text>
+
+  <rect x="40" y="80" width="240" height="90" rx="8" class="box"/>
+  <text x="160" y="114" class="bt" text-anchor="middle">安全功能 (别处)</text>
+  <text x="160" y="140" class="sm" text-anchor="middle">CPU / 执行链等</text>
+
+  <line x1="282" y1="125" x2="378" y2="125" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+  <text x="330" y="112" class="sm" text-anchor="middle">数据经 AXI 互连</text>
+
+  <rect x="382" y="80" width="240" height="90" rx="8" class="box"/>
+  <text x="502" y="114" class="bt" text-anchor="middle">被监控 AXI 通道</text>
+  <text x="502" y="140" class="sm" text-anchor="middle">互连上的数据 / 控制流</text>
+
+  <line x1="502" y1="206" x2="502" y2="174" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+  <text x="640" y="196" class="sm" text-anchor="middle">12 标量 tap (纯观察)</text>
+
+  <rect x="382" y="210" width="240" height="70" rx="8" class="box"/>
+  <text x="502" y="238" class="bt" text-anchor="middle">ia_bus_timeout</text>
+  <text x="502" y="260" class="sm" text-anchor="middle">旁路观察 &#183; 零干预</text>
+
+  <line x1="624" y1="245" x2="716" y2="245" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+
+  <rect x="720" y="210" width="150" height="70" rx="8" class="box"/>
+  <text x="795" y="238" class="bt" text-anchor="middle">ESM</text>
+  <text x="795" y="260" class="sm" text-anchor="middle">分组路由</text>
+
+  <line x1="872" y1="245" x2="936" y2="245" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+
+  <rect x="940" y="210" width="120" height="70" rx="8" class="box"/>
+  <text x="1000" y="238" class="bt" text-anchor="middle">系统反应</text>
+  <text x="1000" y="260" class="sm" text-anchor="middle">复位/隔离</text>
+
+  <text x="28" y="304" class="txt">贡献 = 提高被监控通道的诊断覆盖率 (DC): 互连静默失效 (dangerous undetected) &#8594; 可检测失效; 本 IP 自身失效由 FuSa 完整性层检出</text>
+</svg>

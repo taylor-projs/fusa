@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .val   { font-size: 10px; fill: #0F172A; }
+      .cyc   { font-size: 9.5px; fill: #94A3B8; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .sig   { font-size: 10.5px; font-weight: bold; fill: #334155; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="560" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">写流 (WR) — 请求相三态 pending &#183; 两本账 &#183; 时序 (§3.3)</text>
+
+  <!-- 三态 pending 逻辑 -->
+  <rect x="60" y="64" width="250" height="56" rx="8" class="box"/>
+  <text x="185" y="88" class="txt" text-anchor="middle" font-weight="bold">&#9312; AW 挂起</text>
+  <text x="185" y="106" class="sm" text-anchor="middle">AWVALID=1 &#8743; AWREADY=0</text>
+
+  <rect x="60" y="136" width="250" height="56" rx="8" class="box"/>
+  <text x="185" y="160" class="txt" text-anchor="middle" font-weight="bold">&#9313; W 挂起</text>
+  <text x="185" y="178" class="sm" text-anchor="middle">WVALID=1 &#8743; WREADY=0</text>
+
+  <rect x="60" y="208" width="250" height="56" rx="8" class="box"/>
+  <text x="185" y="232" class="txt" text-anchor="middle" font-weight="bold">&#9314; 深度不配平</text>
+  <text x="185" y="250" class="sm" text-anchor="middle">wr_otd &#8800; wr_dlv (慢W / W先于AW)</text>
+
+  <line x1="310" y1="92" x2="366" y2="176" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="310" y1="164" x2="366" y2="184" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="310" y1="236" x2="366" y2="192" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="370" y="162" width="60" height="44" rx="8" class="box"/>
+  <text x="400" y="188" class="bt" text-anchor="middle">&#8805;1</text>
+
+  <line x1="430" y1="184" x2="466" y2="184" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="470" y="162" width="200" height="44" rx="8" class="box"/>
+  <text x="570" y="188" class="bt" text-anchor="middle">wr_req_pend</text>
+  <text x="570" y="222" class="sm" text-anchor="middle">请求相未完 &#8594; r2a 计数</text>
+
+  <line x1="670" y1="184" x2="726" y2="184" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="730" y="136" width="320" height="100" rx="8" class="box"/>
+  <text x="890" y="160" class="bt" text-anchor="middle">窗口推进与判定</text>
+  <text x="890" y="182" class="txt" text-anchor="middle">进展 = AW 或 W 任一握手 &#8594; 计数清零</text>
+  <text x="890" y="202" class="txt" text-anchor="middle">完整 = WLAST 交付 (wr_dlv+1)</text>
+  <text x="890" y="222" class="txt" text-anchor="middle">无进展计满 thr &#8594; r2a 触发</text>
+
+  <!-- 写流时序 -->
+  <rect x="16" y="300" width="1048" height="216" rx="8" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="32" y="324" class="bt">正常写: AW 收于 T0 &#183; W 四拍 T2..T5 (WLAST=T5) &#183; B 回于 T8</text>
+
+  <line x1="170" y1="348" x2="170" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="240" y1="348" x2="240" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="310" y1="348" x2="310" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="380" y1="348" x2="380" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="450" y1="348" x2="450" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="520" y1="348" x2="520" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="590" y1="348" x2="590" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="660" y1="348" x2="660" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="730" y1="348" x2="730" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="800" y1="348" x2="800" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="870" y1="348" x2="870" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="940" y1="348" x2="940" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="1010" y1="348" x2="1010" y2="508" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <text x="205" y="342" class="cyc" text-anchor="middle">T0</text>
+  <text x="275" y="342" class="cyc" text-anchor="middle">T1</text>
+  <text x="345" y="342" class="cyc" text-anchor="middle">T2</text>
+  <text x="415" y="342" class="cyc" text-anchor="middle">T3</text>
+  <text x="485" y="342" class="cyc" text-anchor="middle">T4</text>
+  <text x="555" y="342" class="cyc" text-anchor="middle">T5</text>
+  <text x="625" y="342" class="cyc" text-anchor="middle">T6</text>
+  <text x="695" y="342" class="cyc" text-anchor="middle">T7</text>
+  <text x="765" y="342" class="cyc" text-anchor="middle">T8</text>
+  <text x="835" y="342" class="cyc" text-anchor="middle">T9</text>
+  <text x="905" y="342" class="cyc" text-anchor="middle">T10</text>
+  <text x="975" y="342" class="cyc" text-anchor="middle">T11</text>
+
+  <text x="36" y="364" class="sig">AW 握手</text>
+  <path d="M170,364 L170,352 L240,352 L240,364 L1010,364" fill="none" stroke="#334155" stroke-width="1.8"/>
+
+  <text x="36" y="392" class="sig">WVALID</text>
+  <path d="M170,392 L310,392 L310,380 L590,380 L590,392 L1010,392" fill="none" stroke="#334155" stroke-width="1.8"/>
+  <text x="555" y="374" class="cdc" text-anchor="middle">WLAST</text>
+
+  <text x="36" y="420" class="sig">WR_OTD</text>
+  <line x1="170" y1="418" x2="1010" y2="418" stroke="#E2E8F0"/>
+  <text x="205" y="420" class="val" text-anchor="middle">0</text>
+  <text x="275" y="420" class="val" text-anchor="middle">1</text>
+  <text x="345" y="420" class="val" text-anchor="middle">1</text>
+  <text x="415" y="420" class="val" text-anchor="middle">1</text>
+  <text x="485" y="420" class="val" text-anchor="middle">1</text>
+  <text x="555" y="420" class="val" text-anchor="middle">1</text>
+  <text x="625" y="420" class="val" text-anchor="middle">1</text>
+  <text x="695" y="420" class="val" text-anchor="middle">1</text>
+  <text x="765" y="420" class="val" text-anchor="middle">1</text>
+  <text x="835" y="420" class="val" text-anchor="middle">0</text>
+
+  <text x="36" y="448" class="sig">WR_DLV</text>
+  <line x1="170" y1="446" x2="1010" y2="446" stroke="#E2E8F0"/>
+  <text x="485" y="448" class="val" text-anchor="middle">0</text>
+  <text x="625" y="448" class="val" text-anchor="middle">1</text>
+  <text x="695" y="448" class="val" text-anchor="middle">1</text>
+  <text x="765" y="448" class="val" text-anchor="middle">1</text>
+  <text x="835" y="448" class="val" text-anchor="middle">0</text>
+  <text x="560" y="434" class="cdc" text-anchor="middle">wr_otd &#8800; wr_dlv &#8658; 请求相未完 (r2a 窗开着)</text>
+
+  <text x="36" y="476" class="sig">B 握手</text>
+  <path d="M170,476 L730,476 L730,464 L800,464 L800,476 L1010,476" fill="none" stroke="#334155" stroke-width="1.8"/>
+
+  <text x="28" y="540" class="txt">r2r 窗: WLAST 交付 &#8594; B 握手; wr_otd&#8800;0 &#8743; wr_dlv&#8800;0 期间无 B 进展计满触发; B 握手同拍两账齐减 (aw_hs &#8743; b_hs 净零)</text>
+</svg>

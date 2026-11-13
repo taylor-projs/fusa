@@ -246,14 +246,14 @@ module hang_prot_regfile #(
     input  logic [15:0]              thr_rd_r2a,     // effective readback
     input  logic [15:0]              thr_rd_r2r,
     input  logic [3:0]               ena_rd,
-    input  logic                     err_event,
-    input  logic                     err_event_n,
-    input  logic                     fu_fault,
-    input  logic                     fu_fault_n,
+    input  logic                     esm_err,
+    input  logic                     esm_err_n,
+    input  logic                     esm_fault,
+    input  logic                     esm_fault_n,
     input  logic [4+3*NUM_M-1:0]     fu_src,
 
     // ---- register parity fault to ESM (mbus_clk domain, dual rail) ----
-    // own event, separate from err_event / fu_fault: a corrupted
+    // own event, separate from esm_err / esm_fault: a corrupted
     // SW-visible register is a distinct failure mode
     output logic                     reg_par_fault,
     output logic                     reg_par_fault_n
@@ -647,7 +647,7 @@ module hang_prot_regfile #(
     sync_dff #(.WIDTH(4))        u_rail_sync   (
         .clk (mbus_clk                                      ),
         .rstn(mbus_rstn                                     ),
-        .d   ({err_event_n, err_event, fu_fault_n, fu_fault}),
+        .d   ({esm_err_n, esm_err, esm_fault_n, esm_fault}),
         .q   (rail_s1                                       )
     );
     sync_dff #(.WIDTH(FU_SRC_W)) u_fusrc_sync  (

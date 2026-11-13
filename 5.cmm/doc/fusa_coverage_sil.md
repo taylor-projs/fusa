@@ -20,10 +20,10 @@ recompute with library values at tape-out.
 | SM7 | Config-path liveness: CFG_HANG (ack timeout, dual-rail watchdog), WR_DROPPED, escape write (FORCE bit16=0 always accepted), ack self-heal | HANG | full hang→drop→escape→recover sequence (ph11); incl. the self-mask race found by TB and fixed (3FF mask) |
 | SM8 | REF_STALE: window-alive watchdog in mbus domain (ref clock/window machinery dead), gated by any_en | REF dead | force_stale injection (ph12) |
 | SM9 | Coded EN (nibble F/0, d_min=4, majority; ambiguous → force ON + HI_ERR — fail-safe direction for a monitor); illegal nibble rejected + REG_PROT | EN | illegal nibble (ph17); disable gating — disabled ch alarms masked (ph18) |
-| SM10 | Keyed writes (WKEY) + RO-write protection → REG_PROT, joins cmm_fu | PROT | wrong key + RO write (ph5) |
+| SM10 | Keyed writes (WKEY) + RO-write protection → REG_PROT, joins esm_fault | PROT | wrong key + RO write (ph5) |
 | SM11 | Lifecycle FSM one-hot + illegal→ERR; alarm outputs driven straight from sticky latches, never through the FSM (broken FSM cannot mask an alarm) | FSM | exercised in every fault phase |
 | SM12 | Sticky status + W1C through CDC + TST_CLR global self-test clear; live faults re-set after W1C (level verdicts) | reporting | every recovery sequence (20+ clears) |
-| SM13 | Dual-rail ESM outputs (cmm_err, cmm_fu, reg_par_fault, cfg_hang + _n), nerr_n active-low level, 2FF glitch-filtered | output | rail polarity checked in every phase |
+| SM13 | Dual-rail ESM outputs (esm_err, esm_fault, reg_par_fault, cfg_hang + _n), nerr_n active-low level, 2FF glitch-filtered | output | rail polarity checked in every phase |
 | SM14 | Fault injection capability itself (FORCE per ch, inj classes, REGST both domains, no-source signature) — enables boot + periodic SW self-test of the SMs (latent-fault coverage) | latent SM faults | PAR_SELFTEST "fault, no source" (ph10); all injection paths |
 | SM15 | REFSEL wrong/stuck self-revealing (measurement cross-checks the reference); quiesce switch protocol | REF sel | REFSEL switch both ways, clean run (ph19) |
 

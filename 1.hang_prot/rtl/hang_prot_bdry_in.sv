@@ -19,7 +19,7 @@
 //                                                             of THIS unit
 //   s_* of this unit --> island NIC SI port --> SRAM / island slaves
 //   monitor (hang_prot_core, stream 1) observes the m_* side
-//   recover_req = rising edge of that stream's sticky err_event
+//   recover_req = rising edge of that stream's sticky esm_err
 //   quiesce_rel = keyed SCMCNTRL[12] pulse (SW, main held in reset)
 //
 // WHY A SEPARATE UNIT (not hang_prot_recover): direction matters.

@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 720" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="rS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/>
+    </marker>
+    <marker id="rG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="rR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <marker id="rV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/>
+    </marker>
+    <style>
+      .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+      .lane  { font-size: 12.5px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 12px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 9.5px; fill: #475569; }
+      .pipe  { font-size: 9.5px; font-weight: bold; fill: #7C3AED; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .datbx { fill: #EFF6FF; stroke: #2563EB; }
+      .engbx { fill: #F8FAFC; stroke: #64748B; }
+      .respb { fill: #ECFDF5; stroke: #059669; }
+      .pipbx { fill: #F5F3FF; stroke: #7C3AED; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="720" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">AXI 读全流程 — AR → S_RD 流水 (1 拍/行) → R (数据路 蓝 / 控制路 灰 / 流水 紫)</text>
+
+  <!-- ============ Lane 1: AR 命令路 ============ -->
+  <text x="30" y="80" class="lane">AR 命令路</text>
+  <text x="30" y="96" class="sm">(控制)</text>
+  <rect x="150" y="58" width="180" height="50" rx="6" class="box"/>
+  <text x="240" y="77" class="bt" text-anchor="middle">AR 握手接受</text>
+  <text x="240" y="95" class="sm" text-anchor="middle">id/addr/len/size/burst</text>
+
+  <rect x="370" y="58" width="200" height="50" rx="6" class="box"/>
+  <text x="470" y="77" class="bt" text-anchor="middle">命令载荷拼装</text>
+  <text x="470" y="95" class="sm" text-anchor="middle">{user,lock,id,len,resp}</text>
+
+  <rect x="620" y="58" width="200" height="50" rx="6" class="engbx"/>
+  <text x="720" y="77" class="bt" text-anchor="middle">队列 4 深·帽 5 (到达序)</text>
+  <text x="720" y="95" class="sm" text-anchor="middle">rac 仲裁 · 共队列不重排</text>
+
+  <line x1="330" y1="83" x2="366" y2="83" stroke="#475569" stroke-width="1.5" marker-end="url(#rG)"/>
+  <line x1="570" y1="83" x2="616" y2="83" stroke="#475569" stroke-width="1.5" marker-end="url(#rG)"/>
+
+  <!-- ============ Lane 2: 引擎发起 ============ -->
+  <text x="30" y="180" class="lane">引擎发起</text>
+  <text x="30" y="196" class="sm">(S_IDLE)</text>
+  <rect x="150" y="152" width="240" height="62" rx="6" class="engbx"/>
+  <text x="270" y="171" class="bt" text-anchor="middle">head 读命令分派</text>
+  <text x="270" y="188" class="sm" text-anchor="middle">rd_room = !ff &amp;&amp; rcnt_eff&lt;4 才发</text>
+  <text x="270" y="202" class="sm" text-anchor="middle">装载 op_line/op_last/op_resp/op_id</text>
+
+  <rect x="430" y="152" width="220" height="62" rx="6" class="datbx"/>
+  <text x="540" y="171" class="bt" text-anchor="middle">发起行读 (cen=1, wen=0)</text>
+  <text x="540" y="188" class="sm" text-anchor="middle">m_addr = beat_addr 拍地址[行]</text>
+  <text x="540" y="202" class="sm" text-anchor="middle">WRAP 首拍 = 容器基址 (非裸 a0)</text>
+
+  <rect x="690" y="152" width="200" height="62" rx="6" class="engbx"/>
+  <text x="790" y="171" class="bt" text-anchor="middle">独占读登记</text>
+  <text x="790" y="188" class="sm" text-anchor="middle">op_exset=lock 首拍 → {id,行}</text>
+  <text x="790" y="202" class="sm" text-anchor="middle">单项监视器替换旧登记</text>
+
+  <line x1="390" y1="183" x2="426" y2="183" stroke="#2563EB" stroke-width="1.8" marker-end="url(#rS)"/>
+  <line x1="650" y1="183" x2="686" y2="183" stroke="#475569" stroke-width="1.5" marker-end="url(#rG)"/>
+  <line x1="240" y1="108" x2="240" y2="148" stroke="#475569" stroke-width="1.5" marker-end="url(#rG)"/>
+
+  <!-- ============ Lane 3: S_RD 流水 (核心) ============ -->
+  <rect x="150" y="250" width="740" height="180" rx="8" fill="#F5F3FF" stroke="#7C3AED" stroke-dasharray="6 4"/>
+  <text x="166" y="272" class="pipe">S_RD 发起机 + rs_pend 交付 — 自循环流水 (连续读 1 拍/行)</text>
+
+  <rect x="170" y="286" width="200" height="120" rx="6" fill="#FFFFFF" stroke="#7C3AED"/>
+  <text x="270" y="305" class="bt" text-anchor="middle">交付拍 rs_pend (发起次拍)</text>
+  <text x="270" y="323" class="sm" text-anchor="middle">wrapper 译码 (2 码字 SECDED)</text>
+  <text x="270" y="338" class="sm" text-anchor="middle">CERR 纠正 / DERR 原始值交付</text>
+  <text x="270" y="353" class="sm" text-anchor="middle">事件/计数/快照在 wrapper</text>
+  <text x="270" y="368" class="sm" text-anchor="middle">m_rdata = 纠正后 256bit</text>
+  <text x="270" y="383" class="sm" text-anchor="middle">lane 掩码按拍 (窄/WRAP)</text>
+
+  <rect x="420" y="286" width="210" height="120" rx="6" fill="#FFFFFF" stroke="#7C3AED"/>
+  <text x="525" y="305" class="bt" text-anchor="middle">推 rskip 4 深 (fifo_sync)</text>
+  <text x="525" y="323" class="sm" text-anchor="middle">rp_data = m_rdata &amp; lane 掩码</text>
+  <text x="525" y="338" class="sm" text-anchor="middle">rp_id/resp/last/user</text>
+  <text x="525" y="353" class="sm" text-anchor="middle">交付不依赖引擎状态</text>
+  <text x="525" y="368" class="sm" text-anchor="middle">last_fire → take_cmd 弹队列</text>
+  <text x="525" y="383" class="sm" text-anchor="middle">独占登记 (op_exset 拍)</text>
+
+  <rect x="680" y="286" width="190" height="120" rx="6" fill="#FFFFFF" stroke="#7C3AED"/>
+  <text x="775" y="305" class="bt" text-anchor="middle">每拍发起下一行读</text>
+  <text x="775" y="323" class="sm" text-anchor="middle">同命令: beat_addr(bidx+1)</text>
+  <text x="775" y="338" class="sm" text-anchor="middle">bidx==len: rlast+take_cmd</text>
+  <text x="775" y="353" class="sm" text-anchor="middle">当拍译码下一条 (读→读/写)</text>
+  <text x="775" y="368" class="sm" text-anchor="middle">单拍命令走 S_IDLE 次拍分派</text>
+  <text x="775" y="383" class="sm" text-anchor="middle">st 保持 S_RD = 流水</text>
+
+  <line x1="370" y1="346" x2="416" y2="346" stroke="#7C3AED" stroke-width="1.8" marker-end="url(#rV)"/>
+  <line x1="630" y1="346" x2="676" y2="346" stroke="#7C3AED" stroke-width="1.8" marker-end="url(#rV)"/>
+  <path d="M 775 406 L 775 424 L 270 424 L 270 410" fill="none" stroke="#7C3AED" stroke-width="1.8" marker-end="url(#rV)"/>
+  <text x="522" y="438" class="pipe" text-anchor="middle">下一行读发出 → 下一拍 m_rdata 即到 → 宏口每拍有活 (读吞吐 ×2)</text>
+  <line x1="540" y1="214" x2="540" y2="246" stroke="#2563EB" stroke-width="1.8" marker-end="url(#rS)"/>
+  <text x="550" y="234" class="sm">宏读 1 拍</text>
+
+  <!-- ============ Lane 4: R 通道 ============ -->
+  <text x="30" y="502" class="lane">R 通道</text>
+  <text x="30" y="518" class="sm">(响应)</text>
+  <rect x="150" y="476" width="220" height="56" rx="6" class="respb"/>
+  <text x="260" y="495" class="bt" text-anchor="middle">rvalid 交付</text>
+  <text x="260" y="513" class="sm" text-anchor="middle">rready 反压: 悬挂拍保持不丢</text>
+
+  <rect x="410" y="476" width="220" height="56" rx="6" class="respb"/>
+  <text x="520" y="495" class="bt" text-anchor="middle">反压吸收行为</text>
+  <text x="520" y="513" class="sm" text-anchor="middle">rskip 满 → 暂停发起 (bidx 续命)</text>
+
+  <rect x="670" y="476" width="220" height="56" rx="6" class="respb"/>
+  <text x="780" y="495" class="bt" text-anchor="middle">恢复续流</text>
+  <text x="780" y="513" class="sm" text-anchor="middle">rready 放开 → 无损接续, 数据不重不错</text>
+
+  <line x1="370" y1="504" x2="406" y2="504" stroke="#059669" stroke-width="1.8" marker-end="url(#rR)"/>
+  <line x1="630" y1="504" x2="666" y2="504" stroke="#059669" stroke-width="1.8" marker-end="url(#rR)"/>
+  <line x1="200" y1="430" x2="200" y2="472" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#rV)"/>
+
+  <!-- ============ 注记 ============ -->
+  <rect x="30" y="560" width="1020" height="140" rx="8" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="46" y="584" class="bt">读路径关键语义</text>
+  <text x="46" y="608" class="txt">· 流水化 (v3.5): S_RD 每拍发起 + rs_pend 次拍交付 → 连续读 1 拍/行 (旧 2 拍/行); RMW/INIT/写不变, 读间不回 S_IDLE</text>
+  <text x="46" y="628" class="txt">· 跨命令链: 边界拍直接译码队内下一条 (读→读/读→写零气泡); 新到的 AR 走 S_IDLE 正常分派, 无损失</text>
+  <text x="46" y="648" class="txt">· 发起门 rd_room = !ff &amp;&amp; rcnt_eff&lt;4: csn→wr 错 1 拍抵消 ff 寄存 1 拍 (首次满阻塞拍点准); ff 为 1 拍脉冲 (==3), 镜像锁持续满窗口</text>
+  <text x="46" y="668" class="txt">· bypass 模式: 裸数据直通掩码交付, 译码/事件全静默; 独占读登记与 EXOKAY 响应协议面两模式一致</text>
+  <text x="46" y="688" class="txt">· 读路不洗刷 (CERR 纠正不回写宏): 只在 RMW/整行重写时净化 (DERR 码字 RMW 重编码洗净, §3.2) —— 读带宽优先</text>
+</svg>

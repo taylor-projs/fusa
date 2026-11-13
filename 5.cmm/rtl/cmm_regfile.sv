@@ -16,11 +16,12 @@
 //   0x00 ID      RO  32'hC44D_0100|ND8 ("cM" v1, N_DUT in [7:0])
 //   0x04 GCTRL   RW+key(WKEY[31:28]) [0]REFSEL [1]TST_CLR [7:4]DBGSEL
 //   0x08 GSTAT   RO  live status
-//   0x0C ENLO    RW  ch0..7 coded enables (nibbles)
+//   0x0C ENLO    RW  ch0..7 coded enables (nibbles; per-ch reset nibble =
+//                   EN_RST[i] - Route B gated-clock born-off default)
 //   0x10 ENHI    RW  ch8..15 coded enables
 //   0x14 ERRSTAT W1C per-ch alarm
 //   0x18 SRCSTAT W1C [2i]=fail [2i+1]=dead
-//   0x1C FUSTAT  W1C fault classes
+//   0x1C FUSTAT  W1C fault classes ([10] NEVER_ARMED scalar)
 //   0x20 FUSRC0  W1C ch0..7  {psc,cfgpar,cmp,cnt}
 //   0x24 FUSRC1  W1C ch8..15
 //   0x28 FORCE   RW+key(WKEY[31:28])
@@ -29,24 +30,26 @@
 //   0x34 STA_PAR W1C/R register parity status (standard layout):
 //     [0]   PAR_FAULT level (W1C clears ONLY the selftest latch)
 //     [1]   PAR_FAULT_N (RO inverted rail; idle readback 0x2)
-//     [14:2] PERR12..PERR0 (W1C): bit = 2 + group (13 groups, below)
+//     [15:2] PERR13..PERR0 (W1C): bit = 2 + group (14 groups, below)
 //   0x38 CFG_REGST W+key register parity selftest control (reads 0):
 //     [3:0]  key, must be 4'b1010 (house key - NOT the WKEY space), else
 //            the whole write is rejected (+ REG_PROT like any keyed
 //            register violation)
 //     [4]    REG_SELFTEST pulse: parity injection into the REGSEL selected
-//            group (0..12; group 11 has no wrap target - silently ignored)
+//            group (0..13; group 11 has no wrap target - silently ignored)
 //     [5]    PAR_SELFTEST pulse: sets ONLY the selftest latch
 //            ("fault without a source" ESM signature)
-//     [12:8] REGSEL (cmm extension of the house [11:8]: cmm has 29 parity
-//            groups, one bit wider; 0..12 = mbus groups below, 16+i =
+//     [12:8] REGSEL (cmm extension of the house [11:8]: cmm has 30 parity
+//            groups, one bit wider; 0..13 = mbus groups below, 16+i =
 //            ref-domain channel i shadow wrap)
+//   0x3C ARMED   RO  per-ch first-edge armed flags (bit i; 0 = no edge
+//                   since reset/EN-off/TST_CLR; NEVER_ARMED diagnosis)
 //   0x40+12*i CH space RW+key(WKEY[31:28]): LO/HI/DEAD
 //
 // REGISTER PARITY (FuSa, house standard): every SW-visible register is a
 // reg_wrap instance (storage + even parity + selftest_key injection + own
 // sticky flt with inverted duplicate) - the check lives with the storage.
-// STA_PAR PERR group = bit - 2 (13 groups):
+// STA_PAR PERR group = bit - 2 (14 groups):
 //     0 ENLO   1 ENHI   2 GCTRL({dbgsel,refsel})   3 FORCE
 //     4 CLO (all ch WIN_LO)  5 CHI (all WIN_HI)     6 CDEAD (all N_DEAD)
 //     7 ERRSTAT image  8 SRCSTAT image  9 FUSRC image  10 FUSTAT image
@@ -54,6 +57,7 @@
 //       window, sticky; no injection target)
 //    12 CMD wrap (W=1: command in-flight parity sticky body; its own W1C
 //       bit is a wrap rewrite that recomputes the parity)
+//    13 ARMED image (follows wr=1, self-restoring like 7..10)
 //   clk_ref domain: one 41-bit config shadow wrap per channel
 //   ({en,force,ndead,winhi,winlo}); its flt is reported per-channel as
 //   FUSRC bit [4i+2] (CFGpar) and 2FF-synced into the FUSRC image.
@@ -86,7 +90,7 @@
 //     ref clock dead / window machinery hung). Dual-rail counter.
 //   * FUSTAT[7] WR_DROPPED: write dropped because the handshake was busy.
 //   cfg_hang/_n dual-rail event = OR of the three -> ESM (own group,
-//   separate from cmm_err / cmm_fu / reg_par_fault).
+//   separate from esm_err / esm_fault / reg_par_fault).
 //   Self-test: FORCE[16] masks the ack (CFG_HANG must fire), FORCE[17]
 //   freezes the window-toggle sync (REF_STALE must fire).
 //
@@ -98,6 +102,9 @@ module cmm_regfile #(
     parameter int  N_DUT          = 16,
     parameter int  CNT_W          = 12,
     parameter logic [3:0]  WKEY   = 4'h5,
+    parameter logic [63:0] EN_RST = {16{4'hF}}, // per-ch EN nibble reset
+                                               // (nibble i = ch i, F/0000 only;
+                                               //   nibbles >= N_DUT ignored)
     parameter logic [CNT_W-1:0] WIN_LO_RST = 12'd1621,
     parameter logic [CNT_W-1:0] WIN_HI_RST = 12'd1792,
     parameter logic [CNT_W-1:0] NDEAD_RST  = 12'd4095,
@@ -131,7 +138,10 @@ module cmm_regfile #(
     // ---- static config (mbus domain, quasi-static) -------------------------
     output logic                  cfg_refsel,
     output logic [3:0]            dbgsel,
-    output logic                  reg_prot_lvl,  // -> cmm_fu (synced in top)
+    output logic                  reg_prot_lvl,  // -> esm_fault (synced in top)
+    output logic                  iflt_lvl,      // 在途命令奇偶事件 (PERR11
+                                                  // lane + PERR12 cmd sticky)
+                                                  // -> esm_fault (synced in top)
 
     // ---- action pulses -> clk_ref domain -----------------------------------
     output logic                  tst_clr,
@@ -143,6 +153,7 @@ module cmm_regfile #(
     output logic                  clr_fuwin,
     output logic                  clr_fuhierr,
     output logic                  clr_fufsm,
+    output logic                  clr_neva,      // FUSTAT[10] NEVER_ARMED W1C
 
     // ---- test injection (mbus levels; top syncs into clk_ref) --------------
     output logic                  inj_cnt,
@@ -152,8 +163,9 @@ module cmm_regfile #(
     // ---- status <- monitor (clk_ref domain) --------------------------------
     input  logic [N_DUT-1:0]      sts_fail,
     input  logic [N_DUT-1:0]      sts_dead,
+    input  logic [N_DUT-1:0]      armed,         // per-ch first-edge armed
     input  logic [3*N_DUT-1:0]    fu_mon,        // {psc,cmp,cnt} per ch
-    input  logic [5:0]            fu_bits,       // {fsm,hierr,psc,win,cmp,cnt} any
+    input  logic [6:0]            fu_bits,       // {neva,fsm,hierr,psc,win,cmp,cnt} any
     input  logic [2:0]            fsm_state,
     input  logic                  active,
     input  logic                  alarm_any,
@@ -191,7 +203,13 @@ module cmm_regfile #(
     localparam logic [7:0] OFF_DBG1    = 8'h30;   // RO selected-ch edgecnt/win_cnt
     localparam logic [7:0] OFF_STAPAR  = 8'h34;   // W1C/R parity+protection status (3rd-last)
     localparam logic [7:0] OFF_REGST   = 8'h38;   // keyed 1010: parity self-test (2nd-last)
+    localparam logic [7:0] OFF_ARMED   = 8'h3C;   // RO per-ch armed flags
     localparam logic [7:0] OFF_CHBASE  = 8'h40;   // +12*i: LO/HI/DEAD (keyed)
+
+    localparam logic [31:0] ENLO_RST = EN_RST[31:0];  // ch0..7 nibbles
+                                                      // (nibbles >= N_DUT stuck,
+                                                      //  read back masked 0)
+    localparam logic [31:0] ENHI_RST = EN_RST[63:32]; // ch8..15 nibbles
 
     localparam int HCW = $clog2(HANG_TO+1);        // hang watchdog width
     localparam int WCW = $clog2(WIN_ALIVE_MAX+1);  // stale watchdog width
@@ -243,6 +261,7 @@ module cmm_regfile #(
         logic             clr_fuwin;
         logic             clr_fuhierr;
         logic             clr_fufsm;
+        logic             clr_neva;
     } rf_reg_t;
 
     localparam rf_reg_t RF_REG_RST = '{default: '0};
@@ -321,7 +340,8 @@ module cmm_regfile #(
     //=========================================================================
     logic wr_id_ro;
     assign wr_id_ro = wr_ok && ((off == OFF_ID) || (off == OFF_GSTAT)
-                                || (off == OFF_DBG0) || (off == OFF_DBG1));
+                                || (off == OFF_DBG0) || (off == OFF_DBG1)
+                                || (off == OFF_ARMED));
     logic wr_known;
     assign wr_known = wr_ok && ((off == OFF_GCTRL) || (off == OFF_ENLO)
                                 || (off == OFF_ENHI) || (off == OFF_ERRSTAT)
@@ -413,7 +433,7 @@ module cmm_regfile #(
     logic parst_ev;
     assign parst_ev = regst_wr && wdata[5];
     logic regst_st;
-    assign regst_st = regst_wr && wdata[4] && (regsel <= 5'd12);
+    assign regst_st = regst_wr && wdata[4] && (regsel <= 5'd13);
 
     logic hang_fire, stale_fire;                       // watchdogs below
 
@@ -539,10 +559,10 @@ module cmm_regfile #(
     // status sync first stage (s1) via cell wraps; the second stage IS the
     // image reg_wrap. gstat is read directly (no image) -> full 2FF chain.
     //=========================================================================
-    logic [N_DUT-1:0]      fail_s1, dead_s1;
+    logic [N_DUT-1:0]      fail_s1, dead_s1, armed_s1;
     logic [3*N_DUT-1:0]    fumon_s1;
     logic [N_DUT-1:0]      cfgpar_s1;
-    logic [5:0]            fubits_s1;
+    logic [6:0]            fubits_s1;
     logic [6:0]            gstat_s2;
     logic [N_DUT-1:0]      cfgpar_flt_r;          // ref-domain flt vector
 
@@ -558,6 +578,12 @@ module cmm_regfile #(
         .d   (sts_dead ),
         .q   (dead_s1  )
     );
+    sync_dff #(.WIDTH(N_DUT))   u_armed_sync (
+        .clk (mbus_clk ),
+        .rstn(mbus_rstn),
+        .d   (armed    ),
+        .q   (armed_s1 )
+    );
     sync_dff #(.WIDTH(3*N_DUT)) u_fumon_sync (
         .clk (mbus_clk ),
         .rstn(mbus_rstn),
@@ -570,7 +596,7 @@ module cmm_regfile #(
         .d   (cfgpar_flt_r),
         .q   (cfgpar_s1   )
     );
-    sync_dff #(.WIDTH(6))       u_fubits_sync (
+    sync_dff #(.WIDTH(7))       u_fubits_sync (
         .clk (mbus_clk ),
         .rstn(mbus_rstn),
         .d   (fu_bits  ),
@@ -603,13 +629,13 @@ module cmm_regfile #(
     //=========================================================================
     // reg_wrap instances (mbus domain). PERR group index = STA_PAR bit - 2.
     //=========================================================================
-    logic [12:0] perr_w;   // group flt vector (0..10, 12); group 11 = lst_q[5]
+    logic [13:0] perr_w;   // group flt vector (0..10, 12, 13); group 11 = lst_q[5]
     logic        cmd_r;    // PERR12 cmd sticky body (cmd wrap readback)
     assign perr_w[11] = 1'b0;   // group 11 is a latch lane, not a wrap
 
     logic [4:0]  gctrl_r;
     logic [191:0] clo_r, chi_r, cdead_r;
-    logic [31:0] errimg_r, srcimg_r, fustat_img_r;
+    logic [31:0] errimg_r, srcimg_r, fustat_img_r, armedimg_r;
     logic [63:0] fusrcimg_r;
 
     // per-register-store strobes (mbus domain): forwarded config registers
@@ -647,8 +673,8 @@ module cmm_regfile #(
     end
 
     reg_wrap #(
-        .W    (32           ),
-        .RESET(32'hFFFF_FFFF)
+        .W    (32      ),
+        .RESET(ENLO_RST)
     ) u_enlo (
         .clk         (mbus_clk                    ),
         .rst_n       (mbus_rstn                   ),
@@ -661,8 +687,8 @@ module cmm_regfile #(
     );
 
     reg_wrap #(
-        .W    (32           ),
-        .RESET(32'hFFFF_FFFF)
+        .W    (32      ),
+        .RESET(ENHI_RST)
     ) u_enhi (
         .clk         (mbus_clk                    ),
         .rst_n       (mbus_rstn                   ),
@@ -792,12 +818,28 @@ module cmm_regfile #(
     ) u_fustatimg (
         .clk         (mbus_clk                     ),
         .rst_n       (mbus_rstn                    ),
-        .wdata       ({26'b0, fubits_s1}           ),
+        .wdata       ({25'b0, fubits_s1}           ),
         .wr          (1'b1                         ),
         .rdata       (fustat_img_r                 ),
         .selftest_key(regst_st && (regsel == 5'd10)),
         .flt         (perr_w[10]                   ),
         .flt_w1c     (stapar_w1c && wdata[12]      )
+    );
+
+    // ARMED image (follows wr=1, self-restoring): per-channel first-edge
+    // armed flags, sync_dff first stage + this wrap as the second stage
+    reg_wrap #(
+        .W    (32   ),
+        .RESET(32'b0)
+    ) u_armedimg (
+        .clk         (mbus_clk                     ),
+        .rst_n       (mbus_rstn                    ),
+        .wdata       ({{(32-N_DUT){1'b0}}, armed_s1}),
+        .wr          (1'b1                         ),
+        .rdata       (armedimg_r                   ),
+        .selftest_key(regst_st && (regsel == 5'd13)),
+        .flt         (perr_w[13]                   ),
+        .flt_w1c     (stapar_w1c && wdata[15]      )
     );
 
     // command in-flight parity sticky body (PERR12): par_bad sets, its own
@@ -818,9 +860,16 @@ module cmm_regfile #(
 
     //=========================================================================
     // PERR aggregation + dual-rail ESM events (mbus domain)
+    //   2026-11-13 三轨统一: reg_par_fault 只含寄存器面 (存储 wrap flt +
+    //   PAR_SELFTEST 自测锁存); 在途命令奇偶事件 (cmd_r / PERR11 lane)
+    //   走 iflt_lvl -> esm_fault 轨 (监视器自身故障)
     //=========================================================================
-    assign reg_par_fault   = (|perr_w) || cmd_r || r_mb.lst_q[5] || r_mb.lst_q[4];
+    assign reg_par_fault   = (|perr_w) || r_mb.lst_q[4];
     assign reg_par_fault_n = ~reg_par_fault;
+
+    // 在途命令奇偶事件电平 (粘滞): PERR12 cmd sticky 本体 + PERR11 lane
+    // (2026-11-13 全仓三轨统一: 自 reg_par_fault 剥离, 归 esm_fault 轨)
+    assign iflt_lvl = cmd_r | r_mb.lst_q[5];
     assign cfg_hang        = |r_mb.lst_q[3:1];   // dropped | hang | stale
     assign cfg_hang_n      = ~cfg_hang;
 
@@ -875,19 +924,23 @@ module cmm_regfile #(
                 OFF_ENHI:    rdata_mux = enhi_rd;
                 OFF_ERRSTAT: rdata_mux = errimg_r;
                 OFF_SRCSTAT: rdata_mux = srcimg_r;
-                OFF_FUSTAT:  rdata_mux = {22'b0, r_mb.lst_q[3], r_mb.lst_q[2],
-                                          r_mb.lst_q[1], r_mb.lst_q[0],
-                                          fustat_img_r[5:0]};
+                // [9:6] = local lst (REG_PROT/WR_DROP/HANG/STALE, unchanged),
+                // [10] = NEVER_ARMED (image MSB lifted above the lst nibble),
+                // [5:0] = per-class fu image (unchanged)
+                OFF_FUSTAT:  rdata_mux = {21'b0, fustat_img_r[6],
+                                          r_mb.lst_q[3:0], fustat_img_r[5:0]};
                 OFF_FUSRC0:  rdata_mux = fusrcimg_r[31:0];
                 OFF_FUSRC1:  rdata_mux = fusrcimg_r[63:32];
                 OFF_FORCE:   rdata_mux = force_r;
-                OFF_STAPAR:  rdata_mux = {17'b0,
+                OFF_STAPAR:  rdata_mux = {16'b0,
+                                          perr_w[13],          // [15] PERR13 ARMED img
                                           perr_w[12] | cmd_r,  // [14] PERR12 CMD
                                           r_mb.lst_q[5],       // [13] PERR11 INFLIGHT
                                           perr_w[10:0],        // [12:2] PERR10..0
                                           reg_par_fault_n,     // [1]
                                           reg_par_fault};      // [0]
                 OFF_REGST:   rdata_mux = 32'h0;
+                OFF_ARMED:   rdata_mux = armedimg_r;
                 OFF_DBG0:    rdata_mux = {4'b0, dbg_ne_i, 4'b0, dbg_sh_i};
                 OFF_DBG1:    rdata_mux = {win_cnt, 4'b0, dbg_ec_i};
                 default:     rdata_mux = 32'h0;
@@ -1001,6 +1054,7 @@ module cmm_regfile #(
         v_rf.clr_fuwin   = q_fustat && r_mb.wdata_q[2];
         v_rf.clr_fuhierr = q_fustat && r_mb.wdata_q[4];
         v_rf.clr_fufsm   = q_fustat && r_mb.wdata_q[5];
+        v_rf.clr_neva    = q_fustat && r_mb.wdata_q[10];
         for (integer i = 0; i < N_DUT; i = i + 1) begin
             v_rf.clr_fail[i]  = (q_errst && r_mb.wdata_q[i])
                                 || (q_srcst && r_mb.wdata_q[2*i]);
@@ -1040,6 +1094,7 @@ module cmm_regfile #(
     assign clr_fuwin   = r_rf.clr_fuwin;
     assign clr_fuhierr = r_rf.clr_fuhierr;
     assign clr_fufsm   = r_rf.clr_fufsm;
+    assign clr_neva    = r_rf.clr_neva;
 
     //=========================================================================
     // per-channel config shadow wraps (clk_ref domain): {en,force,ndead,
@@ -1050,6 +1105,7 @@ module cmm_regfile #(
         for (genvar i = 0; i < N_DUT; i = i + 1) begin : g_cwrap
             localparam [4:0] ST_SEL = 16 + i;      // REGSEL of this shadow wrap
             localparam int   NB     = 4*(i%8);     // nibble base in the EN word
+            localparam logic [3:0] EN_NIB = EN_RST[4*i +: 4];  // Route B reset
 
             logic [40:0] cw_rd, cw_wd;
             logic        cw_wr, cw_st;
@@ -1102,8 +1158,8 @@ module cmm_regfile #(
                             || (q_fusrc1 && (i >= 8) && r_mb.wdata_q[NB+2]);
 
             reg_wrap #(
-                .W    (41                                             ),
-                .RESET({4'hF, 1'b0, NDEAD_RST, WIN_HI_RST, WIN_LO_RST})
+                .W    (41                                              ),
+                .RESET({EN_NIB, 1'b0, NDEAD_RST, WIN_HI_RST, WIN_LO_RST})
             ) u_cwrap (
                 .clk         (clk_ref        ),
                 .rst_n       (rst_ref_n      ),

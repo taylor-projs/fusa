@@ -163,7 +163,7 @@ module tb_hang_prot_gen_wrap;
     logic [1:0]  s_bresp;
 
     // ---- ESM / recovery status ----------------------------------------------
-    logic err_event, err_event_n, fu_fault, fu_fault_n;
+    logic esm_err, esm_err_n, esm_fault, esm_fault_n;
     logic reg_par_fault, reg_par_fault_n;
     logic skid_fault, skid_fault_n;
     logic recover_active, recover_done, recover_active_n, recover_done_n;
@@ -272,10 +272,10 @@ module tb_hang_prot_gen_wrap;
         .s_bid    (s_bid    ),
         .s_bresp  (s_bresp  ),
 
-        .err_event       (err_event       ),
-        .err_event_n     (err_event_n     ),
-        .fu_fault        (fu_fault        ),
-        .fu_fault_n      (fu_fault_n      ),
+        .esm_err       (esm_err       ),
+        .esm_err_n     (esm_err_n     ),
+        .esm_fault        (esm_fault        ),
+        .esm_fault_n      (esm_fault_n      ),
         .reg_par_fault   (reg_par_fault   ),
         .reg_par_fault_n (reg_par_fault_n ),
         .skid_fault      (skid_fault      ),
@@ -560,7 +560,7 @@ module tb_hang_prot_gen_wrap;
         if ($test$plusargs("hpdbg")) begin
             $monitor("[%0t] mode=%b rreq=%b err=%b room=%b rotd=%0d wotd=%0d occ=%0d/%0d/%0d marv=%b marr=%b sarv=%b sarr=%b srv=%b srr=%b mrv=%b mrr=%b srid=%h",
                      $time,
-                     u_dut.u_hang_prot_recover.r.mode_r, u_dut.recover_req, err_event,
+                     u_dut.u_hang_prot_recover.r.mode_r, u_dut.recover_req, esm_err,
                      u_dut.u_hang_prot_recover.ar_room, u_dut.rd_otd_mon, u_dut.wr_otd_mon,
                      u_dut.u_hang_prot_recover.r.ar_occ[0], u_dut.u_hang_prot_recover.r.ar_occ[1],
                      u_dut.u_hang_prot_recover.r.ar_occ[2],
@@ -582,7 +582,7 @@ module tb_hang_prot_gen_wrap;
                 $display("[%0t] CNT ena=%b thrR=%0d cntR=%0d r2rto=%b toclr=%b cfgwr=%b key=%h err=%b",
                          $time, u_dut.ena_rd, u_dut.thr_rd_r2r,
                          u_dut.u_hang_prot_core.g_m[0].r.rd_cnt_r, u_dut.u_hang_prot_core.g_m[0].rd_r2r_to,
-                         u_dut.to_clear, u_dut.cfg_wr, u_dut.cfg_key, err_event);
+                         u_dut.to_clear, u_dut.cfg_wr, u_dut.cfg_key, esm_err);
             end
         end
     end
@@ -1112,10 +1112,10 @@ module tb_hang_prot_gen_wrap;
         if (recover_done)                cov_recover_done = cov_recover_done + 1;
         if (recover_active && m_rvalid && m_rready) cov_dummy_r = cov_dummy_r + 1;
         if (recover_active && m_bvalid && m_bready) cov_dummy_b = cov_dummy_b + 1;
-        if (err_event && !err_prev)     cov_err_rise = cov_err_rise + 1;
+        if (esm_err && !err_prev)     cov_err_rise = cov_err_rise + 1;
         // late R from the slave sunk during recover (not forwarded)
         if (recover_active && s_rvalid && s_rready) cov_late_r_sunk = cov_late_r_sunk + 1;
-        err_prev <= err_event;
+        err_prev <= esm_err;
     end
     always @(posedge aclk) cov_recover_enter_hold <= recover_active;
 
@@ -1143,7 +1143,7 @@ module tb_hang_prot_gen_wrap;
     initial begin : log_events
         forever begin
             @(posedge aclk);
-            if (err_event && !err_prev) $display("[%0t] ESM: err_event RISE", $time);
+            if (esm_err && !err_prev) $display("[%0t] ESM: esm_err RISE", $time);
             if (recover_done)           $display("[%0t] RECOVER: done (path drained)", $time);
         end
     end
@@ -1309,7 +1309,7 @@ module tb_hang_prot_gen_wrap;
                 m_read(resp, data);
             end
             begin : p8_seq
-                // err_event rises so far: P4=1, P5=2, P6=3, P7=4, P8=5
+                // esm_err rises so far: P4=1, P5=2, P6=3, P7=4, P8=5
                 wait (cov_err_rise >= 5);
                 wait (recover_active);        // recover entered, dummy R in
                                               // flight: release the slave NOW
@@ -1329,7 +1329,7 @@ module tb_hang_prot_gen_wrap;
 
         // ---- P9: self-tests ---------------------------------------------------
         $display("\n--- P9: self-tests ---");
-        mb_wr_wait(8'h10, 32'h0000_02A0);      // SELFTEST (err_event chain)
+        mb_wr_wait(8'h10, 32'h0000_02A0);      // SELFTEST (esm_err chain)
         mb_rd(8'h00, rd_val);
         if (rd_val[1:0] !== 2'b11) begin $display("ERR: SELFTEST did not set status"); errors++; end
         else $display("SELFTEST: OK");
@@ -1339,7 +1339,7 @@ module tb_hang_prot_gen_wrap;
         mb_wr_wait(8'h04, 32'h3);
         mb_wr_wait(8'h10, 32'h0000_04A0);      // FU_SELFTEST
         mb_rd(8'h1C, rd_val);
-        if (rd_val[0] !== 1'b1) begin $display("ERR: FU_SELFTEST did not set fu_fault"); errors++; end
+        if (rd_val[0] !== 1'b1) begin $display("ERR: FU_SELFTEST did not set esm_fault"); errors++; end
         else $display("FU_SELFTEST: OK");
         mb_wr_wait(8'h1C, 32'h1);
         mb_wr_wait(8'h28, 32'h2A);            // CFG_REGST PAR_SELFTEST (house key)
@@ -1453,12 +1453,12 @@ module tb_hang_prot_gen_wrap;
         // then s_force fires with the slots already FREE (a FILL/READY slot
         // can never reach the s_force window - it still carries wr_otd).
         $display("\n--- P14: force_clear with slots READY+FILL ---");
-        // err_event must be LOW at entry: recover_req fires on its RISING edge,
+        // esm_err must be LOW at entry: recover_req fires on its RISING edge,
         // and any stale status residue from earlier phases would mask it.
         mb_wr_wait(8'h00, 32'h3);
         mb_wr_wait(8'h04, 32'h3);
         repeat (5) @(negedge aclk);
-        if (err_event !== 1'b0) begin $display("ERR: P14 err_event stuck high"); errors++; end
+        if (esm_err !== 1'b0) begin $display("ERR: P14 esm_err stuck high"); errors++; end
         done_snap   = cov_recover_done;
         slv_aw_hang = 1;
         slv_r_hang  = 1;
@@ -1581,7 +1581,7 @@ module tb_hang_prot_gen_wrap;
         mb_wr_wait(8'h00, 32'h3);               // same fresh-edge guarantee as P14
         mb_wr_wait(8'h04, 32'h3);
         repeat (5) @(negedge aclk);
-        if (err_event !== 1'b0) begin $display("ERR: P15 err_event stuck high"); errors++; end
+        if (esm_err !== 1'b0) begin $display("ERR: P15 esm_err stuck high"); errors++; end
         done_snap   = cov_recover_done;
         slv_aw_hang = 1;
         slv_r_hang  = 1;
@@ -1687,7 +1687,7 @@ module tb_hang_prot_gen_wrap;
         // rbeat_cnt (recover L523-524) only advances on non-last R beats, so
         // a len=3 read walks it 0->1->2->3 through the dummy engine.
         $display("\n--- P16: multi-beat read recover (rbeat_cnt walk) ---");
-        mb_wr_wait(8'h00, 32'h3);           // clean slate: fresh err_event edge
+        mb_wr_wait(8'h00, 32'h3);           // clean slate: fresh esm_err edge
         mb_wr_wait(8'h04, 32'h3);
         repeat (5) @(negedge aclk);
         done_snap = cov_recover_done;
@@ -1729,7 +1729,7 @@ module tb_hang_prot_gen_wrap;
         release u_dut.u_hang_prot_core.r.ena_q;
         repeat (2) @(posedge aclk);
         mb_wr_wait(8'h10, 32'h0000_00AF);   // re-enable monitor (healed OFF)
-        if (!fu_fault) begin $display("ERR: P17a fu_fault not set by ENA SEU"); errors++; end
+        if (!esm_fault) begin $display("ERR: P17a esm_fault not set by ENA SEU"); errors++; end
         // (b) threshold duplicate rails
         force u_dut.u_hang_prot_core.r.thr_a_qn = u_dut.u_hang_prot_core.r.thr_a_q;    // break complement
         repeat (3) @(posedge aclk);                          // thr_a_fault live
@@ -1745,9 +1745,9 @@ module tb_hang_prot_gen_wrap;
         mb_rd(8'h20, rd_val);               // SEL8 = fu_src
         if (rd_val[2:0] !== 3'b111) begin $display("ERR: P17b fu_src=%h (exp 7: ENA+THRA+THRR)", rd_val); errors++; end
         else $display("P17a/b: ENA heal arms + thr fallback, fu_src=111");
-        mb_wr_wait(8'h1C, 32'h1);           // W1C fu_fault + fu_src
+        mb_wr_wait(8'h1C, 32'h1);           // W1C esm_fault + fu_src
         repeat (2) @(posedge aclk);
-        if (fu_fault) begin $display("ERR: P17b fu_fault W1C failed"); errors++; end
+        if (esm_fault) begin $display("ERR: P17b esm_fault W1C failed"); errors++; end
         mb_rd(8'h20, rd_val);
         if (rd_val !== 32'h0) begin $display("ERR: P17b fu_src not cleared (%h)", rd_val); errors++; end
 
@@ -1756,10 +1756,10 @@ module tb_hang_prot_gen_wrap;
         done_snap  = cov_recover_done;
         enter_snap = cov_recover_enter;
         @(negedge aclk);
-        force u_dut.r.err_event_q_n = u_dut.r.err_event_q;  // rails equal = mismatch
+        force u_dut.r.esm_err_q_n = u_dut.r.esm_err_q;  // rails equal = mismatch
         @(posedge aclk);                                 // edge_dis sampled
         @(negedge aclk);
-        release u_dut.r.err_event_q_n;                     // edge flop self-heals
+        release u_dut.r.esm_err_q_n;                     // edge flop self-heals
         repeat (3) @(posedge aclk);
         if (cov_recover_enter <= enter_snap) begin $display("ERR: P17c no forced recover entry"); errors++; end
         wdt2 = 0;
@@ -1802,7 +1802,7 @@ module tb_hang_prot_gen_wrap;
         // (e2) AR FIFO head-entry parity: park a hanging read (id 4'h2 ->
         //      class 0, non-mcore), withhold rready so no pop moves the head,
         //      corrupt the head entry parity -> ar_ent_err
-        mb_wr_wait(8'h00, 32'h3);           // fresh err_event edge
+        mb_wr_wait(8'h00, 32'h3);           // fresh esm_err edge
         mb_wr_wait(8'h04, 32'h3);
         repeat (5) @(negedge aclk);
         done_snap  = cov_recover_done;
@@ -2231,7 +2231,7 @@ module tb_hang_prot_gen_wrap;
         repeat (12) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[0] !== 1'b1) begin
-            $display("[%0t] ERR: P20a ena SEU did not raise fu_fault (%h)",
+            $display("[%0t] ERR: P20a ena SEU did not raise esm_fault (%h)",
                      $time, rd_val);
             errors++;
         end
@@ -2242,11 +2242,11 @@ module tb_hang_prot_gen_wrap;
             errors++;
         end
         mb_wr_wait(16'h0010, 32'h0000_00AF);    // keyed clean write heals
-        mb_wr_wait(16'h0020, 32'h3F);           // W1C fu_src + fu_fault
+        mb_wr_wait(16'h0020, 32'h3F);           // W1C fu_src + esm_fault
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[0] !== 1'b0) begin
-            $display("[%0t] ERR: P20a fu_fault stuck (%h)", $time, rd_val);
+            $display("[%0t] ERR: P20a esm_fault stuck (%h)", $time, rd_val);
             errors++;
         end
 
@@ -2405,7 +2405,7 @@ module tb_hang_prot_gen_wrap;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
         release u_dut.u_hang_prot_core.g_m[0].r.rd_a_st_n;
 `endif
-        wait_recover_entry();                  // st_rd_a re-sets -> err_event
+        wait_recover_entry();                  // st_rd_a re-sets -> esm_err
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
@@ -2444,7 +2444,7 @@ module tb_hang_prot_gen_wrap;
                      rd_val[5:3]);
             errors++;
         end
-        mb_wr_wait(16'h0020, 32'h3F);          // W1C fu_src + fu_fault
+        mb_wr_wait(16'h0020, 32'h3F);          // W1C fu_src + esm_fault
 
         // (e) reg_wrap sticky-rail FI (dup_err self-heals to SET) -------------
 `ifdef IVERILOG
@@ -3382,7 +3382,7 @@ module tb_hang_prot_gen_wrap;
         if (errors == 0) $display("TB_GEN PASS: all scenario checks clean (P1..P31)");
         else             $display("TB_GEN FAIL: %0d errors", errors);
         $display("--- coverage bins (count > 0 = hit) ---");
-        $display("  err_event rises     : %0d", cov_err_rise);
+        $display("  esm_err rises     : %0d", cov_err_rise);
         $display("  recover entered/done: %0d / %0d", cov_recover_enter, cov_recover_done);
         $display("  dummy R / dummy B   : %0d / %0d", cov_dummy_r, cov_dummy_b);
         $display("  late slave R sunk   : %0d", cov_late_r_sunk);

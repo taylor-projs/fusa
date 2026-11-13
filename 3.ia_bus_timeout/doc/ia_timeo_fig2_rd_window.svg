@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .val   { font-size: 10px; fill: #0F172A; }
+      .cyc   { font-size: 9.5px; fill: #94A3B8; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .sig   { font-size: 10.5px; font-weight: bold; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="560" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">读流 (RD) 监控窗口 — 正常事务与地址相挂死 (§3.2)</text>
+
+  <!-- ======== 面板 A: 正常读 ======== -->
+  <rect x="16" y="48" width="1048" height="252" rx="8" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="32" y="72" class="bt">A &#183; 正常读: AR 挂 5 拍后于 T5 握手, R 三拍 T7..T9 回完</text>
+
+  <!-- 时拍网格 -->
+  <line x1="170" y1="96" x2="170" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="240" y1="96" x2="240" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="310" y1="96" x2="310" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="380" y1="96" x2="380" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="450" y1="96" x2="450" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="520" y1="96" x2="520" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="590" y1="96" x2="590" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="660" y1="96" x2="660" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="730" y1="96" x2="730" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="800" y1="96" x2="800" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="870" y1="96" x2="870" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="940" y1="96" x2="940" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <line x1="1010" y1="96" x2="1010" y2="250" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <text x="205" y="90" class="cyc" text-anchor="middle">T0</text>
+  <text x="275" y="90" class="cyc" text-anchor="middle">T1</text>
+  <text x="345" y="90" class="cyc" text-anchor="middle">T2</text>
+  <text x="415" y="90" class="cyc" text-anchor="middle">T3</text>
+  <text x="485" y="90" class="cyc" text-anchor="middle">T4</text>
+  <text x="555" y="90" class="cyc" text-anchor="middle">T5</text>
+  <text x="625" y="90" class="cyc" text-anchor="middle">T6</text>
+  <text x="695" y="90" class="cyc" text-anchor="middle">T7</text>
+  <text x="765" y="90" class="cyc" text-anchor="middle">T8</text>
+  <text x="835" y="90" class="cyc" text-anchor="middle">T9</text>
+  <text x="905" y="90" class="cyc" text-anchor="middle">T10</text>
+  <text x="975" y="90" class="cyc" text-anchor="middle">T11</text>
+
+  <text x="36" y="112" class="sig">ARVALID</text>
+  <path d="M170,112 L170,100 L590,100 L590,112 L1010,112" fill="none" stroke="#334155" stroke-width="1.8"/>
+  <text x="36" y="140" class="sig">ARREADY</text>
+  <path d="M170,140 L520,140 L520,128 L590,128 L590,140 L1010,140" fill="none" stroke="#334155" stroke-width="1.8"/>
+  <text x="555" y="124" class="cdc" text-anchor="middle">&#8593;握手</text>
+
+  <text x="36" y="168" class="sig">RD_CNT_A</text>
+  <line x1="170" y1="166" x2="1010" y2="166" stroke="#E2E8F0"/>
+  <text x="205" y="168" class="val" text-anchor="middle">0</text>
+  <text x="275" y="168" class="val" text-anchor="middle">1</text>
+  <text x="345" y="168" class="val" text-anchor="middle">2</text>
+  <text x="415" y="168" class="val" text-anchor="middle">3</text>
+  <text x="485" y="168" class="val" text-anchor="middle">4</text>
+  <text x="555" y="168" class="val" text-anchor="middle">4</text>
+  <text x="625" y="168" class="val" text-anchor="middle">0</text>
+
+  <text x="36" y="196" class="sig">RD_OTD</text>
+  <line x1="170" y1="194" x2="1010" y2="194" stroke="#E2E8F0"/>
+  <text x="555" y="196" class="val" text-anchor="middle">0</text>
+  <text x="625" y="196" class="val" text-anchor="middle">1</text>
+  <text x="695" y="196" class="val" text-anchor="middle">1</text>
+  <text x="765" y="196" class="val" text-anchor="middle">1</text>
+  <text x="835" y="196" class="val" text-anchor="middle">1</text>
+  <text x="905" y="196" class="val" text-anchor="middle">0</text>
+
+  <text x="36" y="224" class="sig">RVALID</text>
+  <path d="M170,224 L660,224 L660,212 L870,212 L870,224 L1010,224" fill="none" stroke="#334155" stroke-width="1.8"/>
+  <text x="835" y="238" class="cdc" text-anchor="middle">RLAST</text>
+
+  <text x="36" y="252" class="sig">RD_CNT_R</text>
+  <line x1="170" y1="250" x2="1010" y2="250" stroke="#E2E8F0"/>
+  <text x="625" y="252" class="val" text-anchor="middle">0</text>
+  <text x="695" y="252" class="val" text-anchor="middle">1</text>
+  <text x="765" y="252" class="val" text-anchor="middle">0</text>
+
+  <!-- ======== 面板 B: 地址相挂死 ======== -->
+  <rect x="16" y="316" width="1048" height="200" rx="8" fill="#FEF2F2" stroke="#FECACA"/>
+  <text x="32" y="340" class="bt">B &#183; 地址相挂死 (thr=8 示意): ARREADY 恒 0, cnt 打满 thr-1 触发</text>
+
+  <line x1="170" y1="352" x2="170" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="240" y1="352" x2="240" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="310" y1="352" x2="310" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="380" y1="352" x2="380" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="450" y1="352" x2="450" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="520" y1="352" x2="520" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="590" y1="352" x2="590" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="660" y1="352" x2="660" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="730" y1="352" x2="730" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="800" y1="352" x2="800" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="870" y1="352" x2="870" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="940" y1="352" x2="940" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <line x1="1010" y1="352" x2="1010" y2="508" stroke="#FECACA" stroke-dasharray="3 3"/>
+  <text x="205" y="358" class="cyc" text-anchor="middle">T0</text>
+  <text x="275" y="358" class="cyc" text-anchor="middle">T1</text>
+  <text x="345" y="358" class="cyc" text-anchor="middle">T2</text>
+  <text x="415" y="358" class="cyc" text-anchor="middle">T3</text>
+  <text x="485" y="358" class="cyc" text-anchor="middle">T4</text>
+  <text x="555" y="358" class="cyc" text-anchor="middle">T5</text>
+  <text x="625" y="358" class="cyc" text-anchor="middle">T6</text>
+  <text x="695" y="358" class="cyc" text-anchor="middle">T7</text>
+  <text x="765" y="358" class="cyc" text-anchor="middle">T8</text>
+  <text x="835" y="358" class="cyc" text-anchor="middle">T9</text>
+
+  <text x="36" y="380" class="sig">ARVALID</text>
+  <path d="M170,380 L170,368 L1010,368 L1010,380" fill="none" stroke="#334155" stroke-width="1.8"/>
+  <text x="36" y="408" class="sig">ARREADY</text>
+  <line x1="170" y1="408" x2="1010" y2="408" stroke="#334155" stroke-width="1.8"/>
+
+  <text x="36" y="436" class="sig">RD_CNT_A</text>
+  <line x1="170" y1="434" x2="1010" y2="434" stroke="#FECACA"/>
+  <text x="205" y="436" class="val" text-anchor="middle">0</text>
+  <text x="275" y="436" class="val" text-anchor="middle">1</text>
+  <text x="345" y="436" class="val" text-anchor="middle">2</text>
+  <text x="415" y="436" class="val" text-anchor="middle">3</text>
+  <text x="485" y="436" class="val" text-anchor="middle">4</text>
+  <text x="555" y="436" class="val" text-anchor="middle">5</text>
+  <text x="625" y="436" class="val" text-anchor="middle">6</text>
+  <text x="695" y="436" class="val" text-anchor="middle">7</text>
+  <text x="695" y="452" class="cdc" text-anchor="middle">cnt &#8805; thr-1 &#8594; 触发</text>
+
+  <text x="36" y="480" class="sig">RD_A_ST</text>
+  <path d="M170,480 L660,480 L660,468 L1010,468" fill="none" stroke="#DC2626" stroke-width="1.8"/>
+  <text x="830" y="464" class="cdc" text-anchor="middle">err_event=1 / err_event_n=0 &#8594; ESM (保持至 W1C)</text>
+
+  <text x="28" y="540" class="txt">边界拍守卫: cnt==thr-1 的当拍若恰逢握手 &#8594; 进展优先, 本窗口不报 (握手赢过超时比较); 值列 = 当拍寄存值</text>
+</svg>

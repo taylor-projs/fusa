@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 620" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 10px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .strip { fill: #F8FAFC; stroke: #94A3B8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="620" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">esm_core 微架构 — err_g3 toggle CDC (gclk→vclk) + sr 组 + 中断/pin 扇出</text>
+
+  <!-- err_g3 跨域同步链 -->
+  <rect x="36" y="56" width="204" height="64" rx="8" fill="#EFF6FF" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="44" y="70" class="dom">gclk</text>
+  <rect x="256" y="56" width="340" height="64" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="264" y="70" class="dom">vclk</text>
+  <line x1="248" y1="56" x2="248" y2="120" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+
+  <text x="44" y="100" class="bt" font-size="11">err_g3</text>
+  <line x1="88" y1="96" x2="98" y2="96" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="100" y="80" width="60" height="32" class="box"/>
+  <text x="130" y="100" class="txt" text-anchor="middle">toggle</text>
+  <path d="M100,112 L100,120 L108,116 z" fill="#FFFFFF" stroke="#475569"/>
+  <line x1="162" y1="96" x2="278" y2="96" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <rect x="280" y="80" width="44" height="32" class="box"/>
+  <line x1="302" y1="80" x2="302" y2="112" stroke="#94A3B8"/>
+  <text x="291" y="101" class="sm" text-anchor="middle" font-size="9">D</text>
+  <text x="313" y="101" class="sm" text-anchor="middle" font-size="9">Q</text>
+  <path d="M280,112 L280,120 L288,116 z" fill="#FFFFFF" stroke="#475569"/>
+  <line x1="326" y1="96" x2="338" y2="96" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="340" y="80" width="44" height="32" class="box"/>
+  <line x1="362" y1="80" x2="362" y2="112" stroke="#94A3B8"/>
+  <text x="351" y="101" class="sm" text-anchor="middle" font-size="9">D</text>
+  <text x="373" y="101" class="sm" text-anchor="middle" font-size="9">Q</text>
+  <path d="M340,112 L340,120 L348,116 z" fill="#FFFFFF" stroke="#475569"/>
+  <line x1="386" y1="96" x2="418" y2="96" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="420" y="80" width="60" height="32" class="box"/>
+  <text x="450" y="100" class="txt" text-anchor="middle">edge</text>
+  <line x1="482" y1="96" x2="496" y2="96" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="500" y="100" class="bt" font-size="11">err_g3_sync</text>
+  <text x="256" y="136" class="sm">STAGES=2 同步链 + 边沿检出 → vclk 域单拍脉冲</text>
+
+  <!-- err_g1/err_g2 入口 -->
+  <rect x="660" y="64" width="360" height="56" rx="8" class="box"/>
+  <text x="840" y="88" class="bt" text-anchor="middle">err_g1[95:0] / err_g2[31:0]</text>
+  <text x="840" y="106" class="sub" text-anchor="middle">(vclk 域事件脉冲)</text>
+  <line x1="840" y1="120" x2="840" y2="158" stroke="#475569" stroke-width="1.5"/>
+  <line x1="220" y1="160" x2="840" y2="160" stroke="#475569" stroke-width="1.5"/>
+  <line x1="220" y1="160" x2="220" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="540" y1="160" x2="540" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="860" y1="160" x2="860" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- sr 排 -->
+  <rect x="100" y="180" width="240" height="56" rx="8" class="box"/>
+  <text x="220" y="204" class="bt" text-anchor="middle">sr1 / sr4 / sr7 (G1)</text>
+  <text x="220" y="222" class="sub" text-anchor="middle">暖保持</text>
+  <rect x="420" y="180" width="240" height="56" rx="8" class="box"/>
+  <text x="540" y="204" class="bt" text-anchor="middle">sr2 (暖清 + vec 自清)</text>
+  <text x="540" y="222" class="sub" text-anchor="middle">+ ssr2 (POR-only)</text>
+  <rect x="740" y="180" width="240" height="56" rx="8" class="box"/>
+  <text x="860" y="204" class="bt" text-anchor="middle">sr3</text>
+  <text x="860" y="222" class="sub" text-anchor="middle">暖保持</text>
+
+  <!-- 扇出布线 -->
+  <line x1="220" y1="236" x2="220" y2="318" stroke="#475569" stroke-width="1.5"/>
+  <line x1="540" y1="236" x2="540" y2="300" stroke="#475569" stroke-width="1.5"/>
+  <line x1="860" y1="236" x2="860" y2="408" stroke="#475569" stroke-width="1.5"/>
+  <line x1="220" y1="300" x2="860" y2="300" stroke="#475569" stroke-width="1.5"/>
+  <line x1="480" y1="300" x2="480" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="120" y="320" width="200" height="44" rx="6" class="strip"/>
+  <text x="220" y="346" class="bt" text-anchor="middle" font-size="12">&amp;ies_b1/4/7</text>
+  <rect x="400" y="320" width="160" height="44" rx="6" class="strip"/>
+  <text x="480" y="346" class="bt" text-anchor="middle" font-size="12">&amp;iep_b1/4/7</text>
+
+  <line x1="220" y1="364" x2="220" y2="380" stroke="#475569" stroke-width="1.5"/>
+  <line x1="145" y1="380" x2="315" y2="380" stroke="#475569" stroke-width="1.5"/>
+  <line x1="145" y1="380" x2="145" y2="418" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="315" y1="380" x2="315" y2="418" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <line x1="600" y1="300" x2="600" y2="392" stroke="#475569" stroke-width="1.5"/>
+  <line x1="365" y1="392" x2="600" y2="392" stroke="#475569" stroke-width="1.5"/>
+  <line x1="365" y1="392" x2="365" y2="418" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="608" y="340" class="sm">hi_irq (固定)</text>
+
+  <line x1="480" y1="364" x2="480" y2="408" stroke="#475569" stroke-width="1.5"/>
+  <line x1="635" y1="408" x2="860" y2="408" stroke="#475569" stroke-width="1.5"/>
+  <line x1="635" y1="408" x2="635" y2="418" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 输出框 -->
+  <rect x="60" y="420" width="170" height="44" rx="8" class="box"/>
+  <text x="145" y="438" class="bt" text-anchor="middle" font-size="12">lo_irq (~ilv)</text>
+  <text x="145" y="456" class="sub" text-anchor="middle" font-size="9.5">→ VIM</text>
+  <rect x="270" y="420" width="190" height="44" rx="8" class="box"/>
+  <text x="365" y="438" class="bt" text-anchor="middle" font-size="12">hi_irq (ilv | 固定)</text>
+  <text x="365" y="456" class="sub" text-anchor="middle" font-size="9.5">→ VIM</text>
+  <rect x="560" y="420" width="150" height="44" rx="8" class="box"/>
+  <text x="635" y="438" class="bt" text-anchor="middle" font-size="12">pin_cond</text>
+  <text x="635" y="456" class="sub" text-anchor="middle" font-size="9.5">→ nERROR FSM</text>
+
+  <!-- 底部说明条 -->
+  <rect x="44" y="496" width="476" height="56" rx="6" class="strip"/>
+  <text x="56" y="516" class="txt">向量编码器: G2 &gt; G1b1 &gt; G1b4 &gt; G1b7 (组内 prio_enc, ch0 最高)</text>
+  <text x="56" y="536" class="txt">读 IOFFHR → 组合返回当前最高 + vec_rd_pulse 清 sr2 命中位</text>
+  <rect x="536" y="496" width="524" height="56" rx="6" class="strip"/>
+  <text x="548" y="516" class="txt">LTC: 事件重装 ltcp_val; 档位 {ltcp_r[15:14], 3FFF}</text>
+  <text x="548" y="536" class="txt">nERROR FSM: pin_cond|force 拉低; rel_req &amp;&amp; ltc==0 释放 (计满前不放, 例2)</text>
+  <rect x="44" y="564" width="992" height="40" rx="6" class="strip"/>
+  <text x="56" y="588" class="txt">EKR: 0 正常 / 5 一次性释放请求 / A force (前置 nerror_in==1)</text>
+</svg>

@@ -37,7 +37,7 @@
 //                        decode = correct-1 / detect-2:
 //                          ones >= 3 -> ON, ones <= 1 -> OFF; any
 //                        deviation from a clean codeword is reported
-//                        (fu_fault) and SELF-HEALS the next cycle by
+//                        (esm_fault) and SELF-HEALS the next cycle by
 //                        writing the majority-decoded clean codeword
 //                        back. ones == 2 (2-flip) is ambiguous: value
 //                        holds, monitoring stays ON (fail-visible).
@@ -47,7 +47,7 @@
 //                        (TI SCMCNTRL key style) - random writes cannot
 //                        corrupt thresholds/enable.
 //   * threshold dupl.  : thr + inverted copy, continuous compare. On
-//                        mismatch: fu_fault AND the EFFECTIVE threshold
+//                        mismatch: esm_fault AND the EFFECTIVE threshold
 //                        falls back to the reset value (never to 0 =
 //                        never silently disables the check).
 //   * counter dupl.    : every counter stored with its inverted copy;
@@ -58,18 +58,18 @@
 //   * dual comparator  : fire condition computed twice, once from the
 //                        counter and once from the inverted copy; the
 //                        two compares OR into the fire (either healthy
-//                        copy triggers), disagreement = fu_fault.
+//                        copy triggers), disagreement = esm_fault.
 //   * status dupl.     : sticky status bits stored with inverted copies;
-//                        mismatch = fu_fault AND the bit self-heals to
+//                        mismatch = esm_fault AND the bit self-heals to
 //                        SET (a cleared-by-SEU error is re-reported).
-//   * dual-rail output : err_event / err_event_n pair for transport
+//   * dual-rail output : esm_err / esm_err_n pair for transport
 //                        fault detection at the ESM side.
-//   * fu_fault         : consolidated integrity status, sticky, W1C.
-//                        Deliberately SEPARATE from err_event: a broken
+//   * esm_fault         : consolidated integrity status, sticky, W1C.
+//                        Deliberately SEPARATE from esm_err: a broken
 //                        monitor must not be indistinguishable from a
 //                        real bus timeout. Routed to the ESM as its own
-//                        event (dual-rail fu_fault / fu_fault_n), e.g.
-//                        a different ESM group than err_event.
+//                        event (dual-rail esm_fault / esm_fault_n), e.g.
+//                        a different ESM group than esm_err.
 //   * fu_src           : sticky fault-SOURCE status so SW servicing the
 //                        ESM interrupt can see WHICH integrity check
 //                        fired: [0] enable code, [1] req2accept thresh,
@@ -77,13 +77,13 @@
 //                        CNT (counter/depth duplicate mismatch),
 //                        CMP (dual-comparator disagreement),
 //                        STAT (status duplicate mismatch). Cleared by the
-//                        same fu_w1c as fu_fault (CPU clear priority).
-//   * fu_selftest      : forces fu_fault WITHOUT latching fu_src - the
+//                        same fu_w1c as esm_fault (CPU clear priority).
+//   * fu_selftest      : forces esm_fault WITHOUT latching fu_src - the
 //                        ESM service routine distinguishes the self-test
 //                        pattern (fault, no source) from a real integrity
-//                        fault (fault + source). Proves the fu_fault ->
+//                        fault (fault + source). Proves the esm_fault ->
 //                        ESM chain, incl. the dual rail, the way
-//                        selftest_key proves the err_event chain.
+//                        selftest_key proves the esm_err chain.
 //   Residual: common-mode corruption of both copies of one datum - to
 //   be covered by periodic selftest_key/fu_selftest runs + the boot-time
 //   end-to-end transaction test (system-level, cf. SPNU575 5.11.1).
@@ -112,7 +112,7 @@
 //     cap drops the increment: true depth then exceeds the ledger, and
 //     post-drain the counter under-counts (a hang of the excess would be
 //     invisible to r2r). The drop raises otd_sat (fu_src top bit +
-//     fu_fault, sticky, T6 re-set) -> SW quiesce + TO_CLR restart,
+//     esm_fault, sticky, T6 re-set) -> SW quiesce + TO_CLR restart,
 //     instead of trusting a saturated depth. In the wrapped integration
 //     the room gates back-pressure the (OTD_MAX+1)-th request, so the
 //     event can only fire on standalone use / integration violation.
@@ -154,13 +154,13 @@ module hang_prot_core #(
     // ---- SCMCNTRL control keys -------------------------------------------
     input  logic              to_clear,       // 0xA key: restart real-time counters
     input  logic              selftest_key,   // FuSa: force compare -> prove report path
-    input  logic              fu_selftest,    // FuSa: force fu_fault -> prove the
+    input  logic              fu_selftest,    // FuSa: force esm_fault -> prove the
                                               // monitor-fault report path to the ESM
 
     // ---- status write-1-to-clear (privileged; CPU clear has priority) ----
     input  logic [NUM_IA-1:0] r2a_w1c,        // clear SCMIAERR0STAT bits
     input  logic [NUM_IA-1:0] r2r_w1c,        // clear SCMIAERR1STAT bits
-    input  logic              fu_w1c,         // clear fu_fault AND fu_src
+    input  logic              fu_w1c,         // clear esm_fault AND fu_src
 
     // ---- outputs -----------------------------------------------------------
     output logic [NUM_IA-1:0] r2a_err_status,  // SCMIAERR0STAT (req2accept TO)
@@ -169,11 +169,11 @@ module hang_prot_core #(
     output logic [NUM_IA*OTD_W-1:0] otd,       // per-stream outstanding depth
     output logic [15:0]       thr_rd_r2a,      // threshold readback (effective)
     output logic [15:0]       thr_rd_r2r,      // threshold readback (effective)
-    output logic              err_event,       // to ESM (level, group 1)
-    output logic              err_event_n,     // dual rail complement
+    output logic              esm_err,       // to ESM (level, group 1)
+    output logic              esm_err_n,     // dual rail complement
     output logic [3:0]        ena_rd,          // enable code readback
-    output logic              fu_fault,        // monitor integrity fault (sticky) -> ESM
-    output logic              fu_fault_n,      // dual rail complement (transport check)
+    output logic              esm_fault,        // monitor integrity fault (sticky) -> ESM
+    output logic              esm_fault_n,      // dual rail complement (transport check)
     output logic [4+3*NUM_M-1:0] fu_src        // fault source: ENA/THRA/THRR + 3 per master + OTDSAT
 );
 
@@ -209,7 +209,7 @@ module hang_prot_core #(
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
-    // 模块级: 使能码 / 阈值对 / fu_fault / fu_src
+    // 模块级: 使能码 / 阈值对 / esm_fault / fu_src
     //--------------------------------------------------------------------------
     typedef struct packed {
         logic [3:0]          ena_q;     // coded enable (1111 on / 0000 off)
@@ -217,7 +217,7 @@ module hang_prot_core #(
         logic [15:0]         thr_a_qn;
         logic [15:0]         thr_r_q;   // req2resp threshold + inverted dup
         logic [15:0]         thr_r_qn;
-        logic                fu_fault;  // consolidated integrity fault (sticky)
+        logic                esm_fault;  // consolidated integrity fault (sticky)
         logic [FU_SRC_W-1:0] fu_src;    // fault source status (sticky)
     } reg_t;
 
@@ -227,7 +227,7 @@ module hang_prot_core #(
         thr_a_qn : ~REQ2ACCEPT_RST,
         thr_r_q  : REQ2RESP_RST,
         thr_r_qn : ~REQ2RESP_RST,
-        fu_fault : 1'b0,
+        esm_fault : 1'b0,
         fu_src   : '0
     };
 
@@ -239,7 +239,7 @@ module hang_prot_core #(
     // with majority decode -> correct-1 / detect-2 (SEC/DED-style):
     //   ones >= 3 : ON     (any single 1->0 flip of 1111 decodes ON)
     //   ones <= 1 : OFF    (any single 0->1 flip of 0000 decodes OFF)
-    //   ones == 2 : FAULT  (two flips, direction unknown) -> fu_fault,
+    //   ones == 2 : FAULT  (two flips, direction unknown) -> esm_fault,
     //                   value HOLDS, monitoring stays ON (fail-visible)
     // SELF-RECOVERY without a reference register: any non-codeword is a
     // deviation; majority decode decides the direction and the CLEAN
@@ -277,7 +277,7 @@ module hang_prot_core #(
 
     //--------------------------------------------------------------------------
     // Threshold registers (SCMTHRESHOLD) with inverted duplicate:
-    // mismatch -> fu_fault AND effective value falls back to the reset
+    // mismatch -> esm_fault AND effective value falls back to the reset
     // value (a corrupted threshold can never silently disable a check).
     //--------------------------------------------------------------------------
     logic thr_a_fault;
@@ -393,7 +393,7 @@ module hang_prot_core #(
                                  && (~r.rd_cnt_r_n >= thr_r_eff - 16'd1);
 
             // fire = OR of both compares; counter fault forces the event
-            // NOW (never late). Comparator disagreement = fu_fault.
+            // NOW (never late). Comparator disagreement = esm_fault.
             logic rd_r2a_to;
             assign rd_r2a_to = ena_mon && (rd_r2a_to_a | rd_r2a_to_b | rd_cnt_a_f );
             logic rd_r2r_to;
@@ -419,7 +419,7 @@ module hang_prot_core #(
             // A handshake AT the cap drops the increment: true depth then
             // exceeds the ledger, and after the excess drains the counter
             // under-counts - a hang of the remainder would be invisible
-            // to r2r. Report (sticky, fu_src top bit + fu_fault) so SW
+            // to r2r. Report (sticky, fu_src top bit + esm_fault) so SW
             // does quiesce + TO_CLR restart. ena_mon-gated like the fire
             // paths (a disabled monitor reports nothing). The wrapped
             // integration back-pressures the (OTD_MAX+1)-th request via
@@ -483,7 +483,7 @@ module hang_prot_core #(
             assign wr_r2r_cf = wr_r2r_to_a ^ wr_r2r_to_b;
 
             //================================================================
-            // Sticky status with inverted duplicate: mismatch = fu_fault AND
+            // Sticky status with inverted duplicate: mismatch = esm_fault AND
             // the bit self-heals to SET (an SEU-cleared error is re-reported).
             //================================================================
             logic st_rd_a;
@@ -691,9 +691,9 @@ module hang_prot_core #(
 
     //--------------------------------------------------------------------------
     // Consolidated monitor-integrity fault: sticky, W1C. Deliberately a
-    // separate event from err_event (real bus timeout) so a broken monitor
+    // separate event from esm_err (real bus timeout) so a broken monitor
     // is never indistinguishable from a caught fault. Routed to the ESM on
-    // its own line (dual rail), separate group/channel from err_event.
+    // its own line (dual rail), separate group/channel from esm_err.
     //--------------------------------------------------------------------------
     logic otd_sat_live;
     assign otd_sat_live = |otd_sat_w;
@@ -721,9 +721,9 @@ module hang_prot_core #(
                           ena_code_fault};
 
     //--------------------------------------------------------------------------
-    // 模块级组合进程: ena / thr / fu_fault / fu_src 下一拍值 (默认保持)
+    // 模块级组合进程: ena / thr / esm_fault / fu_src 下一拍值 (默认保持)
     // fu_selftest forces the sticky fault WITHOUT latching any fu_src bit:
-    // a real fault always comes with a source, so "fu_fault=1, fu_src=0"
+    // a real fault always comes with a source, so "esm_fault=1, fu_src=0"
     // identifies the self-test pattern in the ESM service routine.
     //--------------------------------------------------------------------------
     always_comb begin : comb
@@ -753,9 +753,9 @@ module hang_prot_core #(
 
         // consolidated integrity fault (sticky, W1C CPU clear priority)
         if (fu_w1c) begin
-            v.fu_fault = 1'b0;
+            v.esm_fault = 1'b0;
         end else if (fu_live || fu_selftest) begin
-            v.fu_fault = 1'b1;
+            v.esm_fault = 1'b1;
         end
 
         // fault source status (sticky, same fu_w1c)
@@ -780,14 +780,14 @@ module hang_prot_core #(
     end
 
     assign ena_rd     = r.ena_q;
-    assign fu_fault   = r.fu_fault;
-    assign fu_fault_n = ~r.fu_fault;
+    assign esm_fault   = r.esm_fault;
+    assign esm_fault_n = ~r.esm_fault;
     assign fu_src     = r.fu_src;
 
     //--------------------------------------------------------------------------
     // Error event to ESM (level, group 1), dual rail
     //--------------------------------------------------------------------------
-    assign err_event   = (|r2a_st_w) || (|r2r_st_w);
-    assign err_event_n = ~err_event;
+    assign esm_err   = (|r2a_st_w) || (|r2r_st_w);
+    assign esm_err_n = ~esm_err;
 
 endmodule

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 560" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 11px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 9.5px; fill: #64748B; }
+      .txt   { font-size: 10px; fill: #334155; }
+      .note  { font-size: 10px; fill: #64748B; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1060" height="560" fill="#FFFFFF"/>
+  <text x="530" y="30" class="title" text-anchor="middle">事务级交互 — 一次 APB 访问 (§2.2)</text>
+
+  <!-- 泳道头 -->
+  <rect x="40" y="54" width="140" height="46" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="110" y="76" class="bt" text-anchor="middle">APB 主端</text>
+  <text x="110" y="93" class="sub" text-anchor="middle">(apb_clk)</text>
+  <rect x="240" y="54" width="180" height="46" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="330" y="76" class="bt" text-anchor="middle">apb2mbus</text>
+  <text x="330" y="93" class="sub" text-anchor="middle">APB 域</text>
+  <rect x="440" y="54" width="180" height="46" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="530" y="76" class="bt" text-anchor="middle">apb2mbus</text>
+  <text x="530" y="93" class="sub" text-anchor="middle">mbus 域 (24MHz)</text>
+  <rect x="690" y="54" width="180" height="46" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="780" y="74" class="bt" text-anchor="middle">edc_regfile[选中]</text>
+  <text x="780" y="92" class="sub" text-anchor="middle">(24MHz)</text>
+  <rect x="880" y="54" width="160" height="46" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="960" y="74" class="bt" text-anchor="middle">edc_regfile[其他]</text>
+  <text x="960" y="92" class="sub" text-anchor="middle">实例</text>
+
+  <!-- 生命线 -->
+  <line x1="110" y1="100" x2="110" y2="530" stroke="#94A3B8" stroke-dasharray="4 4"/>
+  <line x1="330" y1="100" x2="330" y2="530" stroke="#94A3B8" stroke-dasharray="4 4"/>
+  <line x1="530" y1="100" x2="530" y2="530" stroke="#94A3B8" stroke-dasharray="4 4"/>
+  <line x1="780" y1="100" x2="780" y2="530" stroke="#94A3B8" stroke-dasharray="4 4"/>
+  <line x1="960" y1="100" x2="960" y2="530" stroke="#94A3B8" stroke-dasharray="4 4"/>
+
+  <!-- 消息流 -->
+  <text x="118" y="126" class="note">setup/access</text>
+  <line x1="110" y1="150" x2="330" y2="150" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="220" y="142" class="txt" text-anchor="middle">PSEL / PENABLE</text>
+
+  <text x="345" y="189" class="note">acc↑: req_flag 翻转</text>
+
+  <line x1="330" y1="220" x2="530" y2="220" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="430" y="212" class="cdc" text-anchor="middle">3FF 同步</text>
+
+  <line x1="530" y1="250" x2="960" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="700" y="242" class="txt" text-anchor="middle">ce/addr 广播</text>
+
+  <line x1="530" y1="285" x2="780" y2="285" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="655" y="277" class="txt" text-anchor="middle">ce (单拍)</text>
+  <text x="792" y="289" class="note">sel=1</text>
+
+  <line x1="780" y1="318" x2="530" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="655" y="310" class="txt" text-anchor="middle">rdata (组合, 读)</text>
+
+  <text x="545" y="350" class="note">[写: 同拍写寄存器</text>
+  <text x="545" y="366" class="note">+锁存命令/翻转 req_t]</text>
+
+  <text x="545" y="399" class="note">rdat_cap &lt;= rdata</text>
+  <text x="545" y="415" class="note">ack_flag 翻转</text>
+
+  <line x1="530" y1="450" x2="330" y2="450" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="430" y="442" class="cdc" text-anchor="middle">ack 4FF, rdy 单拍</text>
+
+  <line x1="330" y1="490" x2="110" y2="490" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="220" y="482" class="txt" text-anchor="middle">PREADY (+PRDATA)</text>
+
+  <!-- 图例 -->
+  <line x1="40" y1="542" x2="70" y2="542" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="78" y="546" class="note">CDC 跨域 (3FF/4FF 同步链)</text>
+</svg>

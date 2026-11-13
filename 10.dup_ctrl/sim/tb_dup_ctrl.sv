@@ -13,7 +13,8 @@
 //
 //   寄存器: 0x00 CFG_EN / 0x04 CFG_INJ_EN(key[7:4]=A) / 0x08 CFG_FI /
 //           0x0C STA_CDC (CFG_BUSY/WR_DROPPED) / 0x10 STA_ERR (W1C) /
-//           0x14 STA_RAW / 0x18 STA_PAR / 0x1C CFG_REGST / 0xFC ID
+//           0x14 STA_RAW / 0x18 STA_PAR / 0x1C CFG_REGST / 0x20 STA_FAULT /
+//           0xFC ID
 //           (=32'h5AFE_2002)
 //   PERR 组 (STA_PAR bit = 2+组号): 0=CFG_EN 1=CFG_INJ_EN 2=CFG_FI
 //           3=STA_ERR 4=STA_RAW 5=在途锁存奇偶 6=命令在途奇偶
@@ -42,7 +43,9 @@
 //   T10 REGST 逐组 (0..6) 注校验错 -> PERR/PAR_FAULT -> 治愈+W1C;
 //       REGSEL=5 无目标忽略, REGSEL=7 忽略
 //   T11 PAR_SELFTEST "有 fault 无源" 签名 -> W1C bit0 清自测锁存
-//   T12 mbus 命令在途奇偶破坏 (PERR6): 拒写 + 读回 0 + W1C
+//   T12 mbus 命令在途奇偶破坏 (PERR6): 拒写 + 读回 0 + W1C (在途事件
+//       走 esm_fault 轨, STA_FAULT[0] CMD_PAR 镜像可查)
+//       —— 与 T16(d) PERR5 / T17 WR_DROPPED 同为监视器自身故障源
 //   T13 静默类: 未映射地址 / 错实例访问 / 写 ID / 写 STA_RAW / 写 STA=0 /
 //       写 STA_CDC bit0 (CFG_BUSY 为 RO)
 //   T14 复位清除 (含 scan_mode DFT 旁路 P0: 断言/释放即时透传) ->
@@ -60,6 +63,8 @@
 //           lane 报警 + W1C
 //   T17 CDC 忙丢: 往返未完成时第二个写被丢弃 (WR_DROPPED 粘滞, image
 //       不落地), CFG_BUSY poll 到 0 后 W1C 清 + 恢复写被接受
+//   T18 FLT_SELFTEST keyed 源级注入: STA_FAULT[31] + esm_fault 轨
+//       (无 key 忽略; STA_PAR 不含测试位; W1C bit31 清)
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -74,6 +79,7 @@ module tb_dup_ctrl;
    localparam logic [15:0] A_RAW   = 16'h0014;
    localparam logic [15:0] A_PAR   = 16'h0018;
    localparam logic [15:0] A_REGST = 16'h001C;
+   localparam logic [15:0] A_FLT   = 16'h0020;
    localparam logic [15:0] A_ID    = 16'h00FC;
 
    //--------------------------------------------------------------------------
@@ -111,7 +117,8 @@ module tb_dup_ctrl;
    logic err_i = 1'b0;
 
    wire [1:0] fi_o;
-   wire       esm_err, esm_err_n, reg_par_fault, reg_par_fault_n;
+   wire       esm_err, esm_err_n, esm_fault, esm_fault_n;
+   wire       reg_par_fault, reg_par_fault_n;
 
    //--------------------------------------------------------------------------
    // DUT
@@ -135,12 +142,14 @@ module tb_dup_ctrl;
       .fi_o           (fi_o           ),
       .esm_err        (esm_err        ),
       .esm_err_n      (esm_err_n      ),
+      .esm_fault      (esm_fault      ),
+      .esm_fault_n    (esm_fault_n    ),
       .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );
 
    //--------------------------------------------------------------------------
-   // 错误统计 + ESM 双轨互补性在线监视
+   // 错误统计 + ESM 三轨互补性在线监视
    //--------------------------------------------------------------------------
    integer errors = 0;
    integer rail_errs = 0;
@@ -148,11 +157,13 @@ module tb_dup_ctrl;
 
    always @(posedge clk) begin
       if (run_check) begin
-         if ((esm_err_n !== ~esm_err) || (reg_par_fault_n !== ~reg_par_fault)) begin
+         if ((esm_err_n !== ~esm_err) || (esm_fault_n !== ~esm_fault)
+             || (reg_par_fault_n !== ~reg_par_fault)) begin
             rail_errs = rail_errs + 1;
             if (rail_errs <= 8) begin
-               $display("[%0t] RAIL-FAIL: esm %b/%b par %b/%b",
-                        $time, esm_err, esm_err_n, reg_par_fault, reg_par_fault_n);
+               $display("[%0t] RAIL-FAIL: esm %b/%b flt %b/%b par %b/%b",
+                        $time, esm_err, esm_err_n, esm_fault, esm_fault_n,
+                        reg_par_fault, reg_par_fault_n);
             end
          end
       end
@@ -304,12 +315,14 @@ module tb_dup_ctrl;
       end
    endtask
 
-   // REGST 写: key=0xA, bit4=REG_SELFTEST, bit5=PAR_SELFTEST, [11:8]=REGSEL
+   // REGST 写: key=0xA, bit4=REG_SELFTEST, bit5=PAR_SELFTEST,
+   // bit6=FLT_SELFTEST, [11:8]=REGSEL
    task automatic regst_wr(input logic [3:0] sel,
                            input bit         reg_st,
-                           input bit         par_st);
+                           input bit         par_st,
+                           input bit         flt_st = 1'b0);
       begin
-         mbus_wr(A_REGST, {20'h0, sel, 2'b0, par_st, reg_st, 4'b1010});
+         mbus_wr(A_REGST, {20'h0, sel, 1'b0, flt_st, par_st, reg_st, 4'b1010});
       end
    endtask
 
@@ -336,8 +349,10 @@ module tb_dup_ctrl;
       mbus_rd(A_STA, rd);   chk32("STA_ERR",   rd, 32'h0000_0000);
       mbus_rd(A_RAW, rd);   chk32("STA_RAW",   rd, 32'h0000_0000);
       mbus_rd(A_PAR, rd);   chk32("STA_PAR",   rd, 32'h0000_0002);  // bit1 反轨
+      mbus_rd(A_FLT, rd);   chk32("STA_FAULT", rd, 32'h0000_0000);
       chk1("fi_o", (fi_o == 2'b00), 1'b1);
       chk1("esm_err", esm_err, 1'b0);
+      chk1("esm_fault", esm_fault, 1'b0);
 
       //================ T2 CFG_EN 编码切换 ====================
       $display("-- T2 CFG_EN code switch (image immediate)");
@@ -520,14 +535,19 @@ module tb_dup_ctrl;
       mbus_rd(A_FI, rd);   chk32("bad write dropped", rd, 32'h0000_0002);
       mbus_rd(A_FI, rd, 1'b1);
       chk32("bad read = 0", rd, 32'h0000_0000);      // 坏读驱 0
-      mbus_rd(A_PAR, rd);  chk32("PERR6 cmd", rd & 32'h0000_0101, 32'h0000_0101);
+      mbus_rd(A_PAR, rd);  chk32("PERR6 cmd", rd & 32'h0000_0101, 32'h0000_0100);
+      mbus_rd(A_FLT, rd);  chk32("FLT CMD_PAR mirror", rd, 32'h0000_0001);
+      chk1("esm_fault (in-flight)", esm_fault, 1'b1);
+      chk1("reg_par_fault quiet", reg_par_fault, 1'b0);
       mbus_wr(A_PAR, 32'h0000_0100);
       wait_cmd();
       mbus_rd(A_PAR, rd);  chk32("PERR6 cleared", rd, 32'h0000_0002);
+      mbus_rd(A_FLT, rd);  chk32("FLT cleared", rd, 32'h0000_0000);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
 
       //================ T13 静默类 ============================
       $display("-- T13 silent cases");
-      mbus_rd(16'h0020, rd);  chk32("unmapped read", rd, 32'h0000_0000);
+      mbus_rd(16'h0024, rd);  chk32("unmapped read", rd, 32'h0000_0000);
       mbus_rd(16'h0100, rd);  chk32("wrong instance", rd, 32'h0000_0000);
       mbus_wr(A_ID, 32'hDEAD_BEEF);
       mbus_rd(A_ID, rd);     chk32("ID write ignored", rd, 32'h5AFE_2002);
@@ -635,7 +655,9 @@ module tb_dup_ctrl;
       @(negedge clk);
       #1 release dut.u_dup_ctrl_regfile.r_mb.wpar_q;
       repeat (2) @(negedge clk);
-      mbus_rd(A_PAR, rd);  chk32("(d) PERR5", rd & 32'h0000_0083, 32'h0000_0081);
+      mbus_rd(A_PAR, rd);  chk32("(d) PERR5", rd & 32'h0000_0083, 32'h0000_0082);
+      mbus_rd(A_FLT, rd);  chk32("(d) FLT WLT_PAR mirror", rd, 32'h0000_0002);
+      chk1("(d) esm_fault", esm_fault, 1'b1);
       mbus_wr(A_FI, 32'h0000_0000);                  // 清掉测试写入的模式 11
       wait_cmd();
       mbus_wr(A_PAR, 32'h0000_0080);                 // W1C bit7 清 lane
@@ -649,9 +671,29 @@ module tb_dup_ctrl;
       mbus_rd(A_EN, rd);   chk32("2nd wr dropped", rd, 32'h0000_0000);
       wait_ready();                                  // poll CFG_BUSY -> 0
       mbus_rd(A_CDC, rd);  chk32("WR_DROPPED set", rd, 32'h0000_0002);
+      mbus_rd(A_FLT, rd);  chk32("FLT WR_DROP mirror", rd, 32'h0000_0004);
+      chk1("esm_fault (wr dropped)", esm_fault, 1'b1);
       mbus_wr(A_CDC, 32'h0000_0002);                 // W1C bit1
       wait_cmd();                                    // 该写自身在途, 等往返
       mbus_rd(A_CDC, rd);  chk32("WR_DROPPED clr", rd, 32'h0000_0000);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
+
+      //================ T18 FLT_SELFTEST keyed 源级注入 ==========
+      $display("-- T18 FLT_SELFTEST keyed source injection");
+      mbus_wr(A_REGST, 32'h0000_0040);               // bit6 但无 key -> 忽略
+      wait_cmd();
+      mbus_rd(A_FLT, rd);  chk32("no-key ignored", rd, 32'h0000_0000);
+      chk1("esm_fault quiet", esm_fault, 1'b0);
+      regst_wr(4'd0, 1'b0, 1'b0, 1'b1);              // key + FLT_SELFTEST
+      wait_cmd();
+      mbus_rd(A_FLT, rd);  chk32("FLT_TEST bit", rd, 32'h8000_0000);
+      chk1("esm_fault selftest", esm_fault, 1'b1);
+      chk1("esm_fault_n selftest", esm_fault_n, 1'b0);
+      mbus_rd(A_PAR, rd);  chk32("STA_PAR clean", rd, 32'h0000_0002);
+      mbus_wr(A_FLT, 32'h8000_0000);                 // W1C bit31
+      wait_cmd();
+      mbus_rd(A_FLT, rd);  chk32("FLT_TEST cleared", rd, 32'h0000_0000);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
       mbus_wr(A_EN, 32'h0000_000F);                  // 不忙时恢复写被接受
       wait_cmd();
       mbus_rd(A_EN, rd);   chk32("EN restored", rd, 32'h0000_000F);

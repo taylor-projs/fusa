@@ -24,8 +24,9 @@ architecture at elaboration.
 | `N_WIN` | top | 32768 | ref cycles | reference window length = expire value of `win_cnt`; the detection time quantum. window = N_WIN/f_ref (1.365 ms @ 24 MHz). |
 | `WIN_LO_RST` / `WIN_HI_RST` | top, regfile | 1621 / 1792 | edges | reset values of the per-channel band registers (CHi_LO/HI); sized for dut = 20 MHz @ PSC=3 (E = 1706.7, ±5%). Production values programmed per §4. |
 | `NDEAD_RST` | top, regfile | 4095 | ref cycles | reset value of CHi_DEAD (no-edge timeout). Deliberately loose (max) — SW programs ≈ 2× the slowest legal edge interval (§4). |
-| `N_DEB` | top, core | 3 | windows | FAIL_FREQ debounce: consecutive bad windows before `fail_lvl`. Trades detection time (N_DEB windows) against transient tolerance (N_DEB−1 bad windows absorbed). 2-bit counter → max 3. |
+| `N_DEB` | top, core | 3 | windows | FAIL_FREQ debounce: consecutive bad windows before `fail_lvl`. Trades detection time (N_DEB windows) against transient tolerance (N_DEB−1 bad windows absorbed). 2-bit counter → max 3. Also the NEVER_ARMED watchdog debounce (same trade). |
 | `DUT_PSC` | top | {N_DUT{4'd3}} | 4 bits/ch | per-channel prescaler tap, packed `[4i+:4]` → PSC of channel i; square wave = clk_dut / 2^(PSC+1). Rule: smallest PSC with f_dut/2^(PSC+1) ≤ f_ref/4, then check E·1.05 < 2^CNT_W (§4). |
+| `EN_RST` | top, regfile | {16{4'hF}} | 4 bits/ch | per-channel coded-enable **reset** nibble, packed `[4i+:4]`: `F` = enabled at POR, `0` = **born disarmed** (channel behind a power-on clock gate — stays silent until SW writes EN=1111 after opening the gate, §6.6). Nibbles ≥ N_DUT ignored. |
 | `WKEY` | top, regfile | 4'h5 | — | keyed-write key in `wdata[31:28]` for GCTRL/FORCE/CH space (CFG_REGST uses its own 1010 key); wrong key → write rejected + REG_PROT. |
 | `HANG_TO` | top, regfile | 1024 | mbus cycles | config CDC req/ack watchdog expire → CFG_HANG. Must be ≫ worst-case handshake latency (~6 ref cycles); 1024 @ 48 MHz ≈ 21 µs. |
 | `WIN_ALIVE_MAX` | top, regfile | 131072 | mbus cycles | window-alive watchdog expire → REF_STALE. Must exceed one window in mbus cycles; 131072 @ 48 MHz ≈ 2.7 ms ≈ 2 windows @ 24 MHz ref. |
@@ -52,7 +53,7 @@ Elaboration-time review checklist (all must hold):
 | 2 | `2^(PSC+1)` | per-ch `DUT_PSC[4i+:4]` | dut cycles | 3 (÷16) | dut prescaler: dut cycles per counted edge |
 | 3 | `WIN_LO` / `WIN_HI` | per-ch CHi_LO/HI regs | edges | 1621 / 1792 | legal count band for one window (nominal ±5%) |
 | 4 | `NDEAD` | per-ch CHi_DEAD reg | ref cycles | 4095* | no dut edge for this long → DEAD (*loose default, size per §4) |
-| 5 | `N_DEB` | cmm_top param | windows | 3 | consecutive bad windows → FAIL_FREQ |
+| 5 | `N_DEB` | cmm_top param | windows | 3 | consecutive bad windows → FAIL_FREQ; also N_DEB+1 unarmed windows (FSM in RUN, EN on) → NEVER_ARMED |
 | 6 | `HANG_TO` | cmm_regfile param | mbus cycles | 1024 | config CDC handshake stuck → CFG_HANG |
 | 7 | `WIN_ALIVE_MAX` | cmm_regfile param | mbus cycles | 131072 | no window toggle for this long → REF_STALE |
 
@@ -73,28 +74,15 @@ NDEAD    ~= 2x slowest LEGAL edge interval in ref cycles      (<< N_WIN)
 
 ### 3.1 Clock chain (example: dut = 1 GHz, PSC = 8)
 
-```
-ref_clk 24MHz : _/‾‾\_/‾‾\_/‾‾\_/‾‾\...        T_ref = 41.67 ns
-clk_dut 1GHz  : _/\_/\_/\_/\_/\_/\_...         T_dut = 1 ns
-psc_cnt[8]    : toggles every 512 dut cycles
-dut_sq        : ‾‾‾‾‾‾‾‾________‾‾‾‾‾‾‾‾____...   f_sq = 1.953 MHz (half-period 256 ns)
-sq_s (2FF)    : 2 T_ref delay, ±1 T_ref jitter  ← the CDC quantization term
-edge_det      : ________/‾‾\________/‾‾\________   one pulse per 12.288 T_ref
-                       ←—— 512 ns ——→
-```
+![时钟链](cmm_fig1_clock_chain.svg)
+
+*图 1: 时钟链 — ref_clk 24 MHz (T_ref = 41.67 ns) · clk_dut 1 GHz (T_dut = 1 ns) · psc_cnt[8] 每 512 dut 周期翻转 · dut_sq = 1.953 MHz (半周期 256 ns) · sq_s 经 2FF 延迟 2 T_ref ±1 T_ref 抖动 (CDC 量化项) · edge_det 每 12.288 T_ref 一个脉冲, 脉冲间距 512 ns*
 
 ### 3.2 Window machinery (one window = N_WIN ref cycles)
 
-```
-win_cnt     : 0,1,…,N_WIN-2 |N_WIN-1| 0, 1, …
-window_end  : ____________/‾‾‾‾\____________________   1 cycle per window
-window_fire : _________________/‾‾‾‾\_______________   1 cycle per window, +1 cycle
-edge_cnt    : 0 →…→ E      │ 0 →…                     cleared at window_end (≤1 boundary edge lost)
-shadow_q    : ══ prev win ═│══ this win's count ══     latched at window_end, held all window
-cmp_a/b     : (prev win)   │ (this win — level, whole window)
-freq_deb    : reload N_DEB on good sample │ decrement on bad — moves ONLY at window_fire
-fail_lvl    : fires when freq_deb reaches 0 = N_DEB consecutive bad windows (level while bad)
-```
+![窗口机制](cmm_fig2_window_machinery.svg)
+
+*图 2: 窗口机制 — win_cnt 计到 N_WIN-1 (高亮列) 出 window_end 脉冲 (每窗口 1 拍), window_fire 迟 1 拍; edge_cnt 在 window_end 清零 (边界沿至多丢 1 个边沿), shadow_q 同拍锁存本窗计数值并整窗保持, cmp_a/b 为全窗电平; freq_deb 只在 window_fire 动作 (好样本 reload N_DEB / 坏样本 decrement); freq_deb 到 0 = N_DEB 连续坏窗口 → fail_lvl 置位*
 
 Key point: `freq_deb` counts **windows**, not ref cycles — the debounce time
 constant is N_DEB windows, and one isolated bad window produces exactly one
@@ -104,15 +92,9 @@ one); it costs 1 ref cycle, not a window.
 
 ### 3.3 Error persistence (all classes)
 
-```
-windows:     |  bad  |  bad  |  bad  | good …
-fail_lvl:    __________________/‾‾‾‾‾‾‾‾‾‾‾‾…   level while debounced-bad
-fail_q:      __________________/‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾… sticky: holds until W1C + TST_CLR
-cmm_err:     __________________/‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾… driven by the sticky directly
-nerr_n:      ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\___________________… 2FF-filtered (alarm|fu), +2 ref cycles
-               W1C while fault present → re-sets within a window (clear never sticks)
-               fault gone → W1C + TST_CLR → clears and stays clear
-```
+![错误持续性](cmm_fig3_error_persistence.svg)
+
+*图 3: 错误持续性 (全部错误类) — N_DEB=3 个连续坏窗口后 fail_lvl 置位 (debounced-bad 期间电平); fail_q 粘滞保持到 W1C + TST_CLR; esm_err 由粘滞直接驱动; nerr_n 经 2FF 滤 (alarm|fu) 迟 +2 ref cycles 拉低; 故障仍在时 W1C 一个窗口内重置 (清不掉), 故障消失后 W1C + TST_CLR 清净保持*
 
 ---
 
@@ -202,9 +184,9 @@ itself, or the configuration channel.** Each class has its own output rail
 
 | Class | Rail | Contents | Basis |
 |-------|------|----------|-------|
-| **safety alarm** | `cmm_err/_n` | FAIL_FREQ (out of band), DEAD (clock stopped) | the monitored clock is out of spec → direct safety-goal violation, needs system reaction |
-| **integrity fault** | `cmm_fu/_n` | FU_CNT (counter/shadow pair), FU_CMP (comparators disagree), FU_PSC, FU_WIN, HIERR (EN codeword), FSM (illegal state), REG_PROT, CFG-shadow parity | the monitor itself may be blind (latent fault) → needs service/repair; a counter pair break always reports here, never as FAIL_FREQ (FU pre-empts: the FSM leaves RUN before the debounce accumulates) |
-| **config channel** | `cfg_hang/_n`, `reg_par_fault/_n` | CFG_HANG, REF_STALE, WR_DROPPED (FUSTAT[8/9/7]); PERR groups, PERR_CMD, PAR_SELFTEST, inflight (STA_PAR) | configuration is untrustworthy: writes may not have landed, storage may be flipped |
+| **safety alarm** | `esm_err/_n` | FAIL_FREQ (out of band), DEAD (clock stopped) | the monitored clock is out of spec → direct safety-goal violation, needs system reaction |
+| **integrity fault** | `esm_fault/_n` | FU_CNT (counter/shadow pair incl. armed-flag pair), FU_CMP (comparators disagree), FU_PSC, FU_WIN, HIERR (EN codeword), FSM (illegal state), **NEVER_ARMED** (FUSTAT[10]: enabled channel never saw its first edge), REG_PROT, CFG-shadow parity, **in-flight command parity PERR11/PERR12 (synced in, 2026-11-13 rule 25)** | the monitor itself may be blind (latent fault) → needs service/repair; a counter pair break always reports here, never as FAIL_FREQ (FU pre-empts: the FSM leaves RUN before the debounce accumulates) |
+| **config channel** | `cfg_hang/_n`, `reg_par_fault/_n` | CFG_HANG, REF_STALE, WR_DROPPED (FUSTAT[8/9/7]); PERR groups, PAR_SELFTEST (STA_PAR) — register-plane parity only (in-flight events PERR_CMD/inflight moved to esm_fault, 2026-11-13) | configuration is untrustworthy: writes may not have landed, storage may be flipped |
 
 Hold/clear semantics (everything lands in sticky, dual-rail, heal-to-SET
 latches; outputs are levels driven straight from the stickies):
@@ -213,6 +195,7 @@ latches; outputs are levels driven straight from the stickies):
 |-------|-----------|------------|
 | FAIL_FREQ / DEAD | until W1C + TST_CLR; while the fault persists a W1C re-sets within ~1 window (DEAD re-issues every NDEAD cycles) | ERRSTAT / SRCSTAT W1C |
 | FU_CNT/CMP/PSC, FU_WIN, HIERR, FSM, REG_PROT | same, via FUSRC0/1 / FUSTAT stickies; instantaneous re-report while the physical fault persists | FUSRC0/1, FUSTAT W1C |
+| NEVER_ARMED (FUSTAT[10]) | scalar sticky; re-fires ≈(N_DEB+1) windows after each TST_CLR/restart while an enabled channel stays unarmed | FUSTAT W1C bit10 (+ TST_CLR) |
 | CFG_HANG / REF_STALE / WR_DROPPED | mbus-domain sticky; saturated watchdogs re-fire until the cause is gone | FUSTAT W1C (REF_STALE: wait ~1 window after recovery) |
 | REG_PAR_FAULT / PERR_CMD / PAR_SELFTEST | reg_wrap flt sticky; an SEU clear self-heals back to SET | STA_PAR W1C |
 | all output rails | level, sticky lifetime | follow the stickies |
@@ -235,36 +218,41 @@ tags: **fwd** = write forwarded to `clk_ref` through the CDC handshake
 | 0x00 | ID | RO | | — | `0xC44D_01NN` | NN = N_DUT |
 | 0x04 | GCTRL | RW fwd | ✓ | mbus → ref | 0 | [0] REFSEL · [1] TST_CLR (one-shot pulse, reads 0) · [3:2] rsvd · [7:4] DBGSEL — every write re-stores REFSEL/DBGSEL (rule 4) |
 | 0x08 | GSTAT | RO | | ref synced | `0x0000_0288`¹ | [0] alarm · [1] fu · [2] active · [5:3] fsm (001=ARM 010=RUN 100=ERR) · [6] busy · [7] nerrn · [8] refsel · [9] any_en · [10] reg_par_fault · [11] cfg_hang |
-| 0x0C | ENLO | RW fwd | | mbus → ref | `0xFFFF_FFFF` | ch 0..7 coded enables: nibble 0xF = on, 0x0 = off; any other nibble value is rejected + REG_PROT |
-| 0x10 | ENHI | RW fwd | | mbus → ref | `0xFFFF_FFFF` | ch 8..15 same layout (masked 0 beyond N_DUT) |
+| 0x0C | ENLO | RW fwd | | mbus → ref | `EN_RST[31:0]`² | ch 0..7 coded enables: nibble 0xF = on, 0x0 = off; any other nibble value is rejected + REG_PROT |
+| 0x10 | ENHI | RW fwd | | mbus → ref | `EN_RST[63:32]`² | ch 8..15 same layout (masked 0 beyond N_DUT) |
 | 0x14 | ERRSTAT | W1C fwd | | ref sticky + mbus image | 0 | [i] = ch i alarm (FAIL_FREQ OR DEAD) |
 | 0x18 | SRCSTAT | W1C fwd | | ref sticky + mbus image | 0 | [2i] = fail · [2i+1] = dead |
-| 0x1C | FUSTAT | W1C fwd | | mixed (ref classes + mbus liveness) | 0 | [0] cnt_any · [1] cmp_any · [2] win · [3] psc_any · [4] hierr · [5] fsm · [6] reg_prot · [7] wr_dropped · [8] cfg_hang · [9] ref_stale |
+| 0x1C | FUSTAT | W1C fwd | | mixed (ref classes + mbus liveness) | 0 | [0] cnt_any · [1] cmp_any · [2] win · [3] psc_any · [4] hierr · [5] fsm · [6] reg_prot · [7] wr_dropped · [8] cfg_hang · [9] ref_stale · [10] never_armed (scalar; an enabled channel that never saw its first edge) |
 | 0x20 | FUSRC0 | W1C fwd | | ref sticky + mbus image | 0 | ch 0..7, nibble per channel: bit0 cnt · bit1 cmp · bit2 cfgpar · bit3 psc |
 | 0x24 | FUSRC1 | W1C fwd | | ref sticky + mbus image | 0 | ch 8..15, same nibble layout |
 | 0x28 | FORCE | RW fwd | ✓ | mbus → ref | 0 | test/diagnostic: [N_DUT-1:0] per-ch verdict force · [16] hang · [17] stale · [18] inj_psc · [19] inj_cmp · [20] inj_cnt (inj targets channel DBGSEL); bit16=0 write is the busy-escape path |
 | 0x2C | DBG0 | RO | | ref synced | — | [11:0] last window count (shadow) · [27:16] no-edge counter — channel selected by DBGSEL |
 | 0x30 | DBG1 | RO | | ref synced | — | [11:0] live edge count · [31:16] win_cnt — channel selected by DBGSEL |
-| 0x34 | STA_PAR | W1C local | | mbus | `0x0000_0002` | [0] PAR_FAULT level (W1C clears ONLY the selftest latch) · [1] _n (rail pair, read-only) · [14:2] PERR group 0..12 (bit = 2+group) |
-| 0x38 | CFG_REGST | WO fwd | ✓ | — | — | key[3:0]=1010 · [4]=1 + REGSEL[12:8] 0..12 → inject mbus wrap group · REGSEL 16+i → inject ref-domain shadow of ch i · [5]=1 → no-source signature (ESM service test); bad key → REG_PROT |
+| 0x34 | STA_PAR | W1C local | | mbus | `0x0000_0002` | [0] PAR_FAULT level (W1C clears ONLY the selftest latch) · [1] _n (rail pair, read-only) · [15:2] PERR group 0..13 (bit = 2+group) |
+| 0x38 | CFG_REGST | WO fwd | ✓ | — | — | key[3:0]=1010 · [4]=1 + REGSEL[12:8] 0..13 → inject mbus wrap group · REGSEL 16+i → inject ref-domain shadow of ch i · [5]=1 → no-source signature (ESM service test); bad key → REG_PROT |
+| 0x3C | ARMED | RO | | ref synced + image | 0 | [N_DUT-1:0] per-channel first-edge armed flags: 0 = channel has not seen its first DUT edge since reset/disarm (silent: no DEAD/FAIL_FREQ; watched by NEVER_ARMED while EN on) |
 | 0x40+12i | CHi_LO | RW fwd | ✓ | mbus → ref | `WIN_LO_RST` | [CNT_W-1:0] window count low bound, channel i |
 | 0x44+12i | CHi_HI | RW fwd | ✓ | mbus → ref | `WIN_HI_RST` | window count high bound, channel i |
 | 0x48+12i | CHi_DEAD | RW fwd | ✓ | mbus → ref | `NDEAD_RST` | no-edge timeout [ref cycles], channel i |
 
 ¹ nominal directly after reset (fsm=ARM, nerrn=1, any_en=1 with EN defaults
 all-enabled), before the first window fires.
+² ENLO/ENHI reset per nibble = the `EN_RST` elaboration parameter of that
+channel (`F` default; `0` for channels integrated behind power-on clock
+gates — §6.6). With all-F EN_RST this is `0xFFFF_FFFF`.
 
-寄存器地图位置 (house standard): STA_PAR 倒数第 3、CFG_REGST 倒数第 2
-(固定段内; 通道数组区 0x40+ 不参与倒数, ID 留 0x00)。CFG_REGST 的 key 是
-house key `wdata[3:0]=4'b1010`, **不在 WKEY[31:28] 空间**。
+寄存器地图位置 (house standard): STA_PAR 倒数第 3、CFG_REGST 倒数第 2、
+ARMED 倒数第 1 (固定段内; 通道数组区 0x40+ 不参与倒数, ID 留 0x00)。
+CFG_REGST 的 key 是 house key `wdata[3:0]=4'b1010`, **不在 WKEY[31:28] 空间**。
 
 STA_PAR PERR group index (bit 2+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE ·
 4 CLO · 5 CHI · 6 CDEAD · 7 ERRSTAT image · 8 SRCSTAT image · 9 FUSRC image ·
 10 FUSTAT image · 11 in-flight payload (latch lane, bit 13, no injection
 target) · 12 CMD command in-flight parity (W=1 wrap, bit 14: the W1C write
-IS the wrap rewrite). Groups 0..6 are config
-(rewrite-restore), 7..10 are continuously refreshed images (W1C suffices),
-11/12 are command-path events.
+IS the wrap rewrite) · 13 ARMED image (continuously refreshed, W1C
+suffices). Groups 0..6 are config
+(rewrite-restore), 7..10 and 13 are continuously refreshed images (W1C
+suffices), 11/12 are command-path events.
 
 Universal rules (violations are flagged, not silently ignored):
 
@@ -296,7 +284,8 @@ default thresholds — program the real ones before they can false-alarm:
        wr CHi_HI   = KEY | win_hi[i]             //        0x44 + 12*i
        wr CHi_DEAD = KEY | ndead[i]              //        0x48 + 12*i
 4. for each unused channel: clear its ENLO/ENHI nibble to 0x0
-   (an enabled channel with no clock reports DEAD)
+   (an enabled channel whose clock never arrives reports NEVER_ARMED
+   FUSTAT[10]; channels behind power-on gates integrate EN_RST=0 + §6.6)
 5. TST_CLR: wr GCTRL = KEY | {dbgsel, 1'b0, refsel} | 0x2    [one-shot]
 6. wait ≥ 2 windows
 7. rd ERRSTAT / SRCSTAT / FUSTAT / STA_PAR → expect 0x2 (only the _n rail bit)
@@ -360,10 +349,7 @@ Trigger: GSTAT[1]=1.
 Trigger: GSTAT[10] (reg_par_fault) and/or GSTAT[11] (cfg_hang).
 
 ```
-A. reg_par_fault: rd STA_PAR
-   - [14] PERR_CMD     : a command arrived with bad parity and was blocked
-                         (no state changed). Audit the master's parity
-                         generation. W1C STA_PAR bit 14.
+A. reg_par_fault: rd STA_PAR (register-plane parity only, 2026-11-13 rule 25)
    - [17] PAR_SELFTEST : self-test signature, not a fault. W1C bit 17.
    - [15:4] group k    : parity error in register group k:
                          0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE · 4 CLO · 5 CHI
@@ -374,6 +360,8 @@ A. reg_par_fault: rd STA_PAR
        image groups 7..11 : self-refresh every cycle; W1C bit 4+k suffices
        re-set after W1C → permanent storage fault → escalate
                          (config for that group is untrustworthy)
+   - [14] PERR_CMD / inflight events now ride the esm_fault rail (C-flow):
+     still queried at STA_PAR bit 14 / FUSTAT, W1C unchanged.
 B. cfg_hang: rd FUSTAT
    - [7] WR_DROPPED : SW wrote while busy — driver bug; enforce rule 3.
                       W1C bit 7.
@@ -425,9 +413,63 @@ integrity (FU) → measurement alarms** — each layer trusts the one before it.
 3. W1C STA_PAR / FUSTAT, TST_CLR, verify clean for ≥ 2 windows
 ```
 
+### 6.6 Gated DUT clocks — EN_RST integration, NEVER_ARMED flow
+
+Channels behind SW-controlled (or otherwise late/power-on-gated) clock
+switches integrate with elaboration parameter `EN_RST` nibble = `4'h0`:
+the channel is **born disarmed** — silent (no DEAD, no FAIL_FREQ, no
+NEVER_ARMED) until SW brings it up. The HW has no coupling to the gate
+control; ordering is a software contract (TI-DCC-style SW enable):
+
+**Bring-up (gate opening):**
+```
+1. open the upstream clock gate (DUT clock starts running)
+2. wait ≥ 1 DUT clock period (a still-gated clock would immediately arm
+   the NEVER_ARMED timer — legal, but avoid the false class)
+3. poll GSTAT[6]==0, then set the channel's EN nibble: ENLO/ENHI |= 4'hF << 4i
+4. the channel arms on its first edge (ARMED[0x3C] bit i → 1); FAIL_FREQ
+   debounce starts from a full fresh N_DEB (no head start)
+5. healthy declaration: poll ARMED bit i == 1, then wait N_DEB+2 windows
+   and verify ERRSTAT/SRCSTAT/FUSTAT all clean
+```
+
+**Tear-down (gate closing) — order matters:**
+```
+1. clear the EN nibble FIRST (ENLO/ENHI &= ~(4'hF << 4i))  — channel
+   disarms: DEAD/FAIL_FREQ/NEVER_ARMED all go silent
+2. then close the clock gate
+   (closing the gate on a still-armed channel reports DEAD — a real alarm,
+   just the wrong class for a planned shutdown)
+```
+
+**NEVER_ARMED flow** (FUSTAT[10]=1, esm_fault active, GSTAT fu=1):
+```
+1. rd ARMED (0x3C) → zero bits = the enabled channels that never saw a
+   first edge (gate never opened / upstream clock dead / wrong PSC config
+   below the WIN_LO band does NOT apply — unjudged windows cannot fire it)
+2. intended gate-open in flight? → wait: the channel arms on the first
+   edge and joins judging; W1C FUSTAT bit10 (or TST_CLR) afterwards
+3. channel really absent:
+   a. retire it: clear its EN nibble (watchdog source gone, no re-fire)
+   b. or restart it: open the gate → the channel arms → W1C bit10
+      → TST_CLR (RMW rule 4) → wait 2 windows → verify clean
+4. note: after any TST_CLR/restart, NEVER_ARMED re-fires ≈(N_DEB+1) windows
+   later if the condition persists (never_deb reloads at TST_CLR) — a W1C
+   that "won't stay cleared" means the channel is still not arriving
+```
+
+**TST_CLR quiesce rule** (ordering, from the TB race that motivated it):
+TST_CLR is a *soft* armed-clear — a still-running DUT clock re-arms on its
+next edge (by design; this is what makes TST_CLR transparent for live
+channels). When using TST_CLR together with a gate stop, quiesce the stop
+(≥ 1 DUT clock period + 2FF sync) **before** issuing TST_CLR: an edge
+landing after the clear legitimately re-arms the channel, turning the
+scenario into DEAD instead of the intended NEVER_ARMED/silence.
+
 ---
 
 *Cross-references: architecture and CDC protocol in
-`cmm_sil2_design.md` §2–8; diagnostic coverage of every mechanism above in
+`cmm_sil2_design.md` §2–8 (arming semantics §4.2, gate protocol §7.1);
+diagnostic coverage of every mechanism above in
 `fusa_coverage_sil.md`; executable reference for all flows in
-`sim/tb_cmm_top.sv` (90 checks).*
+`sim/tb_cmm_top.sv` (358 checks).*

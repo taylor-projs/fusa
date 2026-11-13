@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 220" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 11px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="880" height="220" fill="#FFFFFF"/>
+  <text x="440" y="28" class="title" text-anchor="middle">AW FIFO 三指针 (环形, 深度 OTD_MAX)</text>
+
+  <text x="88" y="84" class="sm" text-anchor="end">条目</text>
+  <text x="88" y="152" class="sm" text-anchor="end">指针</text>
+
+  <rect x="100" y="56" width="140" height="48" fill="#E2E8F0" stroke="#94A3B8"/>
+  <text x="170" y="85" class="txt" text-anchor="middle">已回 B</text>
+  <rect x="240" y="56" width="140" height="48" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="310" y="85" class="txt" text-anchor="middle">B 待回</text>
+  <rect x="380" y="56" width="140" height="48" fill="#FEF9C3" stroke="#CA8A04"/>
+  <text x="450" y="85" class="txt" text-anchor="middle">W 未完 (FILL)</text>
+  <rect x="520" y="56" width="140" height="48" fill="#FEF9C3" stroke="#CA8A04"/>
+  <text x="590" y="85" class="txt" text-anchor="middle">W 未完 (FILL)</text>
+  <rect x="660" y="56" width="140" height="48" fill="#FFFFFF" stroke="#94A3B8" stroke-dasharray="5 4"/>
+  <text x="730" y="85" class="txt" text-anchor="middle">新 push?</text>
+
+  <line x1="240" y1="134" x2="240" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="240" y="152" class="bt" text-anchor="middle">bp</text>
+  <text x="240" y="170" class="sm" text-anchor="middle">B 进度</text>
+
+  <line x1="380" y1="134" x2="380" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="380" y="152" class="bt" text-anchor="middle">wm</text>
+  <text x="380" y="170" class="sm" text-anchor="middle">m 侧 W 完</text>
+
+  <line x1="660" y1="134" x2="660" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="660" y="152" class="bt" text-anchor="middle">wr</text>
+  <text x="660" y="170" class="sm" text-anchor="middle">push 点</text>
+
+  <text x="520" y="152" class="sm" text-anchor="middle">……(最多 2 笔)……</text>
+
+  <text x="450" y="200" class="sm" text-anchor="middle">(skid 2 slot 占用)</text>
+  <text x="700" y="200" class="bt" text-anchor="middle">bp ≤ wm ≤ wr</text>
+</svg>

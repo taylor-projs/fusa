@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 372" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .tag   { font-size: 11px; font-weight: bold; }
+      .bit   { font-size: 10px; fill: #64748B; }
+      .wr    { fill: #86EFAC; stroke: #16A34A; }          /* 写 */
+      .wrh   { fill: #BBF7D0; stroke: #16A34A; }          /* 写 (合并旧数据) */
+      .hold  { fill: #E2E8F0; stroke: #94A3B8; }          /* 不动 */
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="372" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">宏行布局 v2 — 数据/ECC 场分离 (274bit 行, 2×(137,128) SECDED)</text>
+
+  <!-- 位标尺 -->
+  <text x="60" y="50" class="bit">273</text>
+  <text x="210" y="50" class="bit" text-anchor="middle">256 | 255</text>
+  <text x="996" y="50" class="bit" text-anchor="end">0</text>
+
+  <!-- 行条 -->
+  <rect x="60" y="58" width="150" height="52" fill="#FEF9C3" stroke="#CA8A04" stroke-width="1.5"/>
+  <text x="135" y="80" class="txt" text-anchor="middle" font-weight="bold">ECC [273:256] 2×9b</text>
+  <text x="135" y="97" class="sm" text-anchor="middle">每码字 {h[7:0], p}</text>
+  <line x1="135" y1="58" x2="135" y2="110" stroke="#CA8A04" opacity="0.35"/>
+
+  <rect x="210" y="58" width="786" height="52" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+  <text x="603" y="80" class="txt" text-anchor="middle" font-weight="bold">数据 [255:0] 2×128b 码字 (cw1 … cw0) — bw 字节粒度写使能落在此场</text>
+  <text x="603" y="97" class="sm" text-anchor="middle">ASIC: 256bit 数据宏 (带 BW 字节写选项) + 18bit ECC 宏 (整写), 单口同步</text>
+  <line x1="603" y1="58" x2="603" y2="110" stroke="#2563EB" opacity="0.3"/>
+
+  <!-- 四种写通路 (行条示意: 左窄条=ECC 场, 右宽条=数据场) -->
+  <!-- R1: FuSa 整行写 -->
+  <rect x="60" y="136" width="150" height="26" rx="5" fill="#D1FAE5" stroke="#059669"/>
+  <text x="135" y="153" class="tag" text-anchor="middle" fill="#065F46">FuSa 整行写</text>
+  <text x="226" y="146" class="txt">bw=全1 + we_ecc=1 — 2 码字重编码, 两场全写</text>
+  <text x="226" y="160" class="sm">1 拍/行</text>
+  <rect x="560" y="140" width="83"  height="16" class="wr"/>
+  <rect x="643" y="140" width="377" height="16" class="wr"/>
+
+  <!-- R2: FuSa 部分写 (RMW) -->
+  <rect x="60" y="182" width="150" height="26" rx="5" fill="#D1FAE5" stroke="#059669"/>
+  <text x="135" y="199" class="tag" text-anchor="middle" fill="#065F46">FuSa 部分写</text>
+  <text x="226" y="192" class="txt">RMW: 读旧行 → 译码 → 字节合并 → 重编码, 两场全写</text>
+  <text x="226" y="206" class="sm">2 拍/行 · 顺带洗刷 (DERR 码字重编码洗净, 事件读拍已报)</text>
+  <rect x="560" y="186" width="83"  height="16" class="wrh"/>
+  <rect x="643" y="186" width="377" height="16" class="wrh"/>
+  <rect x="770" y="186" width="90"  height="16" class="wr"/>
+
+  <!-- R3: bypass 部分写 -->
+  <rect x="60" y="228" width="150" height="26" rx="5" fill="#FEF3C7" stroke="#D97706"/>
+  <text x="135" y="245" class="tag" text-anchor="middle" fill="#92400E">bypass 部分写</text>
+  <text x="226" y="238" class="txt">bw=strb + we_ecc=0 — 数据场字节直写合并, ECC 场不动</text>
+  <text x="226" y="252" class="sm">1 拍/行, 无宏读 (ECC 陈旧无害, 切回 FuSa 全片重扫重建)</text>
+  <rect x="560" y="232" width="83"  height="16" class="hold"/>
+  <rect x="643" y="232" width="377" height="16" fill="#EFF6FF" stroke="#93C5FD"/>
+  <rect x="770" y="232" width="90"  height="16" class="wr"/>
+
+  <!-- R4: bypass 整行写 -->
+  <rect x="60" y="274" width="150" height="26" rx="5" fill="#FEF3C7" stroke="#D97706"/>
+  <text x="135" y="291" class="tag" text-anchor="middle" fill="#92400E">bypass 整行写</text>
+  <text x="226" y="284" class="txt">bw=全1 + we_ecc=0 — 裸数据整行直写</text>
+  <text x="226" y="298" class="sm">1 拍/行, 免编码组合路径</text>
+  <rect x="560" y="278" width="83"  height="16" class="hold"/>
+  <rect x="643" y="278" width="377" height="16" class="wr"/>
+
+  <!-- 图例 -->
+  <rect x="60"  y="316" width="14" height="14" class="wr"/>
+  <text x="80"  y="327" class="sm">写</text>
+  <rect x="110" y="316" width="14" height="14" class="wrh"/>
+  <text x="130" y="327" class="sm">写 (合并旧数据, RMW 重编码)</text>
+  <rect x="300" y="316" width="14" height="14" class="hold"/>
+  <text x="320" y="327" class="sm">不动 (ECC 陈旧)</text>
+  <rect x="430" y="316" width="14" height="14" fill="#EFF6FF" stroke="#93C5FD"/>
+  <text x="450" y="327" class="sm">数据场保持</text>
+
+  <text x="60" y="354" class="sm">SEU 位索引: 数据位 = 128·c + bit (0..255) · ECC 位 = 256 + 9·c + j (j=0 为 p, 1..8 为 h[7:0]) · 同一逻辑码字 137bit 任意两 bit 需 interleave 不相邻 (§9)</text>
+</svg>

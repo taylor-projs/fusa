@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 10px; fill: #64748B; }
+      .txt   { font-size: 10px; fill: #334155; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="580" fill="#FFFFFF"/>
+  <text x="480" y="28" class="title" text-anchor="middle">写副作用与命令下发 — mbus ↔ mod 握手 (§3.5)</text>
+
+  <!-- 时钟域 -->
+  <rect x="20" y="56" width="400" height="500" rx="10" fill="#EFF6FF" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="32" y="80" class="dom">mbus 域 (24MHz)</text>
+  <rect x="480" y="56" width="460" height="500" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="492" y="80" class="dom">mod 域 (mod_clk = axi_clk)</text>
+  <line x1="450" y1="56" x2="450" y2="556" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="450" y="50" class="cdc" text-anchor="middle">CDC 边界</text>
+
+  <!-- mbus 域流程 -->
+  <rect x="44" y="96" width="352" height="56" rx="8" class="box"/>
+  <text x="220" y="120" class="bt" text-anchor="middle">ce 拍: 锁存 {wsel_q, wdata_q}</text>
+  <text x="220" y="140" class="sub" text-anchor="middle">(在途期间保持稳定)</text>
+  <line x1="220" y1="152" x2="220" y2="180" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="145" y="180" width="150" height="40" rx="8" class="box"/>
+  <text x="220" y="204" class="bt" text-anchor="middle">req_t 翻转</text>
+
+  <!-- 去程 CDC -->
+  <line x1="295" y1="200" x2="545" y2="200" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="422" y="190" class="cdc">sync_2dff</text>
+
+  <!-- mod 域流程 -->
+  <rect x="545" y="180" width="150" height="40" rx="8" class="box"/>
+  <text x="620" y="204" class="bt" text-anchor="middle">req_t_s2</text>
+  <line x1="620" y1="220" x2="620" y2="248" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="632" y="240" class="sub" font-size="9.5">sync_dff 延迟拍 d</text>
+  <rect x="545" y="248" width="170" height="40" rx="8" class="box"/>
+  <text x="630" y="272" class="bt" text-anchor="middle" font-size="12">req_edge = s2 ^ d</text>
+  <line x1="630" y1="288" x2="630" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="505" y="318" width="415" height="146" rx="8" class="box"/>
+  <text x="712" y="340" class="bt" text-anchor="middle">req_edge 拍 — 用锁存值译码:</text>
+  <text x="521" y="364" class="txt">· en_word_e / force_word_e / irqen_word_e:</text>
+  <text x="521" y="384" class="txt">    影子 &lt;= wdata_q (reg_wrap 载入)</text>
+  <text x="521" y="404" class="txt">· err_w1c_e / fault_w1c_e / par_w1c_e:</text>
+  <text x="521" y="424" class="txt">    sticky &lt;= (sticky &amp; ~wdata_q) | site_err (置位优先)</text>
+  <text x="521" y="444" class="txt">· reg_st_e: mod 域组注错</text>
+
+  <line x1="630" y1="464" x2="630" y2="492" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="640" y="484" class="sub" font-size="9.5">然后</text>
+  <rect x="545" y="492" width="170" height="40" rx="8" class="box"/>
+  <text x="630" y="516" class="bt" text-anchor="middle">ack_t 翻转</text>
+
+  <!-- 回程 CDC -->
+  <line x1="545" y1="512" x2="396" y2="512" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="470" y="502" class="cdc" text-anchor="middle">sync_2dff</text>
+
+  <!-- busy / 丢写 -->
+  <rect x="44" y="472" width="352" height="64" rx="8" class="box"/>
+  <text x="220" y="500" class="bt" text-anchor="middle" font-size="12">cdc_busy = (req_t != ack_s2)</text>
+  <text x="220" y="524" class="txt" text-anchor="middle">忙时到达的新写被丢弃 → wr_dropped_q 置位 (0xB4[1])</text>
+</svg>

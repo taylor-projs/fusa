@@ -50,6 +50,23 @@
 //   dead_lvl[ch] : no DUT edge for cfg_ndead clk_ref cycles (re-issuing).
 //   fu_*_lvl[ch] : integrity events (levels), latched in cmm_top.
 //
+// FIRST-EDGE ARMING (boot-race immunity):
+//   armed[ch] sets on the FIRST synchronized DUT edge after reset/disarm
+//   (disarm = TST_CLR | EN-off, generated in cmm_top) and is NOT cleared
+//   by clock death - DEAD keeps its meaning "lost a previously-present
+//   clock". While !armed:
+//     * the no-edge timeout is frozen at 0 and dead_lvl is masked (a
+//       not-yet-arriving clock - ref up first / DUT later, or a gated
+//       clock with EN held off - must not alarm);
+//     * every window is UNJUDGED (aw_run/aw_hold qualification): the
+//       FAIL_FREQ debounce neither decrements nor reloads, so a
+//       late-arriving clock gets neither DEAD nor a spurious FAIL_FREQ.
+//   The "enabled but never arrives" hole this opens is closed by the
+//   NEVER_ARMED watchdog in cmm_top (K-window debounce on window_fire).
+//   armed is stored with an inverted duplicate (per-channel slice
+//   compare -> fu_cnt_lvl; copy recomputed from the next state every
+//   cycle - rule-12 self-heal).
+//
 // TEST INJECTION (keyed FORCE register bits, channel selected by DBGSEL):
 //   cfg_force[ch] : XOR into the debounced freq verdict (full debounce ->
 //                   latch -> alarm -> nERR path, no storage corrupted)
@@ -87,6 +104,9 @@ module cmm_core #(
     input  logic             inj_psc,
     input  logic [3:0]       dbgsel,
 
+    // first-edge arming control (clk_ref domain, generated in cmm_top)
+    input  logic [N_DUT-1:0] disarm,      // per-ch armed clear (EN off / TST_CLR)
+
     // window timing (shared generator, cmm_top)
     input  logic             window_end,   // last cycle of the window
     input  logic             window_fire,  // registered window_end (verdict beat)
@@ -97,6 +117,7 @@ module cmm_core #(
     output logic [N_DUT-1:0] fu_cnt_lvl,
     output logic [N_DUT-1:0] fu_cmp_lvl,
     output logic [N_DUT-1:0] fu_psc_lvl,
+    output logic [N_DUT-1:0] armed,       // per-ch first-edge armed flags
 
     // diagnostics (clk_ref domain, observability only)
     output logic [CNT_W*N_DUT-1:0] dbg_shadow,
@@ -224,6 +245,10 @@ module cmm_core #(
         logic [N_DUT-1:0][1:0]       freq_deb;     // FAIL_FREQ debounce (down-cnt)
         logic [N_DUT-1:0][CNT_W-1:0] noedge_cnt;   // no-edge timeout counter + dup
         logic [N_DUT-1:0][CNT_W-1:0] noedge_cnt_n;
+        logic [N_DUT-1:0]            armed;        // first-edge armed + inverted dup
+        logic [N_DUT-1:0]            armed_n;
+        logic [N_DUT-1:0]            aw_run;       // armed-throughout-window carry
+        logic [N_DUT-1:0]            aw_hold;      // closed-window qualification
     } ref_reg_t;
 
     localparam ref_reg_t REF_REG_RST = '{
@@ -235,7 +260,11 @@ module cmm_core #(
         shadow_qn    : '1,
         freq_deb     : {N_DUT{N_DEB}},
         noedge_cnt   : '0,
-        noedge_cnt_n : '1
+        noedge_cnt_n : '1,
+        armed        : '0,
+        armed_n      : '1,
+        aw_run       : '0,
+        aw_hold      : '0
     };
 
     ref_reg_t r_ref;
@@ -247,6 +276,7 @@ module cmm_core #(
     logic [N_DUT-1:0] pd_lvl;
     logic [N_DUT-1:0] ecnt_dup;
     logic [N_DUT-1:0] sh_dup;
+    logic [N_DUT-1:0] arm_dup;
     logic [N_DUT-1:0] cmp_a, cmp_b;
     logic [N_DUT-1:0] freq_bad, freq_bad_inj;
     logic [N_DUT-1:0] ne_dup, dead_a, dead_b;
@@ -264,6 +294,9 @@ module cmm_core #(
             // shadow snapshot integrity + CNT-class injection
             assign sh_dup[i] = (r_ref.shadow_qn[i] != ~r_ref.shadow_q[i])
                                ^ (inj_cnt && sel_ch[i]);
+
+            // armed pair integrity (rule 12: per-channel slice compare)
+            assign arm_dup[i] = (r_ref.armed_n[i] != ~r_ref.armed[i]);
 
             // dual compare on the shadow (A: value, B: inverted copy),
             // valid for the whole window between fires; verdict sampled by
@@ -287,14 +320,20 @@ module cmm_core #(
         end
     endgenerate
 
-    // detection event levels (top latches them sticky)
+    // detection event levels (top latches them sticky). dead_lvl is masked
+    // while !armed (not-yet-arriving clock); ne_dup keeps firing into the
+    // fu path regardless - a stuck pair break on the frozen counter is
+    // visible as fu_cnt (a transient SEU on the frozen 0 value is not
+    // observable by construction, see header).
     generate
         for (genvar i = 0; i < N_DUT; i++) begin : g_out
             assign fail_lvl[i]   = (r_ref.freq_deb[i] == 2'd0);  // freq outside [LO,HI]
-            assign dead_lvl[i]   = dead_a[i] | dead_b[i] | ne_dup[i];
-            assign fu_cnt_lvl[i] = ecnt_dup[i] | sh_dup[i] | ne_dup[i];
+            assign dead_lvl[i]   = (dead_a[i] | dead_b[i] | ne_dup[i])
+                                   & r_ref.armed[i];
+            assign fu_cnt_lvl[i] = ecnt_dup[i] | sh_dup[i] | ne_dup[i] | arm_dup[i];
             assign fu_cmp_lvl[i] = cmp_a[i] ^ cmp_b[i];           // implementations disagree
             assign fu_psc_lvl[i] = (r_ref.psc_deb[i] == 3'd4);
+            assign armed[i]      = r_ref.armed[i];                // NEVER_ARMED + readback
         end
     endgenerate
 
@@ -345,9 +384,35 @@ module cmm_core #(
                 v_ref.shadow_qn[i] = ~r_ref.edge_cnt[i];
             end
 
+            // A1 first-edge arming: set on the first DUT edge, cleared only
+            // by disarm (EN off / TST_CLR) - clock death does NOT clear
+            // (DEAD = lost a previously-present clock). Copy recomputed
+            // from the next state every cycle (rule-12 self-heal).
+            v_ref.armed[i] = r_ref.armed[i] | edge_det[i];
+            if (disarm[i]) begin
+                v_ref.armed[i] = 1'b0;
+            end
+            v_ref.armed_n[i] = ~v_ref.armed[i];
+
+            // A2 armed-throughout-window qualification. aw_run carries
+            // "armed at the window start and no disarm since"; window_end
+            // latches it into aw_hold for the window_fire verdict beat and
+            // reseeds from the next-cycle armed value (first cycle of the
+            // new window). Unjudged windows neither count against nor
+            // refresh the FAIL_FREQ debounce below.
+            if (window_end) begin
+                v_ref.aw_hold[i] = r_ref.aw_run[i] & ~disarm[i];
+                v_ref.aw_run[i]  = v_ref.armed[i];
+            end else begin
+                v_ref.aw_run[i]  = r_ref.aw_run[i] & ~disarm[i];
+            end
+
             // FAIL_FREQ debounce: down-counter loaded with N_DEB on every
-            // good window, decremented per bad window, fires at 0
-            if (window_fire) begin
+            // good JUDGED window, decremented per bad JUDGED window, fires
+            // at 0. Unjudged windows (!aw_hold: unarmed / armed mid-window /
+            // disarm in flight) hold the count; disarm reloads so a re-arm
+            // always starts with a fresh N_DEB-window debounce.
+            if (window_fire && r_ref.aw_hold[i]) begin
                 if (freq_bad_inj[i]) begin
                     if (r_ref.freq_deb[i] != 2'd0) begin
                         v_ref.freq_deb[i] = r_ref.freq_deb[i] - 2'd1;
@@ -356,9 +421,18 @@ module cmm_core #(
                     v_ref.freq_deb[i] = N_DEB;
                 end
             end
+            if (disarm[i]) begin
+                v_ref.freq_deb[i] = N_DEB;
+            end
 
-            // no-edge timeout counter + inverted duplicate (re-issuing)
-            if (edge_det[i]) begin
+            // no-edge timeout counter + inverted duplicate (re-issuing).
+            // Frozen at 0 while !armed: a not-yet-arrived clock must not
+            // count toward DEAD (the dead_lvl mask in g_out covers the
+            // ndead==0 corner on top).
+            if (!r_ref.armed[i]) begin
+                v_ref.noedge_cnt[i]   = '0;
+                v_ref.noedge_cnt_n[i] = '1;
+            end else if (edge_det[i]) begin
                 v_ref.noedge_cnt[i]   = '0;
                 v_ref.noedge_cnt_n[i] = '1;
             end else if (r_ref.noedge_cnt[i] == ndead[i]) begin

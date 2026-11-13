@@ -1,7 +1,7 @@
 # reset_checker 设计说明 (rst_monitor)
 
 POR 复位双轨检查器：输入同向复制的 `reset_p/reset_m`，内部检查电路产生
-`rst_por_n_err`。规格框图来源：rst_monitor 结构图（MKCV 4bit 模式比较 FSM +
+`esm_err`。规格框图来源：rst_monitor 结构图（MKCV 4bit 模式比较 FSM +
 fault_inject 门控 + OR + `CNT[4:0]` 滤波计数器 `filt(&cnt)` + DFF 锁存）。
 
 ## 1. 功能定义
@@ -11,14 +11,14 @@ fault_inject 门控 + OR + `CNT[4:0]` 滤波计数器 `filt(&cnt)` + DFF 锁存�
   双高 = 释放，正常时二者恒相等，复位到来时同向一起拉低）。
 - 检查器监视两副本**一致性**：`p != m` 即分歧（单根线断/短路/卡死/翻转，
   部分电路看到的复位与其它部分不同 → 非对称部分复位，危险）。
-- 分歧持续超过滤波窗口 → 置位粘滞 `rst_por_n_err`（送 ESM/FUSA_ERR）。
+- 分歧持续超过滤波窗口 → 置位粘滞 `esm_err`（送 ESM/FUSA_ERR）。
 
 ### 滤波计数器（规格语义）
 
 两轨各自经 **rst_sync wrapper**（复位同步器：**异步断言 / 2FF 释放**——
 轨即复位，复位入口语义）后做**异或**：XOR=1 再经第二级 rst_sync
 （u_rst_pair）释放计数器自由递增，计到**全 1**（`5'h1F`）后停止计数；
-计数器全 1 即产生 `rst_por_n_err`。即分歧需连续 **32 个采样拍**（+pair
+计数器全 1 即产生 `esm_err`。即分歧需连续 **32 个采样拍**（+pair
 2FF 释放；若分歧由对侧轨上升建立，再加该轨 2FF）才告警；短于窗口的
 毛刺（轨间偏斜、亚稳态窗口、单拍毛刺）被静默滤除——亚周期分歧根本
 不会让 pair 同步器释放。两轨恢复一致时计数器清零（去抖：多次分开的
@@ -34,7 +34,7 @@ fault_inject 门控 + OR + `CNT[4:0]` 滤波计数器 `filt(&cnt)` + DFF 锁存�
   得到的 `rstn_pair_s`——两轨一致（XOR=0）时 pair 同步器输出**异步断言**，
   即时清零 counter 和 err（零延迟去抖）；分歧（XOR=1）时经 **2FF 释放**
   计数，计数域复位释放永远时钟对齐（p_s/m_s 断言是异步的，正是这一级
-  保证释放沿 recovery/removal 干净）。因此 `rst_por_n_err` 是**活式**输出
+  保证释放沿 recovery/removal 干净）。因此 `esm_err` 是**活式**输出
   （分歧消失即回 0），SW 侧的粘滞记录由 mbus 域的 EV 事件承担（W1C）。
 
 **边界语义**（自释放态轨下落建立分歧、持续 N 个时钟周期）：≤32 拍静默
@@ -51,14 +51,14 @@ fault_inject 门控 + OR + `CNT[4:0]` 滤波计数器 `filt(&cnt)` + DFF 锁存�
 | 1,0 | 仅 m 轨拉低 → DIV_B | 分歧，计数 |
 
 DIV_A / DIV_B 分别粘滞记录在 EV 寄存器（诊断哪根轨），聚合出唯一的
-`rst_por_n_err`。
+`esm_err`。
 
 ## 2. 业内做法对照
 
 | 厂商/器件 | 复位监督做法 | 与本设计的关系 |
 |---|---|---|
 | NXP MPC5744P (BOLERO) | RGSU 复位生成/监督单元，复位以冗余/差分形式分发，接收侧不一致 → FCCu 告警 | **同构**：双轨分发 + 接收侧一致性检查 |
-| TI TMS570/RM57 | nRST 引脚毛刺监视（采样滤波窗口，窄于阈值的复位脉冲按毛刺报 ESM 错）；复位源锁存 | 滤波思想相同：持续窗口计数；`rst_por_n_err` 可直接接 ESM 通道（本仓 5.esm） |
+| TI TMS570/RM57 | nRST 引脚毛刺监视（采样滤波窗口，窄于阈值的复位脉冲按毛刺报 ESM 错）；复位源锁存 | 滤波思想相同：持续窗口计数；`esm_err` 可直接接 ESM 通道（本仓 5.esm） |
 | Infineon AURIX TC3xx | SCU 复位请求监督 + 复位配置奇偶保护，异常经 SMU 告警；ESR 引脚支持差分 | 分歧告警走错误信号通道的模式相同 |
 | ARM 参考流程 | 复位入口单元（2FF 同步器）+ 独立常开时钟做监督 | 本设计 rst_sync 输出即 p 轨复位同步器（异步断言/2FF 释放），就是复位入口单元语义 |
 
@@ -78,7 +78,7 @@ reset_p -------------> rst_sync --> p_s --+   rstn_pair (raw XOR)
                                           XOR|--------> rst_sync --------> rstn_pair_s
 reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释放,        |
                                               释放=2FF)        一致=异步清零)        |
-                                                             CNT[4:0] / err <--------+---> rst_por_n_err (+_n)
+                                                             CNT[4:0] / err <--------+---> esm_err (+_n)
                                             div_a/div_b -----------------------> EV.DA/EV.DB/EV.ERR (mbus 域粘滞)
 ```
 
@@ -107,8 +107,8 @@ reset_m --[XOR FI]----> rst_sync --> m_s --+  (异步断言,      (分歧=2FF释
 | ce, wr, addr[15:0], wdata[31:0], par | in | mbus 叶子（apb2mbus 协议；addr[15:8]=IDX 实例号；par=^{addr,wr,wdata} 命令在途奇偶） |
 | rdata[31:0] | out | 组合读，未选中/坏奇偶时为 0 |
 | reset_p, reset_m | in | 被监控的同向复制复位轨（异步，低有效） |
-| rst_por_n_err / _n | out | 分歧告警（高有效，活式：恢复一致自动清 0）+ 反相轨 |
-| rchk_par_fault / _n | out | 寄存器奇偶/命令奇偶完整性事件 |
+| esm_err / _n | out | 分歧告警（高有效，活式：恢复一致自动清 0）+ 反相轨 |
+| reg_par_fault / _n | out | 寄存器奇偶/命令奇偶完整性事件 |
 | rst_sync | out | p 轨经 rst_sync（复位同步器：异步断言/2FF 释放）后的输出，下游复位入口直接使用；同步 FF 复位 = 轨自身 |
 | scan_mode | in | DFT：1 = 监控器收拢到单一控制点 reset_p——rst_sync 单元输出 mux 选原始轨、m_g 强制随 p（分歧恒 0，输出静默）、pair XOR 重定义为 reset_p（viol 域复位经主输入直接可控、不经 2FF）；同步 FF 照常挂链，监控功能在 scan 下无定义 |
 
@@ -198,7 +198,7 @@ reg_wrap 的存储级 parity 互补）。
 
 | 位 | 字段 | 源 | W1C | 说明 |
 |---|---|---|---|---|
-| 1:0 | {fault_n, fault} | rchk_par_fault 双轨回读 | — | 干净时 = 2'b10；ESM 完整性事件 = wrap flt、PERR_CMD、PAR_SELFTEST 任一（REG_PROT 不上轨：保护违规≠完整性故障） |
+| 1:0 | {fault_n, fault} | reg_par_fault 双轨回读 | — | 干净时 = 2'b10；ESM 完整性事件 = wrap flt、PERR_CMD、PAR_SELFTEST 任一（REG_PROT 不上轨：保护违规≠完整性故障） |
 | 4 | CTRL wrap | u_ctrl.flt | ✓ | 配置保持型：注入后 parity 保持坏，恢复 = 重写 CTRL（顺序见 5.9） |
 | 5 | EV image | u_evimg.flt | ✓ | 跟随型：注入下拍自愈，W1C 即净 |
 | 6 | STAT image | u_statimg.flt | ✓ | 同上 |
@@ -281,7 +281,7 @@ sat_a≡sat_b）。
    可从 reset_p/reset_m 的下游分接 —— 否则轨卡死时检查器一起被复位，无
    法报告。
 2. FI 自检应在复位保持窗口（轨双低）脉冲；此时注入对系统零代价。
-3. `rst_por_n_err` 接 ESM（5.esm）的一个通道；`rchk_par_fault` 接独立
+3. `esm_err` 接 ESM（5.esm）的一个通道；`reg_par_fault` 接独立
    的完整性通道（勿与功能告警合并）。
 4. `rst_sync` = p 轨复位同步器输出（异步断言/2FF 释放，FF 复位取轨自身），
    即标准复位入口单元：释放沿时钟对齐（recovery-clean），下游直接作复位

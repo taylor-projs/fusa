@@ -9,11 +9,12 @@ toggle 同步, 同步一律例化标准 sync 单元)。
 
 | 组 | 信号 | 说明 |
 |----|------|------|
-| APB3 (apb_clk) | paddr[15:0] / psel / penable / pwrite / pwdata → prdata / pready / pslverr | 标准 APB3 从端 |
+| APB3 (apb_clk) | paddr[15:0] / psel / penable / pwrite / pwdata → prdata / pready / pslverr | 标准 APB3 从端; 0xFF = 桥本地诊断面 (§3.6) |
 | mbus (mbus_clk) | ce / wr / addr[15:0] / wdata[31:0] / par → rdata[31:0] / rpar | 主端, 叶端零等待 (组合读/单拍写); rpar = ^rdata 叶端回程偶校验 |
-| 事件 (apb_clk) | hang_evt / hang_evt_n / rpar_evt / rpar_evt_n | hang 超时 / 读回程奇偶错单拍脉冲, 双轨反相送 ESM |
+| 故障 (apb_clk) | hang_flt / hang_flt_n / rpar_flt / rpar_flt_n | hang 超时 / 读回程奇偶错**粘滞电平**双轨, 送 fchm (W1C 清, §3.6) |
 
-越界实例: `paddr[15:8] ≥ NP` 时不发起 mbus 传输, 立即 pready + pslverr。
+越界实例: `NP ≤ paddr[15:8] < 0xFF` 时不发起 mbus 传输, 立即 pready + pslverr;
+`paddr[15:8] == 0xFF` 命中桥本地诊断面 (§3.6)。
 
 ## 2. CDC 结构 (MCP: 静态数据直采 + toggle 同步)
 
@@ -21,20 +22,9 @@ toggle 同步, 同步一律例化标准 sync 单元)。
 控制 toggle, 例化标准 sync 单元 (`../common_modules/sync_2dff.sv` / `sync_dff.sv`,
 FPGA / ASIC 仿真 / ASIC 后端工艺 cell 三分支):
 
-```
-APB 域                                mbus 域 24MHz
--------------------------             ------------------------------
-acc    = psel & penable               req_flag → sync_2dff → flag_s2
-ce_reg : acc 打拍, rdy 当拍清 0                    → sync_dff → flag_s3
-req_flag: acc 上升沿翻转 (toggle)     ce_flag: s2!=s3 下一拍置 1, 单拍
-保持寄存器: req_fire 当拍锁存             (零等待自完成)
-  paddr_q/pwdata_q/pwrite_q/par_q     ce 当拍: 采样 rdata → rdat_cap,
-addr/wdata/wr/par 直采保持寄存器 ────────►  翻转 ack_flag
-ack_flag → sync_2dff → ack_s2            叶端 ce 拍捕获
-         → sync_dff  → ack_s3
-rdy = s2^s3 → pready
-prdata 直采 rdat_cap ◄────────────────
-```
+![apb2mbus CDC 结构](apb2mbus_fig1_cdc.svg)
+
+*图 1: APB / mbus CDC 结构 — 数据通路静态直采 (MCP 三不变量), 同步 FF 只用于 req_flag / ack_flag 两个单 bit toggle*
 
 ### 2.1 直采安全论证 (MCP 三不变量)
 
@@ -97,10 +87,10 @@ ack 回程级数下限说明: rdy 扇出到 pready/ce_reg/wait_ack/drain 四个
   `^rdat_cap != rpar_cap` → rpar_bad。**只查读** (`pwrite_q=0`):
   写周期叶端 rdata 无消费语义, 写向在途保护已由命令 par 承担。
 - **检出处理 (fail-safe)**: 该笔 APB 读以 pready + pslverr 完成,
-  prdata 驱 0 (坏数据不外送); `rpar_evt` / `rpar_evt_n` 双轨单拍脉冲
-  送 ESM 独立通道 (rdy 单拍 → 事件单拍, 与 hang_evt 同模式)。SW 收
-  bus error 后重读目标寄存器即可恢复 (瞬时翻转重读成功; 叶内持久损坏
-  由各叶自己的 STA_PAR 报)。
+  prdata 驱 0 (坏数据不外送); 置 rpar 粘滞寄存器, `rpar_flt` /
+  `rpar_flt_n` 电平双轨送 fchm, SW 经 STA_EVT W1C 清 (§3.6, 与 hang
+  同模式)。SW 收 bus error 后重读目标寄存器即可恢复 (瞬时翻转重读
+  成功; 叶内持久损坏由各叶自己的 STA_PAR 报)。
 - **drain / 越界路径不触发**: 那两笔本身已 SLVERR, 语义是"完成状态
   未知", 不与回程奇偶混淆。
 - **CDC 安全性**: rpar_cap 与 rdat_cap 同沿锁存、ce 拍后同样静止;
@@ -119,7 +109,7 @@ pready 永久拉低, CPU 总线挂死。该故障只能在 apb_clk 域检测 (�
 
 - **timeout 强制完成**: req 发出后 ack 未在 HANG_TO 个 apb_clk 内返回
   → 当拍完成该笔 APB (pready=1, pslverr=1), CPU 收 bus error 而不是
-  挂死; hang_evt 单拍脉冲 (双轨) 送 ESM。
+  挂死; 置 hang 粘滞, hang_flt 电平双轨送 fchm (§3.6)。
 - **DRAIN 重对齐**: timeout 后被延误的 ack 可能迟到 (如 mbus_clk 抖
   动); 迟到 toggle 若被误认为下一笔的 ack 会造成 rdata 错位 → 进入
   drain: 屏蔽新 req 发起, 新访问立即 pready+pslverr 快速失败, 直到
@@ -155,10 +145,11 @@ timeout 语义一致: 超时 = 完成状态未知)。
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| NP | 2 | mbus 实例数 (地址译码越界判断) |
-| AW | 16 | mbus 地址位宽 |
-| DW | 32 | 数据位宽 |
+| NP | 2 | mbus 实例数 (地址译码越界判断; 合法 [1,255], 0xFF 为本地诊断面保留, §3.6) |
 | HANG_TO | 64 | hang 看门狗阈值 [apb_clk 拍]。正常往返 ≈ 3 拍 mbus (req 同步链) + 1 拍 ce + 3 拍 apb (ack 同步链); 按最慢 mbus / 最快 apb 折算后留 ≥4× 裕量。默认 64 拍 (mbus 24 MHz / apb_clk ≥ 50 MHz 时约 5×) |
+
+(不设 AW/DW 参数 — mbus 协议定宽 (地址 16b / 数据 32b), 参数化只会
+允许破坏译码的非法配置, 徒增审查面。)
 
 ### 3.5 后端 signoff 要求 (MCP 直采的配套)
 
@@ -181,7 +172,45 @@ set_max_delay -datapath_only \
 CDC 工具 (SpyGlass 等): 上述数据声明为 **MCP / quasi-static data**,
 enable = 同步后的 ce / rdy; 否则会报"未同步多比特跨域"。
 
-sync 单元分支选择 (common_modules/sync_2dff.sv / sync_dff.sv):
+### 3.6 事件粘滞 + 0xFF 本地寄存器面 (apb_clk 域)
+
+hang/rpar 检出后除当拍 fail-safe 总线行为外, 置粘滞寄存器: 电平双轨
+送 fchm + SW 读出/清除/注错面。**粘滞寄存器与本地面全部在 apb_clk 域:
+to_fire/rpar_err 本就是 apb 域单拍脉冲, 捕获零 CDC** (寄存器在对域的
+dup_ctrl 才需要规则 23 全套跨域握手, 这里结构上不需要)。
+
+寄存器面挂在从越界空间雕出的本地实例 0xFF (NP 因此收紧 ≤255):
+
+| 偏移 | 寄存器 | 位定义 |
+|------|--------|--------|
+| 0x00 | ID | RO 32'h0000_424D ("BM") |
+| 0x04 | STA_EVT | [0]FAULT = HANG\|RPAR (RO); [1]FAULT_N = ~FAULT (RO); [2]HANG / [3]RPAR (W1C); 静息读 0x2 |
+| 0x08 | CFG_INJ | [3:0]key = 4'b1010 (错 key 整写忽略); [4]HANG_INJ / [5]RPAR_INJ 写 1 单拍命令; 读回 0 |
+
+要点:
+
+- **本地访问零等待且不受 drain 屏蔽** (mbus 半死诊断期间恰最需要读
+  状态); 不进 req_flag/toggle 链、不置 wait_ack (不触发看门狗)。
+  未映射本地偏移 pready+pslverr (与越界同 fail-visible 语义)。
+- **粘滞 = 双寄存器互补存** (q 与 q_n 独立 FF, 同源同项、次态互补,
+  端口直出寄存器 — 端口处组合取反做不到): 存储单翻 (SEU) → 两轨
+  失配, fchm 侧轨校验可检。次态 set 优先:
+  `q_hang = (to_fire|inj_h) | (q_hang & ~w1c_h)`,
+  `q_hang_n = ~(to_fire|inj_h) & (q_hang_n | w1c_h)` (互补恒可证)。
+  合法 APB 单事务串行下 set 源 (远端事务) 与 W1C (本地面写) 不同拍
+  可达, 优先写法为防御式。
+- **注错 OR 在 set 项 (检测源侧)**, 与真实事件共用 寄存器→端口→W1C
+  同一通路: 注错会真实抬 fchm 端口电平 (运行期注错窗口协调进 safety
+  case); 不进 to_fire/rpar_err 组合项 → 不假完成传输/不进 drain/
+  不污染当笔 prdata/pslverr。
+- **语义认账**: 粘滞清除前的多笔事件合并, 无 per-event 边沿 (每笔
+  hang 本就伴随总线 SLVERR, SW 有逐笔证据; fchm 需计数自行打边沿)。
+  W1C 连端口一起清, apb2mbus 侧完全 SW 可控 (fchm 内部若再锁存,
+  清除属 fchm 自己的流程)。
+- **esm_core 直接输入仍是事件脉冲契约** (≥1 拍); fchm 转发 ESM 时
+  level→pulse 转换在 fchm 侧做。
+
+
 
 | define | 分支 | 说明 |
 |--------|------|------|
@@ -192,19 +221,25 @@ sync 单元分支选择 (common_modules/sync_2dff.sv / sync_dff.sv):
 ## 4. 验证
 
 `sim/tb_apb2mbus.sv` (VCS 与 iverilog 双过), hang 看门狗专项 +
-常时检查, 62 checks 全过 (VCS 2026-11-08 实测, TOGGLE 排除后 100%) (TB 对 CDC 实现透明, MCP 直采化后原样全过):
+常时检查, 98 checks 全过 (VCS 2026-11-10 实测; LINE / BRANCH 100%,
+TOGGLE 排除结构性死位后 100%, 见 `sim/tgl_struct_excl.el`) (TB 对
+CDC 实现透明, MCP 直采化后原样全过):
 
 | 组 | 内容 |
 |----|------|
 | T1 | 正常写/读往返 (inst0/inst1), 无误响应, 无 hang 事件 |
 | T2 | 越界实例: 立即 pready+pslverr, 不发起 mbus 传输 |
-| T3 | mbus_clk 停 (时钟死亡): 当笔 ~HANG_TO 拍后 SLVERR 完成 + hang_evt 单拍脉冲, mbus 侧无 ce |
+| T3 | mbus_clk 停 (时钟死亡): 当笔 ~HANG_TO 拍后 SLVERR 完成 + 置 hang 粘滞 (hang_flt 电平), mbus 侧无 ce |
 | T4 | drain 期新访问: 1 拍快速 SLVERR, 不发起 mbus 传输, 无二次事件 |
 | T5 | mbus_clk 恢复: 迟到 ack 消化 (drain 自清), 被延误的写迟到生效, 链路恢复正常写读 |
-| T6 | hang_evt/hang_evt_n 双轨互补常时检查 |
+| T6 | hang_flt/hang_flt_n 双轨互补常时检查 (粘滞电平) |
 | T7 | ce 拍命令奇偶 par == ^{addr,wr,wdata} 常时检查 |
 | T8 | slave 恢复瞬间立即访问: drain 未释放窗内立即 SLVERR (不挂死); 迟到 ack 消化 (drain 自清) 后访问恢复正常 |
-| T11 | 读回程奇偶 rpar (§3.1.1): 好读通过 / 坏 rpar 读 → pready+pslverr+prdata 驱 0 + rpar_evt 单拍 (双轨) / 坏 rpar 写不触发 (只查读) / drain 窗迟到 ack 坏 rpar 不触发 / 坏读后重读恢复 / rpar_evt_n 互补常时检查 |
+| T11 | 读回程奇偶 rpar (§3.1.1): 好读通过 / 坏 rpar 读 → pready+pslverr+prdata 驱 0 + 置 rpar 粘滞 (rpar_flt 电平, W1C 清) / 坏 rpar 写不触发 (只查读) / drain 窗迟到 ack 坏 rpar 不触发 / 坏读后重读恢复 / rpar_flt_n 互补常时检查 |
+| T12 | 0xFF 本地面 (§3.6): ID 读 "BM" / STA_EVT 静息读 0x2 (FAULT_N=1) / W1C 清对应粘滞且 FAULT/FAULT_N 同拍翻转 / CFG_INJ 读回 0 / 未映射本地偏移 pready+pslverr / 本地访问不产生 mbus ce |
+| T13 | 注错 (§3.6): key=1010 写 HANG_INJ/RPAR_INJ → 对应粘滞置位, fchm 端口电平真实抬升 (STA=0x5/0x9/0xD), W1C 可清; 错 key (…B) 整写忽略; 注错双置后复位全清 |
+| T14 | 本地/远端交错: 本地访问零等待 (不占握手拍数), 远端访问照常 ce; mbus ce 计数只统计远端事务 |
+| T15 | drain 期本地读: 不被 drain 屏蔽, 读出 hang 粘滞 STA=0x5, W1C 治愈; 同窗远端访问仍快速 SLVERR |
 
 **drain 释放时序** (T8 的重点): mbus_clk 恢复后, 被延误的请求要先走
 同步链→ce→ack (~5 个 mbus 拍), ack 再经同步链回 apb 域产生 rdy 脉冲才
@@ -225,6 +260,10 @@ RTL:
    sync_2dff/sync_dff 标准单元 (FPGA/ASIC 仿真/ASIC 工艺 cell 三分支)。
    省 ~215 FF; 同时消除"保持寄存器与 flag 同沿翻转导致的链间跨代混采"
    理论窗口 (§2.2)。
+3. **事件粘滞 + 0xFF 本地诊断面** (2026-11-10, §3.6): hang/rpar 检出
+   置 apb_clk 域粘滞寄存器 (q/q_n 双 FF 互补存), 电平双轨送 fchm;
+   SW 经 0xFF 面 STA_EVT W1C 清 / CFG_INJ key=1010 注错; NP 收紧
+   ≤255。原件无任何本地寄存器面, 事件只有单拍脉冲端口。
 
 TB:
 1. **双仿真器兼容**: task 内 `return` → done-flag 退出 (iverilog 不支
@@ -235,3 +274,8 @@ TB:
 3. **T3c 时序对齐**: to_fire 后等 4 拍再查 hang_evt_seen (事件寄存
    1 拍 + seen 锁存 1 拍)。
 4. **新增 T8**: drain 释放窗内访问快速失败 + 自清后恢复正常。
+5. **事件粘滞化 + T12-T15** (2026-11-10, §3.6): 原双轨脉冲端口常时检查
+   改查粘滞电平; 新增本地面/W1C/注错/本地远端交错/drain 期诊断五组
+   (T12-T15 + T10c 注错后复位清), checks 62 → 98。写后检查粘滞端口
+   需 `repeat (2) @(posedge apb_clk)` 让 NBA 落地 (TB task 在 active
+   region 返回)。

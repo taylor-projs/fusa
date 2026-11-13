@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 940" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .strip { fill: #F8FAFC; stroke: #94A3B8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="940" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">axi2sram_ctrl 顶层结构 — 双时钟域 · 规则 23 (regfile 唯一双域模块) · v3.5 ECC 封装拆分</text>
+
+  <!-- ============ 域背景 ============ -->
+  <rect x="16" y="48" width="336" height="788" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="72" class="dom">mbus 域 — 寄存器面 (SW)</text>
+  <rect x="392" y="48" width="672" height="788" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="404" y="72" class="dom">axi_clk 域 — AXI 从口 / 行引擎 / ECC 封装 / 宏 (单功能域)</text>
+  <line x1="382" y1="48" x2="382" y2="836" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="382" y="120" class="cdc" text-anchor="middle">CDC 边界</text>
+
+  <!-- ============ mbus 从口 ============ -->
+  <rect x="44" y="92" width="260" height="56" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="174" y="113" class="bt" text-anchor="middle">mbus 总线从口</text>
+  <text x="174" y="132" class="sub" text-anchor="middle" font-size="9.5">ce · wr · addr · wdata · par → rdata · rpar</text>
+  <line x1="174" y1="148" x2="174" y2="176" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- ============ regfile ============ -->
+  <rect x="44" y="178" width="260" height="360" rx="8" class="box"/>
+  <text x="174" y="202" class="bt" text-anchor="middle">axi2sram_ctrl_regfile</text>
+  <text x="174" y="218" class="sub" text-anchor="middle">全部 CDC 收编于此</text>
+  <line x1="56" y1="226" x2="292" y2="226" stroke="#CBD5E1"/>
+  <text x="56" y="246" class="txt">· image 寄存器面: 每寄存器 reg_wrap</text>
+  <text x="56" y="268" class="txt">· ia 握手: 锁存 {wsel, wdata, wpar}</text>
+  <text x="56" y="288" class="txt">   + req_t 翻转 (命令跨域)</text>
+  <text x="56" y="308" class="txt">· 在途奇偶 PERR6/7 · 忙丢 WR_DROPPED</text>
+  <text x="56" y="328" class="txt">· 影子侧 key / 码字复检 (双门)</text>
+  <text x="56" y="348" class="txt">· 状态回程: sync_dff + reg_wrap</text>
+  <text x="56" y="368" class="txt">· PERR 聚合 STA_PAR · rpar 读回程</text>
+  <text x="56" y="388" class="txt">· 事件粘滞 STA_ERR/FAULT/LAT + 计数</text>
+  <text x="56" y="408" class="txt">· BYPASS: image + axi 影子 (PERR8)</text>
+  <text x="56" y="428" class="txt">· rst_sync → axi_rstn (scan→top)</text>
+  <text x="56" y="448" class="txt">· ESM 双轨三对 · ID=5AFE_A201</text>
+  <line x1="56" y1="460" x2="292" y2="460" stroke="#CBD5E1"/>
+  <text x="174" y="480" class="sm" text-anchor="middle">寄存器图: 0x00..0x34 + 0xFC (§7)</text>
+  <text x="174" y="498" class="sm" text-anchor="middle">mbus_rstn 两域共源异步断言</text>
+
+  <!-- ============ ESM ============ -->
+  <rect x="44" y="586" width="260" height="92" rx="8" fill="#FEF2F2" stroke="#F87171"/>
+  <text x="174" y="610" class="bt" text-anchor="middle">ESM 三轨输出 (mbus 域)</text>
+  <text x="174" y="632" class="txt" text-anchor="middle">esm_err / _n (|STA_ERR| 含 ORG)</text>
+  <text x="174" y="650" class="txt" text-anchor="middle">esm_fault / _n (CNT|DP|在途|自测)</text>
+  <text x="174" y="668" class="txt" text-anchor="middle">reg_par_fault / reg_par_fault_n</text>
+  <line x1="174" y1="538" x2="174" y2="584" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- ============ AXI 从口 ============ -->
+  <rect x="736" y="92" width="300" height="56" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="886" y="113" class="bt" text-anchor="middle">AXI4 从口 256bit (NIC 出口)</text>
+  <text x="886" y="132" class="sub" text-anchor="middle">aw/w/b/ar/r · 32B 行主流 · 帽 5</text>
+  <line x1="886" y1="148" x2="886" y2="176" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- ============ core ============ -->
+  <rect x="460" y="178" width="580" height="330" rx="8" class="box"/>
+  <text x="750" y="202" class="bt" text-anchor="middle">axi2sram_ctrl_core</text>
+  <line x1="472" y1="210" x2="1028" y2="210" stroke="#CBD5E1"/>
+
+  <rect x="476" y="222" width="548" height="46" rx="6" class="strip"/>
+  <text x="750" y="241" class="txt" text-anchor="middle" font-weight="bold">从口适配 + 命令队列 4 深·帽 5 + W 拍缓冲 2 深 (W 先于 AW)</text>
+  <text x="750" y="259" class="sm" text-anchor="middle">响应保序 · WRAP 容器 · 宏侧只出标准 SRAM 口</text>
+
+  <rect x="476" y="282" width="300" height="118" rx="6" class="strip"/>
+  <text x="626" y="302" class="txt" text-anchor="middle" font-weight="bold">行引擎 (32B 行粒度)</text>
+  <text x="486" y="322" class="sm">5 状态 IDLE/RD/WR/RMWW/INIT</text>
+  <text x="486" y="338" class="sm">连续读 1 拍/行 (S_RD 发起机)</text>
+  <text x="486" y="354" class="sm">整行/直写 1 拍 · RMW 2 拍</text>
+  <text x="486" y="370" class="sm">INIT 扫片 1 行/拍 · rs_pend 交付</text>
+  <text x="486" y="386" class="sm">byp_swp 格式权威</text>
+
+  <rect x="792" y="282" width="236" height="118" rx="6" class="strip"/>
+  <text x="910" y="302" class="txt" text-anchor="middle" font-weight="bold">独占监视器</text>
+  <text x="802" y="322" class="sm">单项 {id, line} 行粒度</text>
+  <text x="802" y="338" class="sm">LDREX/STREX EXOKAY</text>
+  <text x="802" y="354" class="sm">普通写/独占写清除</text>
+  <text x="802" y="370" class="sm">失败独占写不写不清</text>
+  <text x="802" y="386" class="sm">M85 / NA300D 原语</text>
+
+  <rect x="476" y="414" width="548" height="72" rx="6" fill="#ECFDF5" stroke="#34D399"/>
+  <text x="750" y="436" class="txt" text-anchor="middle" font-weight="bold" fill="#065F46">运行时 BYPASS — 初始化前一次配置, 运行期不切换</text>
+  <text x="750" y="454" class="sm" text-anchor="middle" fill="#047857">CFG_CTRL[1] keyed · 复位 0 = FuSa 默认 · 写后自动全片重扫 (busy 门控)</text>
+  <text x="750" y="472" class="sm" text-anchor="middle" fill="#047857">运行期误翻 → 破坏性重扫 + busy 显性 (读回与数据面永不静默分叉)</text>
+
+  <!-- ============ core ↔ wrapper 箭头 ============ -->
+  <line x1="560" y1="508" x2="560" y2="530" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="572" y="524" class="sm">写: cen·wen·addr·wdata·bw</text>
+  <line x1="980" y1="534" x2="980" y2="512" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="968" y="524" class="sm" text-anchor="end">读: rdata 256b 纠正后</text>
+
+  <!-- ============ wrapper ============ -->
+  <rect x="460" y="534" width="580" height="122" rx="8" class="box"/>
+  <text x="750" y="556" class="bt" text-anchor="middle">mcu_sram_wrapper — ECC 封装 (读译码纠正 / 写下行编码)</text>
+  <text x="750" y="572" class="sub" text-anchor="middle">注错 + CERR/DERR 事件/快照收编于此 · ASIC: 换存储器编译器宏 (需 bit interleave)</text>
+  <rect x="476" y="582" width="548" height="56" rx="6" class="strip"/>
+  <text x="486" y="600" class="sm">enc: 2×(137,128) 写通路编码</text>
+  <text x="486" y="616" class="sm">dec: 2 码字独立译码</text>
+  <text x="486" y="630" class="sm">CERR 纠正交付 · DERR 原始值交付</text>
+  <text x="762" y="600" class="sm">inj1/inj2 真实写通路注错</text>
+  <text x="762" y="616" class="sm">事件 CERR/DERR + STA_LAT 快照</text>
+  <text x="762" y="630" class="sm">bypass: 编/译码旁路 (裸数据)</text>
+  <text x="750" y="650" class="sm" text-anchor="middle">宏口适配: csn = !cen · we_ecc = !byp · 274bit 行布局 (§3.1)</text>
+
+  <!-- ============ wrapper ↔ macro 箭头 ============ -->
+  <line x1="560" y1="656" x2="560" y2="678" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="572" y="672" class="sm">行宏写 274bit (0 拍)</text>
+  <line x1="980" y1="682" x2="980" y2="660" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="968" y="672" class="sm" text-anchor="end">读出 274bit (1 拍寄存)</text>
+
+  <!-- ============ macro ============ -->
+  <rect x="460" y="682" width="580" height="140" rx="8" class="box"/>
+  <text x="750" y="704" class="bt" text-anchor="middle" font-size="12.5">axi2sram_ctrl_macro — 1MB = 32768 行 × 274bit (ASIC: 256b 数据宏 + 18b ECC 宏)</text>
+  <rect x="476" y="718" width="110" height="38" fill="#FEF9C3" stroke="#CA8A04"/>
+  <text x="531" y="736" class="txt" text-anchor="middle" font-weight="bold">ECC [273:256]</text>
+  <text x="531" y="750" class="sub" text-anchor="middle" font-size="9.5">2 码字 × 9b</text>
+  <rect x="590" y="718" width="434" height="38" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="807" y="736" class="txt" text-anchor="middle" font-weight="bold">数据 [255:0] — 2 码字 × 128b (cw1..cw0)</text>
+  <text x="807" y="750" class="sub" text-anchor="middle" font-size="9.5">bit interleave 要求 (§9)</text>
+  <text x="476" y="782" class="sm">写口 (wrapper 驱动): csn · wen · addr · wdata[273:0] (写 0 拍)</text>
+  <text x="476" y="798" class="sm">bw[31:0] 数据场字节写 (bypass 直写基础)</text>
+  <text x="476" y="814" class="sm">we_ecc ECC 场整写 (仅 FuSa 写通路)</text>
+  <text x="1028" y="782" class="sm" text-anchor="end">读出 rdata (1 拍寄存)</text>
+  <text x="1028" y="798" class="sm" text-anchor="end">SEU 背门 seu_flip (仅仿真)</text>
+
+  <!-- ============ CDC 跨域箭头 ============ -->
+  <line x1="304" y1="196" x2="456" y2="196" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#aS)"/>
+  <text x="380" y="188" class="sm" text-anchor="middle" fill="#64748B">axi_rstn</text>
+  <line x1="304" y1="244" x2="456" y2="244" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="380" y="234" class="cdc" text-anchor="middle">req_t 命令</text>
+  <text x="380" y="262" class="cdc" text-anchor="middle" font-weight="normal">ia 握手</text>
+  <line x1="460" y1="304" x2="308" y2="304" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="380" y="294" class="cdc" text-anchor="middle">ack_t + init/excl 状态</text>
+  <text x="380" y="322" class="cdc" text-anchor="middle" font-weight="normal">sync 链回程</text>
+  <polyline points="460,600 418,600 418,368 308,368" fill="none" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="380" y="360" class="cdc" text-anchor="middle">事件 cerr/derr + LAT 快照</text>
+
+  <!-- ============ 图例 ============ -->
+  <rect x="16" y="848" width="1048" height="70" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="28" y="868" class="txt">命令跨域 (红 →): wr_fire 锁存 {wsel,wdata,wpar} + req_t 翻转; axi 侧 req_edge 拍载入影子 — mon_en · inj1/inj2 · init_req · bypass (飞行窗口静止无亚稳)</text>
+  <text x="28" y="886" class="txt">状态回程 (红 ←): ack_t 应答 · init_busy/done · excl_set (core) + 事件 cerr/derr + STA_LAT 快照 (wrapper) — sync_2dff / sync_dff 链回 mbus 读出面</text>
+  <text x="28" y="904" class="txt">BYPASS: bypass=1 裸数据直通 + 部分写 bw 直写 + 事件静默; bypass=0 (复位默认) ECC + RMW — 协议面 (OSD / 独占 / INIT) 两模式不变</text>
+</svg>

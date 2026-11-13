@@ -25,12 +25,18 @@
 //   spi_err[j] 为 1 拍脉冲 (错误拍计数器清 0, 原设计语义), 粘滞与
 //   ESM 上报由 int_prot_regfile 负责 (本模块不带状态寄存器).
 //
+//   ESM 三轨分类 (2026-11-13 全仓统一, 见 rtl-coding-style 规则 25):
+//   spi_err = 监控职责错误 (被监视协议真实失配) -> STA_ERR -> esm_err;
+//   cnt_par_err = 监视器自身完整性故障 (计数器 Q/Q_n 副本失配) ->
+//   STA_FAULT -> esm_fault (不再折入 spi_err 通道).
+//
 //   加固差异 (相对原设计, 见 doc/design_spec.md §7):
 //     - 计数器 Q/Q_n 互补自检: change_cnt/diff_cnt 各带一份反相副本,
 //       每拍比较 正本 != ~副本, 任一副本单 bit 被扰动下一拍即失配
 //       (原设计计数器扰动完全不可见 -> 丢事件/假超时都无声); 失配
-//       通道报 1 拍 spi_err (同通道 STA_ERR 粘滞, 故障可见) 并把该
-//       通道计数器清 0 自愈, 副本每拍从次态重算自动回贴;
+//       通道报 1 拍 cnt_par_err (监视器自身故障, STA_FAULT 粘滞 ->
+//       esm_fault) 并把该通道计数器清 0 自愈, 副本每拍从次态重算
+//       自动回贴;
 //     - 边沿检测前拍寄存 (spi_q1/chk_q1) 不做副本: 其单 bit 扰动
 //       要么无害自愈 (空闲期翻转), 要么幻化为假事件由计数器协议
 //       在有界拍数内检出, 无静默路径;
@@ -70,7 +76,8 @@ module int_prot_core #(
    input  logic [NUM_INT-1:0]    spi_inj,        // 注错: 虚拟 spi 事件 (期望 1 拍脉冲)
    input  logic [NUM_INT-1:0]    chk_inj,        // 注错: 虚拟 chk 事件 (期望 1 拍脉冲)
 
-   output logic [NUM_INT-1:0]    spi_err,        // 1 拍错误脉冲 (粘滞在 regfile)
+   output logic [NUM_INT-1:0]    spi_err,        // 1 拍错误脉冲 (监控职责, 粘滞在 regfile STA_ERR)
+   output logic [NUM_INT-1:0]    cnt_par_err,    // 1 拍脉冲 (监视器自身故障, 粘滞在 regfile STA_FAULT)
    output logic [NUM_INT-1:0]    spi_sync        // 同步后的 spi (供下游使用)
 );
 
@@ -198,9 +205,10 @@ module int_prot_core #(
                           (r.diff_cnt[CW*j +: CW] != ~r.diff_cnt_n[CW*j +: CW]);
       end
 
-      // 错误汇总: 协议错误 + 内部状态自检错误 (共用 spi_err 通道,
-      // regfile 侧同通道粘滞 -> 故障可见; 错误拍计数器清 0 自愈)
-      spi_err = change_cnt_error | diff_cnt_error | cnt_par_err;
+      // 错误汇总: 协议失配 = 监控职责错误 (esm_err 轨); 计数器 Q/Q_n
+      // 失配 = 监视器自身故障 (esm_fault 轨, 独立通道不再共用 spi_err;
+      // 错误拍计数器同拍清 0 自愈, 由下方 comb 内 w1c 条件覆盖)
+      spi_err = change_cnt_error | diff_cnt_error;
    end
 
    //--------------------------------------------------------------------------
@@ -220,8 +228,8 @@ module int_prot_core #(
       v.chk_q1 = chk_syncc;
 
       for (int j = 0; j < NUM_INT; j++) begin
-         // change_cnt: 错误拍清 0; 配对/双静保持; 单侧事件 +-1
-         if (spi_err[j]) begin
+         // change_cnt: 错误拍/Q_n 失配拍清 0 (自愈); 配对/双静保持; 单侧事件 +-1
+         if (spi_err[j] || cnt_par_err[j]) begin
             v.change_cnt[3*j +: 3] = 3'd0;
          end else if (spi_changed[j] == chk_changed[j]) begin
             v.change_cnt[3*j +: 3] = r.change_cnt[3*j +: 3];
@@ -231,8 +239,8 @@ module int_prot_core #(
             v.change_cnt[3*j +: 3] = r.change_cnt[3*j +: 3] - 3'd1;
          end
 
-         // diff_cnt: 错误拍清 0; 同拍配对清 0; 失配期间逐拍 +1; 空闲清 0
-         if (spi_err[j]) begin
+         // diff_cnt: 错误拍/Q_n 失配拍清 0 (自愈); 同拍配对清 0; 失配期间逐拍 +1; 空闲清 0
+         if (spi_err[j] || cnt_par_err[j]) begin
             v.diff_cnt[CW*j +: CW] = {CW{1'b0}};
          end else if (spi_changed[j] & chk_changed[j]) begin
             v.diff_cnt[CW*j +: CW] = {CW{1'b0}};

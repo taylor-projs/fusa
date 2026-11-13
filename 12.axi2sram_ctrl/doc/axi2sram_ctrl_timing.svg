@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 780" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+      .ph    { font-size: 13px; font-weight: bold; fill: #1E3A8A; }
+      .sig   { font-size: 10.5px; fill: #334155; }
+      .clab  { font-size: 9.5px; fill: #94A3B8; }
+      .val   { font-size: 9px; fill: #0F172A; }
+      .vlab  { font-size: 9.5px; font-weight: bold; fill: #DC2626; }
+      .note  { font-size: 9.5px; fill: #475569; }
+      .hold  { font-size: 8.5px; fill: #92400E; }
+      .vbx   { fill: #DBEAFE; stroke: #2563EB; }
+      .hbx   { fill: #FEF3C7; stroke: #D97706; stroke-dasharray: 3 2; }
+      .clk   { fill: none; stroke: #0F172A; stroke-width: 1.4; }
+      .hi    { stroke: #059669; stroke-width: 3; }
+      .lo    { stroke: #64748B; stroke-width: 3; }
+      .grid  { stroke: #E2E8F0; stroke-width: 1; }
+      .pbox  { fill: #F8FAFC; stroke: #CBD5E1; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="780" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">关键时序 — csn 低有效宏契约 (写 0 拍 / 读 1 拍 / 未选中保持)</text>
+
+  <!-- ================= Panel A ================= -->
+  <rect x="20" y="42" width="1040" height="206" rx="8" class="pbox"/>
+  <text x="36" y="64" class="ph">A. 整行突发写 INCR4: 1 拍/行, W 逐拍直落宏</text>
+
+  <line x1="140" y1="80" x2="840" y2="80" class="grid"/>
+  <text x="140" y="76" class="clab" text-anchor="middle">c0</text>
+  <text x="210" y="76" class="clab" text-anchor="middle">c1</text>
+  <text x="280" y="76" class="clab" text-anchor="middle">c2</text>
+  <text x="350" y="76" class="clab" text-anchor="middle">c3</text>
+  <text x="420" y="76" class="clab" text-anchor="middle">c4</text>
+  <text x="490" y="76" class="clab" text-anchor="middle">c5</text>
+  <text x="560" y="76" class="clab" text-anchor="middle">c6</text>
+  <text x="630" y="76" class="clab" text-anchor="middle">c7</text>
+  <text x="700" y="76" class="clab" text-anchor="middle">c8</text>
+  <text x="770" y="76" class="clab" text-anchor="middle">c9</text>
+
+  <text x="132" y="100" class="sig" text-anchor="end">axi_clk</text>
+  <path class="clk" d="M140 102 V90 H175 V102 H210 V90 H245 V102 H280 V90 H315 V102 H350 V90 H385 V102 H420 V90 H455 V102 H490 V90 H525 V102 H560 V90 H595 V102 H630 V90 H665 V102 H700 V90 H735 V102 H770 V90 H805 V102 H840"/>
+
+  <text x="132" y="130" class="sig" text-anchor="end">csn (低有效)</text>
+  <line x1="140" y1="120" x2="840" y2="120" class="lo"/>
+  <rect x="210" y="116" width="70" height="9" fill="#F59E0B"/>
+  <rect x="280" y="116" width="70" height="9" fill="#F59E0B"/>
+  <rect x="350" y="116" width="70" height="9" fill="#F59E0B"/>
+  <rect x="420" y="116" width="70" height="9" fill="#F59E0B"/>
+  <text x="500" y="130" class="note">写访问拍 (W 握手当拍落宏)</text>
+
+  <text x="132" y="164" class="sig" text-anchor="end">m_addr</text>
+  <rect x="212" y="150" width="66" height="15" rx="3" class="vbx"/><text x="245" y="161" class="val" text-anchor="middle">行 L0</text>
+  <rect x="282" y="150" width="66" height="15" rx="3" class="vbx"/><text x="315" y="161" class="val" text-anchor="middle">行 L1</text>
+  <rect x="352" y="150" width="66" height="15" rx="3" class="vbx"/><text x="385" y="161" class="val" text-anchor="middle">行 L2</text>
+  <rect x="422" y="150" width="66" height="15" rx="3" class="vbx"/><text x="455" y="161" class="val" text-anchor="middle">行 L3</text>
+
+  <text x="132" y="196" class="sig" text-anchor="end">m_wen / bw</text>
+  <line x1="140" y1="188" x2="840" y2="188" class="lo"/>
+  <line x1="210" y1="188" x2="490" y2="188" class="hi"/>
+  <text x="500" y="192" class="note">wen=1, bw=全1 (整行写含 ECC 重算)</text>
+
+  <text x="132" y="230" class="sig" text-anchor="end">通道握手</text>
+  <text x="140" y="230" class="vlab" text-anchor="middle">▼</text><text x="155" y="230" class="note">AW</text>
+  <text x="210" y="230" class="vlab" text-anchor="middle">▼</text><text x="225" y="230" class="note">W0</text>
+  <text x="280" y="230" class="vlab" text-anchor="middle">▼</text><text x="295" y="230" class="note">W1</text>
+  <text x="350" y="230" class="vlab" text-anchor="middle">▼</text><text x="365" y="230" class="note">W2</text>
+  <text x="420" y="230" class="vlab" text-anchor="middle">▼</text><text x="435" y="230" class="note">W3=last</text>
+  <text x="490" y="230" class="vlab" text-anchor="middle">▼</text><text x="505" y="230" class="note">bvalid</text>
+  <text x="560" y="230" class="vlab" text-anchor="middle">▼</text><text x="575" y="230" class="note">B 握手</text>
+  <text x="700" y="230" class="note">吞吐 = 1 行/拍 (32B/拍)</text>
+
+  <!-- ================= Panel B ================= -->
+  <rect x="20" y="262" width="1040" height="252" rx="8" class="pbox"/>
+  <text x="36" y="284" class="ph">B. 读路流水 INCR4 + rready 反压</text>
+
+  <line x1="140" y1="300" x2="840" y2="300" class="grid"/>
+  <text x="140" y="296" class="clab" text-anchor="middle">c0</text>
+  <text x="210" y="296" class="clab" text-anchor="middle">c1</text>
+  <text x="280" y="296" class="clab" text-anchor="middle">c2</text>
+  <text x="350" y="296" class="clab" text-anchor="middle">c3</text>
+  <text x="420" y="296" class="clab" text-anchor="middle">c4</text>
+  <text x="490" y="296" class="clab" text-anchor="middle">c5</text>
+  <text x="560" y="296" class="clab" text-anchor="middle">c6</text>
+  <text x="630" y="296" class="clab" text-anchor="middle">c7</text>
+  <text x="700" y="296" class="clab" text-anchor="middle">c8</text>
+  <text x="770" y="296" class="clab" text-anchor="middle">c9</text>
+
+  <rect x="490" y="302" width="70" height="172" fill="#FEF08A" opacity="0.45"/>
+  <text x="525" y="488" class="note" text-anchor="middle">反压拍</text>
+
+  <text x="132" y="320" class="sig" text-anchor="end">axi_clk</text>
+  <path class="clk" d="M140 322 V310 H175 V322 H210 V310 H245 V322 H280 V310 H315 V322 H350 V310 H385 V322 H420 V310 H455 V322 H490 V310 H525 V322 H560 V310 H595 V322 H630 V310 H665 V322 H700 V310 H735 V322 H770 V310 H805 V322 H840"/>
+
+  <text x="132" y="350" class="sig" text-anchor="end">csn</text>
+  <line x1="140" y1="340" x2="840" y2="340" class="lo"/>
+  <rect x="210" y="336" width="70" height="9" fill="#F59E0B"/>
+  <rect x="280" y="336" width="70" height="9" fill="#F59E0B"/>
+  <rect x="350" y="336" width="70" height="9" fill="#F59E0B"/>
+  <rect x="420" y="336" width="70" height="9" fill="#F59E0B"/>
+  <rect x="560" y="336" width="70" height="9" fill="#F59E0B"/>
+  <text x="650" y="350" class="note">c5 不发新读 (c4 已预发 L3)</text>
+
+  <text x="132" y="384" class="sig" text-anchor="end">m_addr</text>
+  <rect x="212" y="370" width="66" height="15" rx="3" class="vbx"/><text x="245" y="381" class="val" text-anchor="middle">行 L0</text>
+  <rect x="282" y="370" width="66" height="15" rx="3" class="vbx"/><text x="315" y="381" class="val" text-anchor="middle">行 L1</text>
+  <rect x="352" y="370" width="66" height="15" rx="3" class="vbx"/><text x="385" y="381" class="val" text-anchor="middle">行 L2</text>
+  <rect x="422" y="370" width="66" height="15" rx="3" class="vbx"/><text x="455" y="381" class="val" text-anchor="middle">行 L3</text>
+  <rect x="492" y="370" width="66" height="15" rx="3" class="hbx"/><text x="525" y="381" class="hold" text-anchor="middle">保持</text>
+
+  <text x="132" y="418" class="sig" text-anchor="end">m_rdata (1拍)</text>
+  <rect x="142" y="404" width="66" height="15" rx="3" fill="#F1F5F9" stroke="#94A3B8"/><text x="175" y="415" class="val" text-anchor="middle">旧值</text>
+  <rect x="212" y="404" width="66" height="15" rx="3" class="vbx"/><text x="245" y="415" class="val" text-anchor="middle">L0</text>
+  <rect x="282" y="404" width="66" height="15" rx="3" class="vbx"/><text x="315" y="415" class="val" text-anchor="middle">L1</text>
+  <rect x="352" y="404" width="66" height="15" rx="3" class="vbx"/><text x="385" y="415" class="val" text-anchor="middle">L2</text>
+  <rect x="422" y="404" width="66" height="15" rx="3" class="vbx"/><text x="455" y="415" class="val" text-anchor="middle">L3</text>
+  <rect x="492" y="404" width="66" height="15" rx="3" class="hbx"/><text x="525" y="415" class="hold" text-anchor="middle">L3 冻结</text>
+  <rect x="562" y="404" width="66" height="15" rx="3" class="vbx"/><text x="595" y="415" class="val" text-anchor="middle">L3</text>
+
+  <text x="132" y="452" class="sig" text-anchor="end">axi_rvalid</text>
+  <line x1="140" y1="442" x2="840" y2="442" class="lo"/>
+  <line x1="350" y1="442" x2="840" y2="442" class="hi"/>
+  <text x="350" y="460" class="vlab" text-anchor="middle">▼</text><text x="365" y="460" class="note">R0</text>
+  <text x="420" y="460" class="vlab" text-anchor="middle">▼</text><text x="435" y="460" class="note">R1</text>
+  <text x="500" y="460" class="vlab" text-anchor="middle">▼</text><text x="508" y="460" class="note">R2 悬挂</text>
+  <text x="556" y="460" class="vlab" text-anchor="middle">▼</text><text x="570" y="460" class="note">R2</text>
+  <text x="630" y="460" class="vlab" text-anchor="middle">▼</text><text x="645" y="460" class="note">R3=last</text>
+
+  <text x="132" y="486" class="sig" text-anchor="end">axi_rready</text>
+  <line x1="140" y1="476" x2="840" y2="476" class="hi"/>
+  <rect x="490" y="472" width="70" height="9" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="700" y="480" class="note">主设备反压 → rskip 头拍保持</text>
+
+  <text x="140" y="508" class="note">交付当拍发下一行读 (c2 交付 R0 即发 L1 …); 反压期间照常译码入 rskip (至多 4 行), 解除拍直接交付, 无气泡损失</text>
+
+  <!-- ================= Panel C ================= -->
+  <rect x="20" y="528" width="1040" height="228" rx="8" class="pbox"/>
+  <text x="36" y="550" class="ph">C. 部分写对比: FuSa RMW = 2 拍/行, bypass 直写 = 1 拍/行</text>
+
+  <text x="132" y="582" class="sig" text-anchor="end">FuSa RMW</text>
+  <rect x="140" y="564" width="160" height="40" rx="4" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="220" y="580" class="val" text-anchor="middle" font-weight="bold">c0: W 握手 + 发读</text>
+  <text x="220" y="594" class="val" text-anchor="middle">csn=0, wen=0</text>
+  <rect x="320" y="564" width="180" height="40" rx="4" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="410" y="580" class="val" text-anchor="middle" font-weight="bold">c1: 合并重编码 → 写</text>
+  <text x="410" y="594" class="val" text-anchor="middle">csn=0, wen=1 (纠后并入)</text>
+  <rect x="520" y="564" width="120" height="40" rx="4" fill="#ECFDF5" stroke="#059669"/>
+  <text x="580" y="580" class="val" text-anchor="middle" font-weight="bold">c2: bvalid</text>
+  <text x="580" y="594" class="val" text-anchor="middle">B=OKAY</text>
+  <rect x="660" y="564" width="120" height="40" rx="4" fill="#ECFDF5" stroke="#059669"/>
+  <text x="720" y="580" class="val" text-anchor="middle" font-weight="bold">c3: B 握手</text>
+  <text x="720" y="594" class="val" text-anchor="middle">下一条命令</text>
+  <line x1="300" y1="584" x2="316" y2="584" stroke="#475569" stroke-width="1.5"/>
+  <line x1="500" y1="584" x2="516" y2="584" stroke="#475569" stroke-width="1.5"/>
+  <line x1="640" y1="584" x2="656" y2="584" stroke="#475569" stroke-width="1.5"/>
+
+  <text x="132" y="644" class="sig" text-anchor="end">bypass 直写</text>
+  <rect x="140" y="626" width="180" height="40" rx="4" fill="#FFF7ED" stroke="#EA580C"/>
+  <text x="230" y="642" class="val" text-anchor="middle" font-weight="bold">c0: W 握手当拍直写</text>
+  <text x="230" y="656" class="val" text-anchor="middle">csn=0, wen=1, bw=strb</text>
+  <rect x="340" y="626" width="120" height="40" rx="4" fill="#ECFDF5" stroke="#059669"/>
+  <text x="400" y="642" class="val" text-anchor="middle" font-weight="bold">c1: bvalid</text>
+  <text x="400" y="656" class="val" text-anchor="middle">无宏读</text>
+  <rect x="480" y="626" width="120" height="40" rx="4" fill="#ECFDF5" stroke="#059669"/>
+  <text x="540" y="642" class="val" text-anchor="middle" font-weight="bold">c2: B 握手</text>
+  <text x="540" y="656" class="val" text-anchor="middle">下一条命令</text>
+  <line x1="320" y1="646" x2="336" y2="646" stroke="#475569" stroke-width="1.5"/>
+  <line x1="460" y1="646" x2="476" y2="646" stroke="#475569" stroke-width="1.5"/>
+
+  <text x="140" y="696" class="note">· RMW 拍1 读旧行并译码 (wrapper): CERR 纠正后参与合并 = 顺带洗刷; DERR 读拍上报, 拍2 重编码洗净 (重读不检出, §3.2)</text>
+  <text x="140" y="716" class="note">· bypass 部分写 bw 字节使能直写 (ECC 场不动), 事件面静默; 切回 FuSa 前硬件全片重扫重建 ECC</text>
+  <text x="140" y="736" class="note">· 单口宏固有: RMW 的读+写两拍不可流水 (同行); 不同行的连续部分写逐条 2 拍</text>
+</svg>

@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 870" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .bt11  { font-size: 11px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .strip { fill: #F8FAFC; stroke: #94A3B8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="870" fill="#FFFFFF"/>
+  <text x="620" y="30" class="title" text-anchor="middle">hang_prot_recover 详细框图 — m/s 两侧 5 通道 vld/rdy 全展开</text>
+
+  <text x="210" y="54" class="dom" text-anchor="middle">island NIC (master)</text>
+  <text x="1050" y="54" class="dom" text-anchor="middle">main 域 IC (slave)</text>
+
+  <!-- 中间: recover 桥本体 -->
+  <rect x="400" y="66" width="480" height="694" rx="8" class="box"/>
+  <text x="640" y="88" class="bt" text-anchor="middle">hang_prot_recover</text>
+
+  <!-- 通道横穿线 (先画, 内部盒子盖在上面) -->
+  <line x1="400" y1="112" x2="880" y2="112" stroke="#475569" stroke-width="1.2" marker-end="url(#aS)"/>
+  <line x1="880" y1="292" x2="400" y2="292" stroke="#475569" stroke-width="1.2" marker-end="url(#aS)"/>
+  <line x1="400" y1="400" x2="880" y2="400" stroke="#475569" stroke-width="1.2" marker-end="url(#aS)"/>
+  <line x1="400" y1="474" x2="880" y2="474" stroke="#475569" stroke-width="1.2" marker-end="url(#aS)"/>
+  <line x1="880" y1="688" x2="400" y2="688" stroke="#475569" stroke-width="1.2" marker-end="url(#aS)"/>
+
+  <!-- ===== AR ===== -->
+  <text x="56" y="116" class="bt">AR</text>
+  <line x1="140" y1="112" x2="400" y2="112" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="104" class="txt" text-anchor="middle">m_arvalid</text>
+  <line x1="400" y1="134" x2="140" y2="134" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="126" class="txt" text-anchor="middle">m_arready</text>
+  <text x="640" y="104" class="sm" text-anchor="middle">req 门 (otd&lt;MAX)</text>
+  <text x="430" y="150" class="sm">push {arid, arlen}</text>
+  <line x1="880" y1="112" x2="1120" y2="112" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="104" class="txt" text-anchor="middle">s_arvalid</text>
+  <line x1="1120" y1="134" x2="880" y2="134" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="126" class="txt" text-anchor="middle">s_arready</text>
+  <text x="890" y="150" class="sm">s_arid = AR_ID_REMAP|cls</text>
+  <text x="890" y="164" class="sm">(v3.2: cls=全id匹配mcore,</text>
+  <text x="890" y="178" class="sm">MCORE_REMAP_IDS[k] / AR_ID_REMAP)</text>
+
+  <!-- AR FIFO -->
+  <rect x="430" y="190" width="260" height="78" rx="6" class="strip"/>
+  <text x="560" y="210" class="bt11" text-anchor="middle">AR FIFO (OTD_MAX) ×N_CLS条</text>
+  <text x="446" y="230" class="sm">ar_wr / ar_rp[cls]</text>
+  <text x="446" y="248" class="sm">rbeat_cnt[cls]</text>
+  <line x1="430" y1="226" x2="140" y2="226" stroke="#475569" stroke-width="2" marker-end="url(#aS)"/>
+  <text x="285" y="218" class="sm" text-anchor="middle">m_rid (按 s_rid 类域选头)</text>
+
+  <!-- ===== R ===== -->
+  <text x="56" y="296" class="bt">R</text>
+  <line x1="400" y1="292" x2="140" y2="292" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="284" class="txt" text-anchor="middle">m_rvalid (mux)</text>
+  <line x1="140" y1="314" x2="400" y2="314" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="306" class="txt" text-anchor="middle">m_rready</text>
+  <line x1="400" y1="336" x2="140" y2="336" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="328" class="txt" text-anchor="middle">m_rresp / m_rlast</text>
+  <text x="270" y="352" class="sm" text-anchor="middle">(m_rdata=0, wrapper)</text>
+  <text x="705" y="206" class="sm">正常: s_rvalid∧otd≠0</text>
+  <text x="705" y="222" class="sm">恢复: dummy R (自选类,</text>
+  <text x="705" y="238" class="sm">SLVERR, len 精确)</text>
+  <line x1="1120" y1="292" x2="880" y2="292" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="284" class="txt" text-anchor="middle">s_rvalid</text>
+  <line x1="880" y1="314" x2="1120" y2="314" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="306" class="txt" text-anchor="middle">s_rready (absorb)</text>
+  <text x="890" y="336" class="sm">(mode∨otd==0 → 1,</text>
+  <text x="890" y="350" class="sm">否则透传 m_rready)</text>
+  <text x="890" y="364" class="sm">(s_rid 类域 → 返回路由)</text>
+
+  <!-- ===== AW ===== -->
+  <text x="56" y="404" class="bt">AW</text>
+  <line x1="140" y1="400" x2="400" y2="400" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="392" class="txt" text-anchor="middle">m_awvalid</text>
+  <line x1="400" y1="422" x2="140" y2="422" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="414" class="txt" text-anchor="middle">m_awready</text>
+  <line x1="880" y1="400" x2="1120" y2="400" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="392" class="txt" text-anchor="middle">s_awvalid</text>
+  <text x="1000" y="378" class="sm" text-anchor="middle">(来自 READY 槽)</text>
+  <text x="890" y="422" class="sm">(仅 normal; 恢复时丢弃)</text>
+  <text x="890" y="436" class="sm">s_awid = AW_ID_REMAP</text>
+  <text x="890" y="450" class="sm">s_awaddr/len/size/burst = issue 槽锁存值</text>
+
+  <!-- W SKID (盖在 AW/W 横穿线上) -->
+  <rect x="430" y="388" width="300" height="120" rx="6" class="strip"/>
+  <text x="580" y="408" class="bt11" text-anchor="middle">W SKID (2 slot)</text>
+  <text x="446" y="428" class="sm">FREE→FILL→READY→REPLAY</text>
+  <text x="446" y="446" class="sm">每 slot: AW 负载 + W beats 缓存</text>
+  <text x="446" y="464" class="sm">环形 3 指针: alloc/fill/issue</text>
+  <text x="446" y="482" class="sm">k 补发时 k+1 可攒</text>
+
+  <!-- ===== W ===== -->
+  <text x="56" y="478" class="bt">W</text>
+  <line x1="140" y1="474" x2="400" y2="474" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="466" class="txt" text-anchor="middle">m_wvalid</text>
+  <line x1="400" y1="496" x2="140" y2="496" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="488" class="txt" text-anchor="middle">m_wready</text>
+  <line x1="140" y1="518" x2="400" y2="518" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="510" class="txt" text-anchor="middle">m_wlast/wdata/wstrb</text>
+  <text x="140" y="534" class="sm">(正常=填最老 FILL 槽, 溢出保护;</text>
+  <text x="140" y="548" class="sm">恢复=has_fill)</text>
+  <line x1="880" y1="474" x2="1120" y2="474" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="466" class="txt" text-anchor="middle">s_wvalid (REPLAY 补发)</text>
+  <line x1="1120" y1="496" x2="880" y2="496" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="488" class="txt" text-anchor="middle">s_wready</text>
+  <text x="890" y="518" class="sm">s_wdata/s_wstrb = 缓存值</text>
+  <text x="890" y="532" class="sm">s_wlast = (ridx==beats-1)</text>
+  <text x="890" y="546" class="sm">(REPLAY 两模式都跑完)</text>
+
+  <!-- AW FIFO -->
+  <rect x="430" y="560" width="260" height="84" rx="6" class="strip"/>
+  <text x="560" y="580" class="bt11" text-anchor="middle">AW FIFO (OTD_MAX)</text>
+  <text x="446" y="598" class="sm">push {awid} (m 侧 AW 握手)</text>
+  <text x="446" y="614" class="sm">wr push / wm WLAST 进度</text>
+  <text x="446" y="630" class="sm">bp B 进度 (m_bid 头还原)</text>
+
+  <!-- ===== B ===== -->
+  <text x="56" y="692" class="bt">B</text>
+  <line x1="400" y1="688" x2="140" y2="688" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="680" class="txt" text-anchor="middle">m_bvalid (mux)</text>
+  <line x1="140" y1="710" x2="400" y2="710" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="702" class="txt" text-anchor="middle">m_bready</text>
+  <line x1="400" y1="732" x2="140" y2="732" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="270" y="724" class="txt" text-anchor="middle">m_bresp / m_bid</text>
+  <text x="705" y="578" class="sm">正常: s_bvalid∧otd≠0</text>
+  <text x="705" y="594" class="sm">恢复: B dummy (SLVERR)</text>
+  <text x="705" y="610" class="sm">门控 bp≠wm</text>
+  <text x="705" y="626" class="sm">(该笔 m 侧 WLAST 已过)</text>
+  <line x1="1120" y1="688" x2="880" y2="688" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="680" class="txt" text-anchor="middle">s_bvalid</text>
+  <line x1="880" y1="710" x2="1120" y2="710" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="1000" y="702" class="txt" text-anchor="middle">s_bready (absorb)</text>
+  <text x="890" y="732" class="sm">(mode∨otd==0 → 1,</text>
+  <text x="890" y="746" class="sm">否则透传 m_bready)</text>
+
+  <!-- 监视器 -->
+  <text x="210" y="786" class="sm" text-anchor="middle">── m 侧(监视器观测点)──</text>
+  <text x="1050" y="786" class="sm" text-anchor="middle">── s 侧 ──</text>
+  <rect x="470" y="806" width="340" height="46" rx="8" class="box"/>
+  <text x="640" y="834" class="bt" text-anchor="middle">hang_prot_core 监视器</text>
+  <line x1="600" y1="806" x2="600" y2="762" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="612" y="786" class="sm">rd_otd / wr_otd</text>
+  <line x1="740" y1="806" x2="740" y2="762" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="752" y="786" class="sm">recover_req (脉冲)</text>
+</svg>

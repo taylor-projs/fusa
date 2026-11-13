@@ -18,22 +18,9 @@
 
 ## 2. 微架构(与规格书 §6 对应)
 
-```
-err_g3 (gclk) ─toggle─> 2FF+edge ─> err_g3_sync (vclk 单拍)
-err_g1/err_g2 ─────────────────────┐
-                                   v
-   sr1/sr4/sr7 (G1, 暖保持)   sr2 (暖清+vec自清) + ssr2 (POR-only)   sr3 (暖保持)
-        │                          │                                     │
-   &ies_b1/4/7 ─┬─ lo_irq(~ilv)    ├──────────── hi_irq(固定) ─────────┤
-                └─ hi_irq(ilv)     │                                     │
-   &iep_b1/4/7 ───────────────────┴──────────── pin_cond ──────────────┘
-                                   │
-   向量编码器: G2>G1b1>G1b4>G1b7, 组内 prio_enc(ch0 最高)
-     读 IOFFHR → 组合返回当前最高 + vec_rd_pulse 清 sr2 命中位
-   LTC: 事件重装 ltcp_val; {ltcp_r[15:14],3FFF} 档位
-   nERROR FSM: pin_cond|force 拉低; rel_req&&ltc==0 释放; 计满前不释放(例2)
-   EKR: 0 正常 / 5 一次性释放请求 / A force(前置 nerror_in==1)
-```
+![esm_core 微架构](esm_fig1_arch.svg)
+
+*图 1: 微架构数据流 — err_g3 toggle CDC 同步链 (gclk→vclk) + sr 组 + 中断/pin 扇出*
 
 关键实现决定(逐条对应规格 §7 陷阱):
 1. **置位优先**: `if (|err) sr <= (sr & ~w1c_mask) | err; else if (w1c) ...`

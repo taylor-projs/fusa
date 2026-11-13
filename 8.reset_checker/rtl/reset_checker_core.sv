@@ -13,14 +13,14 @@
 //   reset_p --------------> rst_sync --> p_s --+   rstn_pair (raw XOR)
 //                                              XOR|-----------------------> rst_sync --> rstn_pair_g
 //   reset_m --[XOR FI]----> rst_sync --> m_s --+  (assert=async clr,        (release=2FF)     |
-//                                                  release=2FF)       CNT[4:0] / err <------+--> rst_por_n_err(_n)
+//                                                  release=2FF)       CNT[4:0] / err <------+--> esm_err(_n)
 //
 //   viol = p_s ^ m_s:  div_a = ~p_s &  m_s   reset asserted on p only
 //                      (p rail low alone; the m copy missed the reset)
 //                     div_b =  p_s & ~m_s   reset asserted on m only
 //                      (m rail low alone; asymmetric partial reset)
 //   Both classes are a partial/asymmetric reset - both dangerous, both
-//   latched (EV.DA / EV.DB) with one aggregate err (rst_por_n_err).
+//   latched (EV.DA / EV.DB) with one aggregate err (esm_err).
 //   p_s == m_s is always legal (both low = reset asserted,
 //   both high = released).
 //
@@ -93,8 +93,8 @@ module reset_checker_core (
     input  logic                  ev_db_w1c,
 
     // safety outputs
-    output logic                  rst_por_n_err,   // pair fault (active-high)
-    output logic                  rst_por_n_err_n, // inverted rail (dual rail)
+    output logic                  esm_err,   // pair fault (active-high)
+    output logic                  esm_err_n, // inverted rail (dual rail)
     // functional output: synchronized p rail for downstream reset entry
     output logic                  rst_sync,
 
@@ -259,8 +259,8 @@ module reset_checker_core (
     //=========================================================================
     // outputs
     //=========================================================================
-    assign rst_por_n_err   =  r.err_q;
-    assign rst_por_n_err_n = ~r.err_q;
+    assign esm_err   =  r.err_q;
+    assign esm_err_n = ~r.err_q;
     assign rst_sync        =  p_s;
 
     assign sts_viol     = viol;

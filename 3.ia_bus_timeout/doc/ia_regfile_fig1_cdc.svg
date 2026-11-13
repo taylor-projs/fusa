@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="560" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">ia_bus_timeo_regfile — mbus_clk / aclk 双时钟域 CDC 结构 (§4)</text>
+
+  <!-- 域背景 -->
+  <rect x="16" y="56" width="464" height="414" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="80" class="dom">mbus_clk 域</text>
+  <rect x="600" y="56" width="464" height="414" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="612" y="80" class="dom">aclk 域 (ia_bus_aclk)</text>
+  <line x1="540" y1="56" x2="540" y2="470" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="540" y="108" class="cdc" text-anchor="middle">CDC 边界</text>
+
+  <!-- mbus leaf 从机 -->
+  <rect x="98" y="92" width="300" height="48" rx="8" class="box"/>
+  <text x="248" y="112" class="bt" text-anchor="middle">mbus leaf 从机</text>
+  <text x="248" y="130" class="sm" text-anchor="middle" font-size="9.5">ce &#183; wr &#183; addr &#183; wdata &#183; par &#8594; rdata &#183; rpar</text>
+  <line x1="248" y1="140" x2="248" y2="162" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 写锁存 -->
+  <rect x="98" y="164" width="300" height="42" rx="8" class="box"/>
+  <text x="248" y="189" class="txt" text-anchor="middle" font-weight="bold">写锁存 {wsel_q, wdata_q}</text>
+
+  <!-- 2FF 回同步 -->
+  <rect x="98" y="236" width="300" height="42" rx="8" class="box"/>
+  <text x="248" y="261" class="txt" text-anchor="middle" font-weight="bold">2FF 同步回 mbus_clk</text>
+  <line x1="248" y1="278" x2="248" y2="298" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- CFG_BUSY -->
+  <rect x="98" y="300" width="300" height="56" rx="8" class="box"/>
+  <text x="248" y="322" class="txt" text-anchor="middle">CFG_BUSY = !busy &#8594; SCMIAFUSTAT[4]</text>
+  <text x="248" y="340" class="txt" text-anchor="middle">忙时写丢弃 + WR_DROPPED (fail-visible)</text>
+
+  <!-- rdata -->
+  <rect x="98" y="408" width="300" height="44" rx="8" class="box"/>
+  <text x="248" y="428" class="txt" text-anchor="middle" font-weight="bold">rdata 组合读返回</text>
+  <text x="248" y="444" class="sm" text-anchor="middle">零等待</text>
+
+  <!-- aclk 侧: 2FF + 边沿检测 -->
+  <rect x="662" y="170" width="340" height="42" rx="8" class="box"/>
+  <text x="832" y="190" class="txt" text-anchor="middle" font-weight="bold">2FF 同步 + 边沿检测</text>
+  <text x="832" y="205" class="sm" text-anchor="middle">(aclk 侧)</text>
+  <line x1="832" y1="212" x2="832" y2="234" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- req_edge 译码执行 -->
+  <rect x="662" y="236" width="340" height="42" rx="8" class="box"/>
+  <text x="832" y="261" class="txt" text-anchor="middle" font-weight="bold">req_edge 译码 &#183; aclk 侧执行</text>
+  <line x1="832" y1="278" x2="832" y2="294" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 监控核 -->
+  <rect x="662" y="296" width="340" height="60" rx="8" class="box"/>
+  <text x="832" y="318" class="bt" text-anchor="middle">监控核 ia_bus_timeo_core</text>
+  <text x="832" y="338" class="sm" text-anchor="middle">状态 &#183; 深度 &#183; 阈值回读 &#183; 双轨事件</text>
+
+  <!-- CDC 红箭头: req_t / ack_t / 读回程 -->
+  <line x1="398" y1="196" x2="660" y2="196" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="530" y="184" class="cdc" text-anchor="middle">req_t (toggle)</text>
+  <line x1="662" y1="258" x2="400" y2="258" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="530" y="246" class="cdc" text-anchor="middle">ack_t (toggle)</text>
+  <polyline points="832,356 832,430 400,430" fill="none" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="560" y="418" class="cdc" text-anchor="middle">状态/深度/事件 &#183; 2FF 同步</text>
+
+  <!-- 图例 -->
+  <rect x="16" y="484" width="1048" height="60" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="28" y="504" class="txt">红 &#8594; 写路径: mbus 写当拍锁存 {wsel,wdata} + 翻转 req_t; aclk 侧 2FF+边沿检测得 req_edge 执行, 翻 ack_t 回; req_t != ack_t_s2 期间 CFG_BUSY=1</text>
+  <text x="28" y="524" class="txt">红 &#8592; 读路径: 状态/深度/事件 2FF 同步回 mbus_clk, 组合返回 rdata (零等待); 多比特数据靠稳定性跨域, 无需 Gray 码 (§4.1)</text>
+</svg>

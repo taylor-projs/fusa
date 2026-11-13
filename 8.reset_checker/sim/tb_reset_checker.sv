@@ -88,7 +88,7 @@ module tb_reset_checker;
     end
 
     // safety outputs
-    logic rst_por_n_err, rst_por_n_err_n, rchk_par_fault, rchk_par_fault_n;
+    logic esm_err, esm_err_n, reg_par_fault, reg_par_fault_n;
     logic rst_sync;
 
     // DFT scan control (functional phases keep it 0)
@@ -112,10 +112,10 @@ module tb_reset_checker;
         .rpar            (mbus_rpar       ),
         .reset_p         (reset_p         ),
         .reset_m         (reset_m         ),
-        .rst_por_n_err   (rst_por_n_err   ),
-        .rst_por_n_err_n (rst_por_n_err_n ),
-        .rchk_par_fault  (rchk_par_fault  ),
-        .rchk_par_fault_n(rchk_par_fault_n),
+        .esm_err   (esm_err   ),
+        .esm_err_n (esm_err_n ),
+        .reg_par_fault  (reg_par_fault  ),
+        .reg_par_fault_n(reg_par_fault_n),
         .rst_sync        (rst_sync        ),
         .scan_mode       (scan_mode       )
     );
@@ -138,8 +138,8 @@ module tb_reset_checker;
     // continuous dual-rail consistency check (sampled every mbus_clk)
     logic rail_err = 0;
     always @(posedge mbus_clk) begin
-        if (rst_por_n_err  !== ~rst_por_n_err_n ) rail_err = 1;
-        if (rchk_par_fault !== ~rchk_par_fault_n) rail_err = 1;
+        if (esm_err  !== ~esm_err_n ) rail_err = 1;
+        if (reg_par_fault !== ~reg_par_fault_n) rail_err = 1;
     end
 
     //=========================================================================
@@ -241,13 +241,13 @@ module tb_reset_checker;
         end
     endtask
 
-    // wait for rst_por_n_err with timeout, returns latency in mbus cycles
+    // wait for esm_err with timeout, returns latency in mbus cycles
     task automatic wait_err(input int unsigned to, output int lat, output bit ok);
         begin
             lat = 0;
             ok = 0;
             while ((lat < to) && !ok) begin
-                ok = rst_por_n_err;
+                ok = esm_err;
                 if (!ok) begin
                     @(posedge mbus_clk);
                     lat = lat + 1;
@@ -303,7 +303,7 @@ module tb_reset_checker;
         mb_rd(A_REGPAR, rd);
         chk(rd == 32'h0000_0002, "T7 REGPAR clean at boot ([1:0]=fault_n,fault rail)");
 
-        chk(rst_por_n_err == 1'b0 && rst_por_n_err_n == 1'b1,
+        chk(esm_err == 1'b0 && esm_err_n == 1'b1,
             "T8 err rails idle");
 
         // rst_sync follows the p rail (low = asserted here)
@@ -341,7 +341,7 @@ module tb_reset_checker;
 
         viol_pulse(1'b0, 1'b1, 10);            // DIV_A for 10 cycles, EN=0
         repeat (8) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T16 EN=0 blocks err");
+        chk(esm_err == 1'b0, "T16 EN=0 blocks err");
 
         mb_rd(A_EV, rd);
         chk(rd == 32'h0, "T17 EN=0 blocks events");
@@ -367,7 +367,7 @@ module tb_reset_checker;
             repeat (4) @(posedge mbus_clk);
         end
         repeat (SAT + 3) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T20 sub-cycle skew absorbed (both dirs)");
+        chk(esm_err == 1'b0, "T20 sub-cycle skew absorbed (both dirs)");
         chk(rst_sync == 1'b0, "T21 rst_sync tracks asserted rail");
 
         @(negedge mbus_clk);
@@ -390,7 +390,7 @@ module tb_reset_checker;
         chk((cyc - i) >= 32 && (cyc - i) <= 40,
             "T25 err latency 2FF+32 samples ~34 cycles");
 
-        chk(rst_por_n_err_n == 1'b0, "T26 err inverted rail follows");
+        chk(esm_err_n == 1'b0, "T26 err inverted rail follows");
 
         mb_rd(A_EV, rd);
         chk(rd[2:0] == 3'b101, "T27 EV = DIV_A|ERR");
@@ -402,7 +402,7 @@ module tb_reset_checker;
         // then the live source re-sets it (CPU priority, reg_wrap idiom)
         mb_wr(A_EV, 32'h0000_0004);
         repeat (3) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b1, "T29 live divergence re-sets err after W1C");
+        chk(esm_err == 1'b1, "T29 live divergence re-sets err after W1C");
 
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // restore agreeing rails
@@ -410,7 +410,7 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);            // W1C all
         repeat (2) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T30 err cleared once divergence gone");
+        chk(esm_err == 1'b0, "T30 err cleared once divergence gone");
         mb_rd(A_EV, rd);
         chk(rd[2:0] == 3'b000, "T31 EV cleared");
 
@@ -432,7 +432,7 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T34 clean after DIV_B clear");
+        chk(esm_err == 1'b0, "T34 clean after DIV_B clear");
 
         //---------------------------------------------------------------------
         // Phase 7: glitch filter + boundary. rst_sync architecture: the
@@ -449,11 +449,11 @@ module tb_reset_checker;
         //---------------------------------------------------------------------
         viol_pulse(1'b0, 1'b1, 2);             // 2 << window
         repeat (8) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T35 2-cycle DIV_A glitch filtered");
+        chk(esm_err == 1'b0, "T35 2-cycle DIV_A glitch filtered");
 
         viol_pulse(1'b1, 1'b0, 3);             // 3 << window
         repeat (8) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T36 3-cycle DIV_B glitch filtered");
+        chk(esm_err == 1'b0, "T36 3-cycle DIV_B glitch filtered");
 
         @(negedge mbus_clk);
         rails(1'b1, 1'b1, 0);                  // boundary pulses start from
@@ -462,7 +462,7 @@ module tb_reset_checker;
         viol_pulse(1'b0, 1'b1, SAT + 2);       // 33: saturate-but-wiped
         repeat (4) @(posedge mbus_clk);
         mb_rd(A_EV, rd);
-        chk(rst_por_n_err == 1'b0 && rd[2:0] == 3'b000,
+        chk(esm_err == 1'b0 && rd[2:0] == 3'b000,
             "T37 33-sample divergence: wipe beats the verdict edge");
 
         @(negedge mbus_clk);
@@ -471,7 +471,7 @@ module tb_reset_checker;
 
         viol_pulse(1'b0, 1'b1, SAT + 3);       // 34: EV-only boundary
         repeat (4) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0,
+        chk(esm_err == 1'b0,
             "T38 34-sample boundary: pin wiped by async re-agree clear");
         mb_rd(A_EV, rd);
         chk(rd[2:0] == 3'b101,
@@ -497,7 +497,7 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T42 clean after boundary clear");
+        chk(esm_err == 1'b0, "T42 clean after boundary clear");
 
         //---------------------------------------------------------------------
         // Phase 8: FI latent-fault self-test - FI XORs the m rail copy in
@@ -517,7 +517,7 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T45 clean after FI self-test");
+        chk(esm_err == 1'b0, "T45 clean after FI self-test");
 
         //---------------------------------------------------------------------
         // Phase 9: register parity self-test
@@ -527,7 +527,7 @@ module tb_reset_checker;
         repeat (2) @(posedge mbus_clk);
         mb_rd(A_REGPAR, rd);
         chk(rd[2] == 1'b1, "T46 CTRL wrap parity injection flagged");
-        chk(rchk_par_fault == 1'b1, "T47 par_fault rail asserted");
+        chk(reg_par_fault == 1'b1, "T47 par_fault rail asserted");
 
         mb_wr(A_CTRL, KEY | 32'h0000_0001);    // rewrite heals the wrap
         mb_wr(A_REGPAR, 32'h0000_0004);        // W1C bit2 (PERR0)
@@ -577,7 +577,7 @@ module tb_reset_checker;
         mb_rd(A_REGPAR, rd);
         chk(rd[0] == 1'b0, "T54 PAR_SELFTEST cleared");
 
-        chk(rchk_par_fault == 1'b0, "T55 par_fault rail clean after self-test");
+        chk(reg_par_fault == 1'b0, "T55 par_fault rail clean after self-test");
 
         //---------------------------------------------------------------------
         // Phase 10: command in-flight parity
@@ -630,21 +630,21 @@ module tb_reset_checker;
 
         mb_wr(A_CTRL, KEY | 32'h0000_0004);    // MODE=OFF: mask the live verdict
         repeat (2) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b1,
+        chk(esm_err == 1'b1,
             "T64 err holds with source masked (domain released)");
 
         force dut.u_reset_checker_core.r.err_q = 1'b0;              // SEU clears the sticky
         repeat (2) @(posedge mbus_clk);
         release dut.u_reset_checker_core.r.err_q;                   // duplicate mismatch heals
         repeat (1) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b1,
+        chk(esm_err == 1'b1,
             "T65 err duplicate corruption self-heals to SET");
 
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // rails re-agree: the XOR
         reset_m = 1'b0;                        // reset clears counter+err
         repeat (3) @(posedge mbus_clk);        // 2FF settle + async clear
-        chk(rst_por_n_err == 1'b0,
+        chk(esm_err == 1'b0,
             "T66 err auto-cleared by pair-XOR reset");
 
         mb_wr(A_CTRL, KEY | 32'h0000_0001);    // MODE=NORMAL (fail-safe on)
@@ -667,7 +667,7 @@ module tb_reset_checker;
             repeat (hold) @(posedge mbus_clk);
         end
         repeat (SAT + 4) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T68 random traffic no false err");
+        chk(esm_err == 1'b0, "T68 random traffic no false err");
 
         mb_rd(A_EV, rd);
         chk(rd == 32'h0, "T69 random traffic no events");
@@ -722,13 +722,13 @@ module tb_reset_checker;
         repeat (3) @(posedge mbus_clk);
         force dut.u_reset_checker_core.r.cnt_n = dut.u_reset_checker_core.r.cnt;         // inverted duplicate corrupted
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
-        chk(rst_por_n_err == 1'b1, "T76 cnt duplicate corruption fires");
+        chk(esm_err == 1'b1, "T76 cnt duplicate corruption fires");
         release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // re-agree: auto-clear
         reset_m = 1'b0;
         repeat (3) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b0, "T77 cnt dup err auto-cleared");
+        chk(esm_err == 1'b0, "T77 cnt dup err auto-cleared");
         mb_wr(A_EV, 32'h0000_0007);
         repeat (2) @(posedge mbus_clk);
 
@@ -739,7 +739,7 @@ module tb_reset_checker;
         repeat (3) @(posedge mbus_clk);
         force dut.u_reset_checker_core.r.cnt = 5'h1F;               // a-track all-ones alone
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
-        chk(rst_por_n_err == 1'b1, "T78 sat_a-only filter arm fires");
+        chk(esm_err == 1'b1, "T78 sat_a-only filter arm fires");
         force dut.u_reset_checker_core.r.err_qn = 1'b1;             // transient (1,1) pair state
         repeat (1) @(posedge mbus_clk);
         release dut.u_reset_checker_core.r.err_qn;
@@ -758,7 +758,7 @@ module tb_reset_checker;
         repeat (3) @(posedge mbus_clk);
         force dut.u_reset_checker_core.r.cnt_n = 5'h00;             // ~cnt_n all-ones alone
         repeat (3) @(posedge mbus_clk);        // 3: +1 for the pair 2FF
-        chk(rst_por_n_err == 1'b1, "T79 sat_b-only filter arm fires");
+        chk(esm_err == 1'b1, "T79 sat_b-only filter arm fires");
         release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b1;
@@ -846,7 +846,7 @@ module tb_reset_checker;
         repeat (3) @(posedge mbus_clk);        // past the pair 2FF only
         force dut.u_reset_checker_core.r.cnt_n = dut.u_reset_checker_core.r.cnt;         // dup while counter still low
         repeat (3) @(posedge mbus_clk);
-        chk(rst_por_n_err == 1'b1, "T89 early cnt dup fires (no sat yet)");
+        chk(esm_err == 1'b1, "T89 early cnt dup fires (no sat yet)");
         release dut.u_reset_checker_core.r.cnt_n;
         @(negedge mbus_clk);
         reset_p = 1'b0;                        // re-agree: auto-clear

@@ -11,7 +11,7 @@
 //
 //   寄存器: 0x00 CFG_EN / 0x04 CFG_INJ_EN(key[7:4]=A) / 0x08 CFG_INJ_SPI /
 //           0x0C CFG_INJ_CHK / 0x10 STA_ERR / 0x14 STA_PAR / 0x18 CFG_REGST /
-//           0xFC ID
+//           0x1C STA_FAULT / 0xFC ID
 //
 //   T1  复位默认值 (CFG_EN=1111 监测默认开 / INJ_EN=0000 默认关) + 双轨
 //   T2  CFG_EN 4bit 编码: 非法码拒写 / 开关切换
@@ -24,17 +24,20 @@
 //       开后 FI: CFG_INJ_SPI 单事件超时 + 3 连写上溢
 //   T9  FI: CFG_INJ_CHK 3 连写下溢
 //   T10 全沿检测模式 (u_mon2): 配对无误报 + 未配对报错
-//   T11 REGST 寄存器自检: 逐组(0..5)注校验错 -> PERR/PAR_FAULT/双轨
-//       -> 治愈+W1C; REGSEL>5 忽略
+//   T11 REGST 寄存器自检: 逐组(0..6)注校验错 -> PERR/PAR_FAULT/双轨
+//       -> 治愈+W1C; REGSEL>6 忽略
 //   T12 PAR_SELFTEST "有 fault 无源" 签名 -> W1C bit0 清自测锁存
-//   T13 mbus 命令在途奇偶破坏: 拒写 + 读回 0 + PERR5 + W1C
+//   T13 mbus 命令在途奇偶破坏: 拒写 + 读回 0 + PERR5 + W1C (在途事件
+//       走 esm_fault 轨, 不再点亮 reg_par_fault)
 //   T14 非法 REGST key / 未映射地址 / 错实例访问 静默
 //   T15 4bit SEC: 1bit 错纠正写回 (CFG_EN 0111->1111 / INJ_EN 0001->0000)
 //       + 2bit 平局默认方向 (CFG_EN 1100 -> 开 / INJ_EN 0011 -> 关不注入)
 //       [force 注入带 firing-proof 读回, release 后靠写回/SW 重写恢复]
 //   T16 计数器 Q/Q_n 互补自检: change_cnt 正本 bit 翻转 -> 失配报 1 拍
-//       SPI_ERR + 通道计数器清 0 自愈 + 副本回贴; 自愈后配对流量正常
-//   全程: ESM 双轨互补性在线监视
+//       STA_FAULT + 通道计数器清 0 自愈 + 副本回贴; 自愈后配对流量正常
+//   T17 FLT_SELFTEST keyed 源级注入: STA_FAULT[31] + esm_fault 轨
+//       (无 key 忽略; STA_PAR 不含测试位; W1C bit31 清)
+//   全程: ESM 三轨互补性在线监视
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -77,7 +80,8 @@ module tb_int_prot;
    logic [NUM_INT-1:0] spi_chk = {NUM_INT{1'b1}};   // 互补空闲电平
 
    wire [NUM_INT-1:0] spi_sync;
-   wire               esm_err, esm_err_n, reg_par_fault, reg_par_fault_n;
+   wire               esm_err, esm_err_n, esm_fault, esm_fault_n;
+   wire               reg_par_fault, reg_par_fault_n;
 
    //--------------------------------------------------------------------------
    // DUT
@@ -90,8 +94,8 @@ module tb_int_prot;
       .FUSA_STA_INT_TIMEOUT(TIMEOUT  ),
       .POSEDGE_DETECT_ONLY (1'b1     )
    ) dut (
-      .clk            (clk            ),
-      .rstn           (rstn           ),
+      .mbus_clk       (clk            ),
+      .mbus_rstn      (rstn           ),
       .ce             (ce             ),
       .wr             (wr             ),
       .addr           (addr           ),
@@ -104,6 +108,8 @@ module tb_int_prot;
       .spi_sync       (spi_sync       ),
       .esm_err        (esm_err        ),
       .esm_err_n      (esm_err_n      ),
+      .esm_fault      (esm_fault      ),
+      .esm_fault_n    (esm_fault_n    ),
       .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );
@@ -142,7 +148,7 @@ module tb_int_prot;
    end
 
    //--------------------------------------------------------------------------
-   // 错误统计 + ESM 双轨互补性在线监视
+   // 错误统计 + ESM 三轨互补性在线监视
    //--------------------------------------------------------------------------
    integer errors = 0;
    integer rail_errs = 0;
@@ -150,11 +156,13 @@ module tb_int_prot;
 
    always @(posedge clk) begin
       if (run_check) begin
-         if ((esm_err_n !== ~esm_err) || (reg_par_fault_n !== ~reg_par_fault)) begin
+         if ((esm_err_n !== ~esm_err) || (esm_fault_n !== ~esm_fault)
+             || (reg_par_fault_n !== ~reg_par_fault)) begin
             rail_errs = rail_errs + 1;
             if (rail_errs <= 8) begin
-               $display("[%0t] RAIL-FAIL: esm %b/%b par %b/%b",
-                        $time, esm_err, esm_err_n, reg_par_fault, reg_par_fault_n);
+               $display("[%0t] RAIL-FAIL: esm %b/%b flt %b/%b par %b/%b",
+                        $time, esm_err, esm_err_n, esm_fault, esm_fault_n,
+                        reg_par_fault, reg_par_fault_n);
             end
          end
       end
@@ -267,13 +275,15 @@ module tb_int_prot;
    endtask
 
    //--------------------------------------------------------------------------
-   // REGST 写: key=0xA, bit4=REG_SELFTEST, bit5=PAR_SELFTEST, [11:8]=REGSEL
+   // REGST 写: key=0xA, bit4=REG_SELFTEST, bit5=PAR_SELFTEST, bit6=FLT_SELFTEST,
+   // [11:8]=REGSEL
    //--------------------------------------------------------------------------
    task automatic regst_wr(input logic [3:0] sel,
                            input bit         reg_st,
-                           input bit         par_st);
+                           input bit         par_st,
+                           input bit         flt_st = 1'b0);
       begin
-         mbus_wr(16'h0018, {20'h0, sel, 2'b0, par_st, reg_st, 4'b1010});
+         mbus_wr(16'h0018, {20'h0, sel, 1'b0, flt_st, par_st, reg_st, 4'b1010});
       end
    endtask
 
@@ -302,8 +312,12 @@ module tb_int_prot;
       chk32("STA_ERR", rd, 32'h0);
       mbus_rd(16'h0014, rd);
       chk32("STA_PAR", rd, 32'h2);          // bit1 PAR_FAULT_N = 1
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT", rd, 32'h0);
       chk1("esm_err", esm_err, 1'b0);
       chk1("esm_err_n", esm_err_n, 1'b1);
+      chk1("esm_fault", esm_fault, 1'b0);
+      chk1("esm_fault_n", esm_fault_n, 1'b1);
       chk1("reg_par_fault", reg_par_fault, 1'b0);
       chk1("reg_par_fault_n", reg_par_fault_n, 1'b1);
       chk1("spi_sync idle", (spi_sync == {NUM_INT{1'b0}}), 1'b1);
@@ -532,11 +546,24 @@ module tb_int_prot;
       repeat (2) @(negedge clk);
       mbus_rd(16'h0014, rd);
       chk32("STA_PAR healed", rd, 32'h2);
-      // REGSEL > 5: 忽略
+      // 组6 STA_FAULT (跟随型: FLT_SELFTEST 写一拍治愈, 再 W1C)
       regst_wr(4'd6, 1'b1, 1'b0);
       repeat (3) @(negedge clk);
       mbus_rd(16'h0014, rd);
-      chk32("STA_PAR sel>5 ignored", rd, 32'h2);
+      chk32("STA_PAR PERR6", rd, 32'h101);  // bit0 PAR_FAULT + bit8 PERR6
+      chk1("reg_par_fault", reg_par_fault, 1'b1);
+      regst_wr(4'd0, 1'b0, 1'b0, 1'b1);     // FLT_SELFTEST 写治愈 STA_FAULT wrap
+      mbus_wr(16'h001C, 32'h8000_0000);     // W1C 自测位
+      mbus_wr(16'h0014, 32'h100);           // W1C PERR6
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h0014, rd);
+      chk32("STA_PAR healed", rd, 32'h2);
+      chk1("esm_fault quiet", esm_fault, 1'b0);
+      // REGSEL > 6: 忽略
+      regst_wr(4'd7, 1'b1, 1'b0);
+      repeat (3) @(negedge clk);
+      mbus_rd(16'h0014, rd);
+      chk32("STA_PAR sel>6 ignored", rd, 32'h2);
 
       //---------------------------------------------------------------- T12
       $display("--- T12: PAR_SELFTEST signature ---");
@@ -561,12 +588,15 @@ module tb_int_prot;
       chk32("CFG_EN reject bad-par write", rd, 32'hF);
       mbus_rd_bad_id();                     // 坏 par 读: rdata 必须为 0
       mbus_rd(16'h0014, rd);
-      chk32("STA_PAR PERR5 sticky", rd, 32'h81);
-      chk1("reg_par_fault", reg_par_fault, 1'b1);
+      chk32("STA_PAR PERR5 sticky", rd, 32'h82);   // 在途事件不入 PAR_FAULT 电平 (bit1 N=1)
+      chk1("reg_par_fault quiet", reg_par_fault, 1'b0);  // 在途命令奇偶 -> esm_fault 轨
+      chk1("esm_fault", esm_fault, 1'b1);
+      chk1("esm_fault_n", esm_fault_n, 1'b0);
       mbus_wr(16'h0014, 32'h80);            // W1C PERR5
       repeat (2) @(negedge clk);
       mbus_rd(16'h0014, rd);
       chk32("STA_PAR healed", rd, 32'h2);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
       mbus_wr(16'h0000, 32'h0);             // 好 par 写恢复正常
       mbus_rd(16'h0000, rd);
       chk32("CFG_EN good write ok", rd, 32'h0);
@@ -671,21 +701,50 @@ module tb_int_prot;
       repeat (2) @(negedge clk);
       chk1("cnt forced (firing proof)", (dut.u_int_prot.r.change_cnt[2:0] === 3'b000), 1'b1);
       mbus_rd(16'h0010, rd);
-      chk32("STA_ERR[0] latched (Q/Q_n)", rd, 32'h1);
-      chk1("esm_err visible", esm_err, 1'b1);
+      chk32("STA_ERR quiet (Q/Q_n)", rd, 32'h0);       // 自身故障不进 err 轨
+      chk1("esm_err quiet", esm_err, 1'b0);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT[0] latched (Q/Q_n)", rd, 32'h1);
+      chk1("esm_fault visible", esm_fault, 1'b1);
+      chk1("esm_fault_n", esm_fault_n, 1'b0);
       release dut.u_int_prot.r.change_cnt[2:0];
       repeat (3) @(negedge clk);
       chk1("cnt healed to idle", (dut.u_int_prot.r.change_cnt[2:0] === 3'b000), 1'b1);
       chk1("shadow re-stuck", (dut.u_int_prot.r.change_cnt_n[2:0] === 3'b111), 1'b1);
-      mbus_wr(16'h0010, 32'h1);             // W1C
+      mbus_wr(16'h001C, 32'h1);             // W1C STA_FAULT
       repeat (2) @(negedge clk);
-      mbus_rd(16'h0010, rd);
-      chk32("STA_ERR cleared", rd, 32'h0);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT cleared", rd, 32'h0);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
       // 自愈后通道功能仍正常: 配对事件无误报
       pair_evt(0);
       repeat (3) @(negedge clk);
       mbus_rd(16'h0010, rd);
       chk32("ch0 works after heal", rd, 32'h0);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT quiet after heal", rd, 32'h0);
+
+      //---------------------------------------------------------------- T17
+      $display("--- T17: FLT_SELFTEST keyed source injection ---");
+      mbus_wr(16'h0018, 32'h0040);          // bit6 但无 key -> 整写忽略
+      repeat (3) @(negedge clk);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT no-key ignored", rd, 32'h0);
+      chk1("esm_fault quiet", esm_fault, 1'b0);
+      regst_wr(4'd0, 1'b0, 1'b0, 1'b1);     // key + FLT_SELFTEST
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT[31] selftest bit", rd, 32'h8000_0000);
+      chk1("esm_fault selftest", esm_fault, 1'b1);
+      chk1("esm_fault_n selftest", esm_fault_n, 1'b0);
+      mbus_rd(16'h0014, rd);
+      chk32("STA_PAR clean (test bit not parity event)", rd, 32'h2);
+      chk1("reg_par_fault quiet", reg_par_fault, 1'b0);
+      mbus_wr(16'h001C, 32'h8000_0000);     // W1C 自测位
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT selftest cleared", rd, 32'h0);
+      chk1("esm_fault cleared", esm_fault, 1'b0);
 
       //---------------------------------------------------------------- 收尾
       repeat (10) @(negedge clk);

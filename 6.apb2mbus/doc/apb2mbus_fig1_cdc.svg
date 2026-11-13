@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="560" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">apb2mbus — APB / mbus 24MHz CDC 结构 (静态直采 + toggle 同步) (§2)</text>
+
+  <!-- 域背景 -->
+  <rect x="16" y="56" width="464" height="414" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="80" class="dom">APB 域</text>
+  <rect x="600" y="56" width="464" height="414" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="612" y="80" class="dom">mbus 域 24MHz</text>
+  <line x1="540" y1="56" x2="540" y2="470" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="540" y="104" class="cdc" text-anchor="middle">CDC 边界</text>
+
+  <!-- APB 侧 -->
+  <rect x="78" y="92" width="340" height="66" rx="8" class="box"/>
+  <text x="248" y="116" class="bt" text-anchor="middle">APB 域从口逻辑</text>
+  <text x="248" y="140" class="sm" text-anchor="middle">acc = psel &#38; penable &#183; ce_reg 打拍 (rdy 当拍清 0)</text>
+  <line x1="248" y1="158" x2="248" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="78" y="182" width="340" height="48" rx="8" class="box"/>
+  <text x="248" y="210" class="txt" text-anchor="middle" font-weight="bold">req_flag = acc 上升沿翻转 (toggle)</text>
+
+  <rect x="78" y="252" width="340" height="66" rx="8" class="box"/>
+  <text x="248" y="276" class="bt" text-anchor="middle">保持寄存器 (req_fire 当拍锁存)</text>
+  <text x="248" y="300" class="sm" text-anchor="middle">paddr_q / pwdata_q / pwrite_q / par_q</text>
+  <line x1="248" y1="318" x2="248" y2="340" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="78" y="344" width="340" height="66" rx="8" class="box"/>
+  <text x="248" y="368" class="txt" text-anchor="middle" font-weight="bold">rdy = ack_s2 &#94; ack_s3 &#8594; pready</text>
+  <text x="248" y="392" class="txt" text-anchor="middle">prdata 直采 rdat_cap (零等待)</text>
+
+  <!-- mbus 侧 -->
+  <rect x="662" y="182" width="340" height="48" rx="8" class="box"/>
+  <text x="832" y="210" class="txt" text-anchor="middle" font-weight="bold">flag_s2/s3 = req_flag 2FF+1 级同步</text>
+  <line x1="832" y1="230" x2="832" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="662" y="252" width="340" height="48" rx="8" class="box"/>
+  <text x="832" y="280" class="txt" text-anchor="middle" font-weight="bold">ce_flag = (s2 != s3) 下一拍置 1 (单拍 ce)</text>
+  <line x1="832" y1="300" x2="832" y2="342" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="662" y="344" width="340" height="66" rx="8" class="box"/>
+  <text x="832" y="368" class="bt" text-anchor="middle">叶端 ce 拍捕获</text>
+  <text x="832" y="392" class="sm" text-anchor="middle">采样 rdata &#8594; rdat_cap &#183; 翻转 ack_flag</text>
+
+  <!-- CDC 红箭头 -->
+  <line x1="418" y1="206" x2="658" y2="206" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="539" y="194" class="cdc" text-anchor="middle">req_flag (toggle)</text>
+  <polyline points="418,276 520,276 520,380 658,380" fill="none" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="520" y="264" class="cdc" text-anchor="middle">payload/par 静态直采</text>
+  <polyline points="662,392 560,392 560,377 422,377" fill="none" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <text x="560" y="332" class="cdc" text-anchor="middle">ack_flag (toggle) &#183; rdat_cap 静态回程</text>
+
+  <!-- 图例 -->
+  <rect x="16" y="484" width="1048" height="60" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="28" y="504" class="txt">MCP 三不变量: &#9312; 最多一笔在途 (保持寄存器全程静止) &#9313; ce 距 req_flag 翻转 &#8805;3 mbus 拍 (payload 捕获沿前后 &#177;3 拍无跳变) &#9314; rdat_cap 自 ce 拍静止, rdy 距 ce &#8805;2 apb 拍</text>
+  <text x="28" y="524" class="txt">数据通路一律直采静止电平不加同步 FF; 同步 FF 只用于 req_flag / ack_flag 两个单 bit toggle (sync_2dff + sync_dff 标准单元)</text>
+</svg>

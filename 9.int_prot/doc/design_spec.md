@@ -33,20 +33,9 @@ chk 断裂（单侧事件同理反向）；两根同时断裂但"看起来配对
 
 ## 2. 架构
 
-```
-     mbus (24MHz, ce/wr/addr/wdata/par, 单拍, 组合 rdata)
-        │
-        ▼
-  int_prot_regfile ──en(4bit SEC解码)──┐  inj_spi/inj_chk (写拍1拍虚拟事件,
-   CFG_EN/INJ_EN/INJ/                  │  受 INJ_EN(key+4bit码) 双门控)
-   STA_ERR/STA_PAR/                    ▼
-   REGST/ID                    int_prot (同步链 + 边沿检测 + 双计数器)
-        │                            ▲            │
-        │                            │ spi/spi_chk (异步输入)
-        │                            └── spi_sync (同步后 spi 转出)
-        ├── esm_err / esm_err_n          (监视错误, 电平双轨, 不可屏蔽)
-        └── reg_par_fault / _n           (寄存器/通路奇偶错误, 双轨)
-```
+![int_prot 顶层架构](int_prot_fig1_arch.svg)
+
+*图 1: 顶层架构 — 单时钟域 (mbus 域共 clk/rstn); en 经 4bit SEC 解码, 注错受 INJ_EN (key+4bit 码) 双门控; spi/spi_chk 异步输入内部 sync_2dff 同步; 输出双轨各成对*
 
 单时钟域：监视器与寄存器文件共 clk/rstn（mbus 域），spi_err 脉冲直接
 粘滞，无跨域。spi/spi_chk 为异步输入，由 int_prot 内部按 SYNC_MODE
@@ -57,12 +46,12 @@ chk 断裂（单侧事件同理反向）；两根同时断裂但"看起来配对
 
 | 文件 | 模块 | 说明 |
 | --- | --- | --- |
-| rtl/int_prot.sv | int_prot | 监视器本体（原设计转换，协议不变；计数器 Q/Q_n 自检） |
+| rtl/int_prot_core.sv | int_prot_core | 监视器本体（原设计转换，协议不变；计数器 Q/Q_n 自检） |
 | common_modules/sync_2dff.sv | sync_2dff | 2/3 级同步器标准单元（RST_VAL/STAGES 参数；fusa 单一源 common_modules/，同步一律例化此单元） |
 | rtl/int_prot_regfile.sv | int_prot_regfile | mbus 寄存器文件 + 4bit SEC + 奇偶保护 + 注错 |
 | $ROOT/../common_modules/reg_wrap.sv | reg_wrap | 单寄存器奇偶保护单元（同 2.parity） |
 | rtl/int_prot_top.sv | int_prot_top | 集成顶层 |
-| sim/tb_int_prot.sv | tb_int_prot | T1–T16 自检测试台 |
+| sim/tb_int_prot.sv | tb_int_prot | T1–T17 自检测试台 |
 | doc/int_prot_orig.v | int_prot_fixed_hier | Horizon 原件留档（不编译） |
 
 参数（int_prot，与原设计同名同义）：`NUM_INT=20`、`INT_INV/INT_CHK_INV`
@@ -78,13 +67,16 @@ chk 断裂（单侧事件同理反向）；两根同时断裂但"看起来配对
 | 0x04 | CFG_INJ_EN | RW | 0x0 | [3:0] 注错使能 4bit 编码（**非法不可纠时默认关**）；写需 key：[7:4] 必须为 4'b1010，否则整写忽略 |
 | 0x08 | CFG_INJ_SPI | RW | 0x0 | [NUM_INT-1:0] 虚拟 spi 事件图样：**写拍产生 1 拍虚拟事件**（每写一次=每选中通道 1 个事件），受 INJ_EN 解码门控；读回最近图样 |
 | 0x0C | CFG_INJ_CHK | RW | 0x0 | 同上，虚拟 chk 事件 |
-| 0x10 | STA_ERR | RW1C | 0x0 | [NUM_INT-1:0] spi_err 粘滞；**置位优先于 W1C**（脉冲源不重置，见 §6.3） |
-| 0x14 | STA_PAR | RW1C/R | 0x2 | [0] PAR_FAULT 电平（W1C 只清自测锁存）/[1] PAR_FAULT_N 反轨 RO/[7:2] PERR5..PERR0 W1C |
-| 0x18 | CFG_REGST | W | — | [3:0] key=1010 否则整写忽略；[4] REG_SELFTEST（[11:8] REGSEL 选组 0..5）；[5] PAR_SELFTEST；读回 0 |
+| 0x10 | STA_ERR | RW1C | 0x0 | [NUM_INT-1:0] spi_err 粘滞（监控职责错误）；**置位优先于 W1C**（脉冲源不重置，见 §6.3） |
+| 0x14 | STA_PAR | RW1C/R | 0x2 | [0] PAR_FAULT 电平（W1C 只清自测锁存）/[1] PAR_FAULT_N 反轨 RO/[8:2] PERR6..PERR0 W1C |
+| 0x18 | CFG_REGST | W | — | [3:0] key=1010 否则整写忽略；[4] REG_SELFTEST（[11:8] REGSEL 选组 0..6）；[5] PAR_SELFTEST；[6] FLT_SELFTEST；读回 0 |
+| 0x1C | STA_FAULT | RW1C | 0x0 | 监视器自身故障源（2026-11-13 三轨统一）：[NUM_INT-1:0] cnt_par_err 粘滞 + [31] FLT_SELFTEST 自测位；在途命令奇偶（PERR5）源查询在 STA_PAR[7]，同驱 esm_fault |
 | 0xFC | ID | RO | — | 32'h5AFE_1000 \| IDX |
 
 PERR 组：0=CFG_EN，1=CFG_INJ_EN，2=CFG_INJ_SPI，3=CFG_INJ_CHK，
-4=STA_ERR，5=命令在途奇偶（PERR5 = 该组 wrap 的 flt 或粘滞）。
+4=STA_ERR，5=命令在途奇偶（PERR5 = 该组 wrap 的 flt 或粘滞；**事件
+本体走 esm_fault 轨**，不入 PAR_FAULT 电平），6=STA_FAULT（2026-11-13
+新增）。
 
 ### 4.1 4bit 编码使能（标准做法：d=4 最近邻纠错 + 写回）
 
@@ -115,8 +107,12 @@ PERR 组：0=CFG_EN，1=CFG_INJ_EN，2=CFG_INJ_SPI，3=CFG_INJ_CHK，
   自测注错只污染校验位（数据永不污染）、粘滞 flt 带反相副本
   （SEU 清正本 → dup 失配 → 自愈回 SET）；
 - PAR_SELFTEST 自测锁存同样双副本自愈；
-- PAR_FAULT = 全部 flt 之源或 + PERR5 粘滞 + 自测锁存，双轨输出
-  `reg_par_fault/_n` → ESM；
+- PAR_FAULT = 寄存器面全部 flt 之源或 + 自测锁存（**PERR5 在途事件
+  本体不入**，走 esm_fault 轨），双轨输出 `reg_par_fault/_n` → ESM；
+- ESM 三轨（2026-11-13 规则 25）：`esm_err/_n` = |STA_ERR（监控职责
+  错误）；`esm_fault/_n` = |STA_FAULT | PERR5 在途粘滞（监视器自身
+  故障：计数器 Q/Q_n 失配 / 在途命令奇偶 / FLT_SELFTEST 自测位）；
+  `reg_par_fault/_n` = 寄存器面奇偶；
 - 命令在途奇偶（PERR14 同款）：apb2mbus 源端对 {paddr,pwrite,pwdata}
   算偶校验 par 同深度同步广播，本模块 ce 拍重组比对；失配 **fail-safe**：
   拒写（wr_ok 门控）+ 读驱 0 + PERR5 粘滞。全实例检查不 gate sel，
@@ -143,11 +139,16 @@ force。那只覆盖聚合与驱动，检测逻辑本身（边沿检测、双计
 写拍脉冲语义（每写一次一个事件，无持续电平）避免"忘记关注入"的
 持续报错问题。
 
-### 6.2 层 2：输出/汇聚签名（PAR_SELFTEST）
+### 6.2 层 2：输出/汇聚签名（PAR_SELFTEST / FLT_SELFTEST）
 
 CFG_REGST key+bit5 只置 PAR_FAULT 自测锁存——"**有 fault 无源**"，
 验证 PAR_FAULT 聚合、双轨驱动与 ESM 服务程序通路，不经过监视器
 （这两层互不遮蔽：层 1 检测逻辑坏了层 2 仍能过，反之亦然）。
+
+2026-11-13 三轨统一增补 key+bit6（FLT_SELFTEST）：置 STA_FAULT[31]
+自测位——**源级注入**，经正常 粘滞→esm_fault 轨逻辑出 ESM（fault
+轨的周期连通性自测；err 轨由层 1 事件级注错覆盖，par 轨由本层
+PAR_SELFTEST 覆盖，三轨全可测可溯源）。
 
 ### 6.3 STA_ERR 粘滞的优先级（有意偏离惯例）
 
@@ -177,7 +178,7 @@ CFG_REGST key+bit5 只置 PAR_FAULT 自测锁存——"**有 fault 无源**"，
 | 4 | 配置无保护（若外部加配置寄存器，SEU 静默） | λ_DU | 全寄存器 wrap 奇偶（自愈粘滞+W1C）+ 4bit SEC + 命令在途奇偶拒写 |
 | 5 | 依赖库单元 cell_inv/cbb_cdc_sync_stage（源码缺位、不可移植） | 验证盲区 | 常量掩码取反 + `sync_2dff` 标准单元例化（复位值/深度语义不变，全项目统一的同步单元例化方法） |
 | 6 | diff_cnt 比较点 `TIMEOUT[CW-1:0]-1`：TIMEOUT 非 2 幂时截断歧义 | 参数误用 | 参数约束"必须 2 的幂"写入文件头 + 文档 |
-| 7 | 计数器（change_cnt/diff_cnt）本体无任何检测：SEU 翻正本到 0 → diff_cnt 条件同步失效，**丢事件无声**；翻副本/误加 → 假超时难溯源 | λ_DU（监视状态被扰动不可见） | **Q/Q_n 互补自检**：每计数器一份反相副本，逐拍比较 `正本 != ~副本`（任一副本单 bit 扰动下一拍即失配）→ 该通道报 1 拍 spi_err（同通道 STA_ERR 粘滞，故障可见）+ 计数器清 0 自愈，副本每拍从次态重算自动回贴。边沿检测前拍寄存（spi_q1/chk_q1）不加副本：其扰动要么空闲自愈无害，要么幻化为假事件由计数器协议有界检出，无静默路径 |
+| 7 | 计数器（change_cnt/diff_cnt）本体无任何检测：SEU 翻正本到 0 → diff_cnt 条件同步失效，**丢事件无声**；翻副本/误加 → 假超时难溯源 | λ_DU（监视状态被扰动不可见） | **Q/Q_n 互补自检**：每计数器一份反相副本，逐拍比较 `正本 != ~副本`（任一副本单 bit 扰动下一拍即失配）→ 该通道报 1 拍 cnt_par_err（监视器自身故障，**STA_FAULT 粘滞 → esm_fault 轨**，2026-11-13 起不再折入 spi_err/err 轨）+ 计数器清 0 自愈，副本每拍从次态重算自动回贴。边沿检测前拍寄存（spi_q1/chk_q1）不加副本：其扰动要么空闲自愈无害，要么幻化为假事件由计数器协议有界检出，无静默路径 |
 | 8 | 同步链/边沿检测前端无在线检测（无流量时不报） | 固有残余 | 前端靠注错覆盖其后端、靠业务流量覆盖前端；SIL3 差距项（§10） |
 
 **检测逻辑的比较器/边沿检测不加双份冗余**：这是"检测通知型"机制，
@@ -187,8 +188,9 @@ Q/Q_n 互补自检（用户评审要求），SIL2 下比较器以周期注错覆
 
 ## 8. 验证状态
 
-VM VCS（V-2023.12-SP2）+ 覆盖率，`sim/run_vcs.sh`，**T1–T16 全绿**
-（100 个检查点 + 全程 ESM 双轨互补性在线监视）：
+VM VCS（V-2023.12-SP2）+ 覆盖率，`sim/run_vcs.sh`，**T1–T17 全绿**
+（125 个检查点 + 全程 ESM 三轨互补性在线监视，2026-11-13 三轨统一
+改版后复绿）：
 
 | 测试 | 覆盖 |
 | --- | --- |
@@ -200,12 +202,13 @@ VM VCS（V-2023.12-SP2）+ 覆盖率，`sim/run_vcs.sh`，**T1–T16 全绿**
 | T8 | INJ_EN 三道门：关时注错无效 / 无 key 拒写 / 非法 nibble 拒写；开后 FI：超时+上溢 |
 | T9 | FI chk 侧下溢、INJ 读回 |
 | T10 | 全沿模式（POSEDGE_DETECT_ONLY=0 对照实例）：配对无误报+未配对报错 |
-| T11 | REGST 逐组（0..5）校验位注错 → PERR/PAR_FAULT/双轨 → 治愈写+W1C；REGSEL>5 忽略 |
+| T11 | REGST 逐组（0..6）校验位注错 → PERR/PAR_FAULT/双轨 → 治愈写+W1C；REGSEL>6 忽略 |
 | T12 | PAR_SELFTEST 有 fault 无源签名 → W1C bit0 清锁存 |
-| T13 | mbus 命令在途奇偶：坏 par 拒写+读回 0+PERR5+W1C、好写恢复 |
+| T13 | mbus 命令在途奇偶：坏 par 拒写+读回 0+PERR5+W1C、好写恢复（在途事件走 esm_fault 轨，STA_PAR[0] 电平不含） |
 | T14 | 非法 REGST key / 未映射读写 / 错实例访问 静默 |
 | T15 | 4bit SEC：1bit 错纠正写回（CFG_EN 1111→1110→1111 功能保持开 / INJ_EN 0000→0001→0000 保持关）+ 2bit 平局默认方向（CFG_EN 1100→开不写回 / INJ_EN 0011→关且注错不生效）；force 注入带 firing-proof 读回 |
-| T16 | 计数器 Q/Q_n 自检：change_cnt 正本 bit 翻转（001→000）→ 失配报 1 拍 → STA_ERR[0] 粘滞 + esm_err 可见 → release 后通道计数器清 0 自愈 + 副本回贴 111 → W1C → 自愈后配对流量无误报 |
+| T16 | 计数器 Q/Q_n 自检：change_cnt 正本 bit 翻转（001→000）→ 失配报 1 拍 cnt_par_err → **STA_FAULT[0] 粘滞 + esm_fault 可见**（STA_ERR/esm_err 保持静默）→ release 后通道计数器清 0 自愈 + 副本回贴 111 → W1C STA_FAULT → 自愈后配对流量无误报 |
+| T17 | FLT_SELFTEST keyed 源级注入：无 key 忽略 / STA_FAULT[31] + esm_fault 轨（STA_PAR 不含测试位）/ W1C bit31 清 |
 
 原始覆盖率（未做结构常量排除）：line ~92 / branch ~88 / toggle ~39
 ——toggle 低位主要来自结构常量（未实例化通道位、常量掩码路径、
@@ -222,7 +225,8 @@ toggle 战役模式）。
 3. **T_diag 约束**：层 1/层 2 注错周期 ≤ PFDavg 分配置的间隔——
    检测逻辑静默失效只在诊断时刻暴露；REGST 周期自检约束寄存器
    2bit MBU 共模暴露窗口；
-4. **TIMEOUT=2 的幂**、**NUM_INT≤32**（INJ/STA 位图一个字内）；
+4. **TIMEOUT=2 的幂**、**NUM_INT≤31**（INJ/STA 位图一个字内；bit31 =
+   STA_FAULT FLT_TEST 自测位）；
 5. **ESM 在线**：双轨互补校验由 ESM 侧负责（本 IP 输出互补轨，
    不自带校验）；
 6. 残余（SIL3 差距，同 2.parity 清单）：前端同步链/边沿检测的

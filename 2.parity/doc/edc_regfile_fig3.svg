@@ -1,0 +1,399 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 638" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <style>
+    .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+    .lbl   { font-size: 10px; fill: #334155; }
+    .lblb  { font-size: 10.5px; font-weight: bold; fill: #0F172A; }
+    .band  { font-size: 10.5px; font-weight: bold; fill: #475569; }
+    .c0    { font-size: 10px; fill: #94A3B8; }
+    .c1    { font-size: 10px; font-weight: bold; fill: #0F172A; }
+    .co    { font-size: 10px; fill: #94A3B8; }
+    .cx    { font-size: 10px; fill: #CBD5E1; }
+    .cV    { font-size: 10px; font-weight: bold; fill: #16A34A; }
+    .cD    { font-size: 10px; font-weight: bold; fill: #1D4ED8; }
+    .cce   { font-size: 10px; font-weight: bold; fill: #92400E; }
+    .evt   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+  </style>
+  <rect x="0" y="0" width="1000" height="638" fill="#FFFFFF"/>
+  <text x="500" y="28" class="title" text-anchor="middle">读事务逐拍时序 — 寄存器值为该拍稳态 (§2.3)</text>
+  <rect x="16" y="116" width="955" height="20" fill="#F1F5F9"/>
+  <text x="494" y="130" class="band" text-anchor="middle">APB 域 (apb_clk)</text>
+  <rect x="16" y="444" width="955" height="20" fill="#FFF7ED"/>
+  <text x="494" y="458" class="band" text-anchor="middle">mbus 域 (24MHz)</text>
+  <line x1="126" y1="50" x2="126" y2="618" stroke="#E2E8F0"/>
+  <line x1="191" y1="50" x2="191" y2="618" stroke="#E2E8F0"/>
+  <line x1="256" y1="50" x2="256" y2="618" stroke="#E2E8F0"/>
+  <line x1="321" y1="50" x2="321" y2="618" stroke="#E2E8F0"/>
+  <line x1="386" y1="50" x2="386" y2="618" stroke="#E2E8F0"/>
+  <line x1="451" y1="50" x2="451" y2="618" stroke="#E2E8F0"/>
+  <line x1="516" y1="50" x2="516" y2="618" stroke="#E2E8F0"/>
+  <line x1="581" y1="50" x2="581" y2="618" stroke="#E2E8F0"/>
+  <line x1="646" y1="50" x2="646" y2="618" stroke="#E2E8F0"/>
+  <line x1="711" y1="50" x2="711" y2="618" stroke="#E2E8F0"/>
+  <line x1="776" y1="50" x2="776" y2="618" stroke="#E2E8F0"/>
+  <line x1="841" y1="50" x2="841" y2="618" stroke="#E2E8F0"/>
+  <line x1="906" y1="50" x2="906" y2="618" stroke="#E2E8F0"/>
+  <line x1="971" y1="50" x2="971" y2="618" stroke="#E2E8F0"/>
+  <line x1="16" y1="50" x2="16" y2="618" stroke="#94A3B8"/>
+  <line x1="16" y1="50" x2="971" y2="50" stroke="#E2E8F0"/>
+  <line x1="16" y1="72" x2="971" y2="72" stroke="#E2E8F0"/>
+  <line x1="16" y1="94" x2="971" y2="94" stroke="#E2E8F0"/>
+  <line x1="16" y1="116" x2="971" y2="116" stroke="#E2E8F0"/>
+  <line x1="16" y1="136" x2="971" y2="136" stroke="#E2E8F0"/>
+  <line x1="16" y1="158" x2="971" y2="158" stroke="#E2E8F0"/>
+  <line x1="16" y1="180" x2="971" y2="180" stroke="#E2E8F0"/>
+  <line x1="16" y1="202" x2="971" y2="202" stroke="#E2E8F0"/>
+  <line x1="16" y1="224" x2="971" y2="224" stroke="#E2E8F0"/>
+  <line x1="16" y1="246" x2="971" y2="246" stroke="#E2E8F0"/>
+  <line x1="16" y1="268" x2="971" y2="268" stroke="#E2E8F0"/>
+  <line x1="16" y1="290" x2="971" y2="290" stroke="#E2E8F0"/>
+  <line x1="16" y1="312" x2="971" y2="312" stroke="#E2E8F0"/>
+  <line x1="16" y1="334" x2="971" y2="334" stroke="#E2E8F0"/>
+  <line x1="16" y1="356" x2="971" y2="356" stroke="#E2E8F0"/>
+  <line x1="16" y1="378" x2="971" y2="378" stroke="#E2E8F0"/>
+  <line x1="16" y1="400" x2="971" y2="400" stroke="#E2E8F0"/>
+  <line x1="16" y1="422" x2="971" y2="422" stroke="#E2E8F0"/>
+  <line x1="16" y1="444" x2="971" y2="444" stroke="#E2E8F0"/>
+  <line x1="16" y1="464" x2="971" y2="464" stroke="#E2E8F0"/>
+  <line x1="16" y1="486" x2="971" y2="486" stroke="#E2E8F0"/>
+  <line x1="16" y1="508" x2="971" y2="508" stroke="#E2E8F0"/>
+  <line x1="16" y1="530" x2="971" y2="530" stroke="#E2E8F0"/>
+  <line x1="16" y1="552" x2="971" y2="552" stroke="#E2E8F0"/>
+  <line x1="16" y1="574" x2="971" y2="574" stroke="#E2E8F0"/>
+  <line x1="16" y1="596" x2="971" y2="596" stroke="#E2E8F0"/>
+  <line x1="16" y1="618" x2="971" y2="618" stroke="#E2E8F0"/>
+  <rect x="16" y="50" width="955" height="568" fill="none" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="118" y="65" class="lblb" text-anchor="end">周期</text>
+  <text x="158.5" y="65" class="lblb" text-anchor="middle">A1</text>
+  <text x="223.5" y="65" class="lblb" text-anchor="middle">A2</text>
+  <text x="288.5" y="65" class="lblb" text-anchor="middle">A3</text>
+  <text x="353.5" y="65" class="lblb" text-anchor="middle">A4</text>
+  <text x="418.5" y="65" class="lblb" text-anchor="middle">A5</text>
+  <text x="483.5" y="65" class="lblb" text-anchor="middle">A6</text>
+  <text x="548.5" y="65" class="lblb" text-anchor="middle">A7</text>
+  <text x="613.5" y="65" class="lblb" text-anchor="middle">A8</text>
+  <text x="678.5" y="65" class="lblb" text-anchor="middle">A9</text>
+  <text x="743.5" y="65" class="lblb" text-anchor="middle">A10</text>
+  <text x="808.5" y="65" class="lblb" text-anchor="middle">A11</text>
+  <text x="873.5" y="65" class="lblb" text-anchor="middle">A12</text>
+  <text x="938.5" y="65" class="lblb" text-anchor="middle">A13</text>
+  <text x="158.5" y="87" class="evt" text-anchor="middle">①</text>
+  <text x="288.5" y="87" class="evt" text-anchor="middle">②</text>
+  <text x="548.5" y="87" class="evt" text-anchor="middle">③</text>
+  <text x="613.5" y="87" class="evt" text-anchor="middle">ce拍</text>
+  <text x="678.5" y="87" class="evt" text-anchor="middle">④</text>
+  <text x="743.5" y="87" class="evt" text-anchor="middle">⑤</text>
+  <text x="938.5" y="87" class="evt" text-anchor="middle">⑥</text>
+  <text x="118" y="109" class="lbl" text-anchor="end">mbus边沿(末)</text>
+  <text x="158.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="223.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="288.5" y="109" class="c1" text-anchor="middle">M1</text>
+  <text x="353.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="418.5" y="109" class="c1" text-anchor="middle">M2</text>
+  <text x="483.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="548.5" y="109" class="c1" text-anchor="middle">M3</text>
+  <text x="613.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="678.5" y="109" class="c1" text-anchor="middle">M4</text>
+  <text x="743.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="808.5" y="109" class="c1" text-anchor="middle">M5</text>
+  <text x="873.5" y="109" class="cx" text-anchor="middle">-</text>
+  <text x="938.5" y="109" class="c1" text-anchor="middle">M6</text>
+  <text x="118" y="151" class="lbl" text-anchor="end">psel</text>
+  <text x="158.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="223.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="288.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="353.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="151" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="173" class="lbl" text-anchor="end">penable</text>
+  <text x="158.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="223.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="288.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="353.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="173" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="195" class="lbl" text-anchor="end">APB payload</text>
+  <line x1="134" y1="191" x2="330" y2="191" stroke="#94A3B8" stroke-dasharray="5 4"/>
+  <line x1="775" y1="191" x2="963" y2="191" stroke="#94A3B8" stroke-dasharray="5 4"/>
+  <text x="552" y="195" class="lbl" text-anchor="middle">paddr / pwrite / pwdata — access 相内不变</text>
+  <text x="118" y="217" class="lbl" text-anchor="end">acc</text>
+  <text x="158.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="223.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="288.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="353.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="217" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="239" class="lbl" text-anchor="end">ce_reg</text>
+  <text x="158.5" y="239" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="288.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="353.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="239" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="261" class="lbl" text-anchor="end">req_flag</text>
+  <text x="158.5" y="261" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="288.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="353.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="261" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="283" class="lbl" text-anchor="end">ack_flag</text>
+  <text x="158.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="283" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="283" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="283" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="283" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="283" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="305" class="lbl" text-anchor="end">ack_s1</text>
+  <text x="158.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="305" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="305" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="305" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="305" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="327" class="lbl" text-anchor="end">ack_s2</text>
+  <text x="158.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="327" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="327" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="327" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="349" class="lbl" text-anchor="end">ack_s3</text>
+  <text x="158.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="349" class="c0" text-anchor="middle">0</text>
+  <text x="938.5" y="349" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="371" class="lbl" text-anchor="end">ack_s4</text>
+  <text x="158.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="938.5" y="371" class="c0" text-anchor="middle">0</text>
+  <text x="118" y="393" class="lbl" text-anchor="end">rdy</text>
+  <text x="158.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="393" class="c0" text-anchor="middle">0</text>
+  <text x="938.5" y="393" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="415" class="lbl" text-anchor="end">pready</text>
+  <text x="158.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="415" class="c0" text-anchor="middle">0</text>
+  <text x="938.5" y="415" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="437" class="lbl" text-anchor="end">prdata</text>
+  <text x="158.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="678.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="743.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="437" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="437" class="c0" text-anchor="middle">0</text>
+  <rect x="908" y="425" width="61" height="16" fill="#DBEAFE"/>
+  <text x="938.5" y="437" class="cD" text-anchor="middle">D</text>
+  <text x="118" y="479" class="lbl" text-anchor="end">flag_s1</text>
+  <text x="158.5" y="479" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="479" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="479" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="418.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="483.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="479" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="501" class="lbl" text-anchor="end">flag_s2</text>
+  <text x="158.5" y="501" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="501" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="501" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="501" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="501" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="548.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="613.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="501" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="523" class="lbl" text-anchor="end">flag_s3</text>
+  <text x="158.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="523" class="c0" text-anchor="middle">0</text>
+  <text x="613.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="678.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="743.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="808.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="873.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="938.5" y="523" class="c1" text-anchor="middle">1</text>
+  <text x="118" y="545" class="lbl" text-anchor="end">payload_s3</text>
+  <text x="158.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="223.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="288.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="353.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="418.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="483.5" y="545" class="co" text-anchor="middle">o</text>
+  <text x="548.5" y="545" class="co" text-anchor="middle">o</text>
+  <rect x="583" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="613.5" y="545" class="cV" text-anchor="middle">V</text>
+  <rect x="648" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="678.5" y="545" class="cV" text-anchor="middle">V</text>
+  <rect x="713" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="743.5" y="545" class="cV" text-anchor="middle">V</text>
+  <rect x="778" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="808.5" y="545" class="cV" text-anchor="middle">V</text>
+  <rect x="843" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="873.5" y="545" class="cV" text-anchor="middle">V</text>
+  <rect x="908" y="533" width="61" height="16" fill="#DCFCE7"/>
+  <text x="938.5" y="545" class="cV" text-anchor="middle">V</text>
+  <text x="118" y="567" class="lbl" text-anchor="end">ce</text>
+  <text x="158.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="223.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="288.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="353.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="418.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="483.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="548.5" y="567" class="c0" text-anchor="middle">0</text>
+  <rect x="583" y="555" width="61" height="16" fill="#FEF9C3"/>
+  <text x="613.5" y="567" class="cce" text-anchor="middle">1</text>
+  <rect x="648" y="555" width="61" height="16" fill="#FEF9C3"/>
+  <text x="678.5" y="567" class="cce" text-anchor="middle">1</text>
+  <text x="743.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="808.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="873.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="938.5" y="567" class="c0" text-anchor="middle">0</text>
+  <text x="118" y="589" class="lbl" text-anchor="end">rdata</text>
+  <text x="158.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="223.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="288.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="353.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="418.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="483.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="548.5" y="589" class="cx" text-anchor="middle">-</text>
+  <rect x="583" y="577" width="61" height="16" fill="#DBEAFE"/>
+  <text x="613.5" y="589" class="cD" text-anchor="middle">D</text>
+  <rect x="648" y="577" width="61" height="16" fill="#DBEAFE"/>
+  <text x="678.5" y="589" class="cD" text-anchor="middle">D</text>
+  <text x="743.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="808.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="873.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="938.5" y="589" class="cx" text-anchor="middle">-</text>
+  <text x="118" y="611" class="lbl" text-anchor="end">rdat_cap</text>
+  <text x="158.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="223.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="288.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="353.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="418.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="483.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="548.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="613.5" y="611" class="cx" text-anchor="middle">-</text>
+  <text x="678.5" y="611" class="cx" text-anchor="middle">-</text>
+  <rect x="713" y="599" width="61" height="16" fill="#DBEAFE"/>
+  <text x="743.5" y="611" class="cD" text-anchor="middle">D</text>
+  <rect x="778" y="599" width="61" height="16" fill="#DBEAFE"/>
+  <text x="808.5" y="611" class="cD" text-anchor="middle">D</text>
+  <rect x="843" y="599" width="61" height="16" fill="#DBEAFE"/>
+  <text x="873.5" y="611" class="cD" text-anchor="middle">D</text>
+  <rect x="908" y="599" width="61" height="16" fill="#DBEAFE"/>
+  <text x="938.5" y="611" class="cD" text-anchor="middle">D</text>
+</svg>

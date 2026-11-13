@@ -10,12 +10,9 @@
 
 ## 1. 访问路径总览
 
-```
-                     APB3 (apb_clk)              mbus (24MHz, 广播)
- APB 主端 ──paddr/pwrite/pwdata──> apb2mbus ──ce/wr/addr/wdata/par──┬──> EDC_REGCHK[0]
-                 <──pready/prdata──────── <──rdata(按位OR)──────┼──> EDC_REGCHK[1]
-                                                               └──> ...[NP-1]
-```
+![APB3 → mbus 广播拓扑](edc_regfile_fig1.svg)
+
+*图 1: APB 主端经 apb2mbus 跨域; ce/wr/addr/wdata/par 广播到全部 EDC_REGCHK 实例, rdata 按位 OR 汇聚返回*
 
 - `apb2mbus` 内部完成 APB 时钟域 ↔ 24MHz 的请求/应答跨域（toggle 握手）；
 - mbus 侧 `ce/wr/addr/wdata/par` **广播**到所有实例，每个 `edc_regfile` 用
@@ -66,23 +63,9 @@ rdat 2FF (s1/s2) -> prdata
 
 ### 2.2 事务级交互图
 
-```
-  APB 主端         apb2mbus                    edc_regfile[选中]   edc_regfile[其他]
-  (apb_clk)        APB域   mbus域(24MHz)         (24MHz)             实例
-     │               │        │                    │                   │
-     │ setup/access  │        │                    │                   │
-     │──PSEL/PENABLE─────────>│                    │                   │
-     │               │ acc↑: req_flag 翻转        │                   │
-     │               │──────3FF 同步──────────────>│ (ce/addr 广播) ──>│
-     │               │        │──ce (单拍)────────>│ sel=1             │
-     │               │        │<─rdata(组合,读)───│                   │
-     │               │        │  [写: 同拍写寄存器 │                   │
-     │               │        │  +锁存命令/翻转req_t]                  │
-     │               │        │  rdat_cap<=rdata   │                   │
-     │               │        │  ack_flag 翻转     │                   │
-     │<─ack 4FF, rdy 单拍─────│                    │                   │
-     │<─PREADY (+PRDATA)──────│                    │                   │
-```
+![事务级交互图](edc_regfile_fig2.svg)
+
+*图 2: 一次 APB 访问的事务级消息流 — PSEL/PENABLE 发起, req_flag 3FF 跨域, ce 单拍广播, rdata 组合回程, ack 4FF + rdy 单拍返回 PREADY*
 
 ### 2.3 读事务逐拍时序
 
@@ -97,36 +80,9 @@ rdat 2FF (s1/s2) -> prdata
 | ⑤ | A10 末 | APB：`ack_flag` 进 4FF 首拍（`ack_s1` 载入新值） |
 | ⑥ | A13 | APB：`rdy = ack_s3^ack_s4` 单拍 → `pready=1`，`prdata=rdat_s2`，传输结束 |
 
-```
-周期          A1   A2   A3   A4   A5   A6   A7   A8   A9   A10  A11  A12  A13
-              ①         ②              ③    ce拍 ④    ⑤              ⑥
-mbus边沿(末)   -    -   M1    -   M2    -   M3    -   M4    -   M5    -   M6
+![读事务逐拍时序表](edc_regfile_fig3.svg)
 
----------------- APB 域 ----------------
-psel           1    1    1    1    1    1    1    1    1    1    1    1    1
-penable        1    1    1    1    1    1    1    1    1    1    1    1    1
-APB payload    ───────── paddr / pwrite / pwdata：access 相内不变 ─────────
-acc            1    1    1    1    1    1    1    1    1    1    1    1    1
-ce_reg         0    1    1    1    1    1    1    1    1    1    1    1    1
-req_flag       0    1    1    1    1    1    1    1    1    1    1    1    1
-ack_flag       0    0    0    0    0    0    0    0    0    1    1    1    1
-ack_s1         0    0    0    0    0    0    0    0    0    0    1    1    1
-ack_s2         0    0    0    0    0    0    0    0    0    0    0    1    1
-ack_s3         0    0    0    0    0    0    0    0    0    0    0    0    1
-ack_s4         0    0    0    0    0    0    0    0    0    0    0    0    0
-rdy            0    0    0    0    0    0    0    0    0    0    0    0    1
-pready         0    0    0    0    0    0    0    0    0    0    0    0    1
-prdata         0    0    0    0    0    0    0    0    0    0    0    0    D
-
----------------- mbus 域 (24MHz) ----------------
-flag_s1        0    0    0    1    1    1    1    1    1    1    1    1    1
-flag_s2        0    0    0    0    0    1    1    1    1    1    1    1    1
-flag_s3        0    0    0    0    0    0    0    1    1    1    1    1    1
-payload_s3     o    o    o    o    o    o    o    V    V    V    V    V    V
-ce             0    0    0    0    0    0    0    1    1    0    0    0    0
-rdata          -    -    -    -    -    -    -    D    D    -    -    -    -
-rdat_cap       -    -    -    -    -    -    -    -    -    D    D    D    D
-```
+*图 3: 读事务逐拍时序 (寄存器值为该拍稳态, 即上升沿之后; ①~⑥ 为上表关键边沿)*
 
 图例：`o` = 陈旧值；`V` = 本拍新值（ce 拍使用）；`D` = 读数据有效；
 `-` = 无效/不关心。图中假设 1 个 mbus 周期 ≈ 2 个 APB 周期、mbus 上升沿
@@ -397,25 +353,9 @@ W1C、REGST）的每次写是一条握手命令**：锁存 `{wsel, wdata}` + 翻
 跨域寄存器（EN/FORCE/IRQEN 写、STA_ERR/STA_FAULT/STA_PAR 的 W1C、
 REGST 注错）每次写 = 一条握手命令（ia 式一次一条 toggle 协议）：
 
-```
-mbus 域 (24MHz)                              mod 域 (mod_clk = axi_clk)
-──────────────────────                        ──────────────────────
-ce 拍: 锁存 {wsel_q, wdata_q}
-       (在途期间保持稳定)
-       req_t 翻转 ───── sync_2dff ──────────▶ req_t_s2
-                                              sync_dff 延迟拍 d
-                                              req_edge = s2 ^ d
-                                              req_edge 拍 (用锁存值译码):
-                                                en_word_e/force_word_e/irqen_word_e:
-                                                  影子 <= wdata_q (reg_wrap 载入)
-                                                err_w1c_e/fault_w1c_e/par_w1c_e:
-                                                  sticky <= (sticky & ~wdata_q) | site_err (置位优先)
-                                                reg_st_e: mod 域组注错
-                                              然后 ack_t 翻转
-                ◀──── sync_2dff ──────────── ack_t
-cdc_busy = (req_t != ack_s2):
-  忙时到达的新写被丢弃 -> wr_dropped_q 置位 (0xB4[1])
-```
+![写副作用命令下发双域时序](edc_regfile_fig4.svg)
+
+*图 4: 跨域写 = 一条 ia 式 toggle 握手命令 — mbus 侧锁存 {wsel_q, wdata_q} + req_t 翻转; mod 域 req_edge 拍译码执行; ack_t 回程; 忙丢置 WR_DROPPED*
 
 - **多位数据靠稳定传输**：只同步 `req_t` 一个 bit，负载是 mbus 侧锁存
   值（在途期间不变），mod 域 `req_edge` 拍采样锁存值译码——没有并行

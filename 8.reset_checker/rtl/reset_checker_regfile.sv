@@ -103,8 +103,8 @@ module reset_checker_regfile #(
     input  logic [4:0]            sts_cnt,
 
     // ---- ESM integrity event (dual rail) ------------------------------------
-    output logic                  rchk_par_fault,
-    output logic                  rchk_par_fault_n
+    output logic                  reg_par_fault,
+    output logic                  reg_par_fault_n
 );
 
     //=========================================================================
@@ -321,8 +321,8 @@ module reset_checker_regfile #(
     // integrity event pin: wrap faults (incl. cmd) + cmd sticky + the
     // PAR_SELFTEST latch; REG_PROT is a write-protection protocol event
     // (SW-caused) and stays STA_PAR[6]-only (not on the fault rail)
-    assign rchk_par_fault   = (|perr_w) || cmd_r || r_mb.lst_q[0];
-    assign rchk_par_fault_n =  ~rchk_par_fault;
+    assign reg_par_fault   = (|perr_w) || cmd_r || r_mb.lst_q[0];
+    assign reg_par_fault_n =  ~reg_par_fault;
 
     //=========================================================================
     // read mux (combinational; bad-parity command reads back 0)
@@ -339,8 +339,8 @@ module reset_checker_regfile #(
                                      r_mb.lst_q[1],              // [6] REG_PROT
                                      perr_w[3] | cmd_r,           // [5] PERR3 CMD
                                      perr_w[2:0],                 // [4:2] PERR2..0
-                                     rchk_par_fault_n,            // [1] rail_n
-                                     rchk_par_fault};             // [0] PAR_FAULT
+                                     reg_par_fault_n,            // [1] rail_n
+                                     reg_par_fault};             // [0] PAR_FAULT
             OFF_REGST:  rdata_mux = 32'h0;
             default:    rdata_mux = 32'h0;
         endcase

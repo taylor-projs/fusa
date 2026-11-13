@@ -41,7 +41,7 @@
 //       ID@0xFC readback + RO write dropped)
 //   P15 WR_DROPPED sticky: write while CDC busy -> SCMIAFUSTAT[5], W1C
 //   P16 monitor-integrity FI: ENA code heal arms + threshold duplicate
-//       mismatch (fu_fault / fu_src / W1C)
+//       mismatch (esm_fault / fu_src / W1C)
 //   P17 edge-detector rail FI: forced entry, self-heal, sticky edgeflt
 //   P18 AR FIFO integrity FI: (a) idle-ring pointer duplicate (entry
 //       forced, exit blocked while live), (b) occupied-ring entry parity
@@ -136,7 +136,7 @@ module tb_hang_prot_a_wrap;
     logic sir_flt  = 0;              // P13: s_in_rst rail-pair fault inject
     logic s_in_rst_n = 1;            // inverted rail: complement of s_in_rst
     always @(*) s_in_rst_n = ~s_in_rst ^ sir_flt; // XOR flips one rail only
-    logic err_event, err_event_n, fu_fault, fu_fault_n;
+    logic esm_err, esm_err_n, esm_fault, esm_fault_n;
     logic reg_par_fault, reg_par_fault_n, skid_fault, skid_fault_n;
     logic recover_active, recover_done;
     logic [31:0] rd_val;
@@ -267,10 +267,10 @@ module tb_hang_prot_a_wrap;
         .s_bid    (s_bid    ),
         .s_bresp  (s_bresp  ),
 
-        .err_event      (err_event      ),
-        .err_event_n    (err_event_n    ),
-        .fu_fault       (fu_fault       ),
-        .fu_fault_n     (fu_fault_n     ),
+        .esm_err      (esm_err      ),
+        .esm_err_n    (esm_err_n    ),
+        .esm_fault       (esm_fault       ),
+        .esm_fault_n     (esm_fault_n     ),
         .reg_par_fault  (reg_par_fault  ),
         .reg_par_fault_n(reg_par_fault_n),
         .skid_fault     (skid_fault     ),
@@ -1483,7 +1483,7 @@ module tb_hang_prot_a_wrap;
         // ---- P16: monitor-integrity FI (u_hang_prot_top.u_hang_prot_core) ---------------------
         //   (a) ENA code SEU: a non-codeword is healed by majority
         //       (ones>=3 -> 1111, ones<=1 -> 0000); the broken window raises
-        //       fu_fault / fu_src[0]. Heal-to-0000 turns the monitor OFF ->
+        //       esm_fault / fu_src[0]. Heal-to-0000 turns the monitor OFF ->
         //       re-enable with a keyed write.
         //   (b) threshold duplicate mismatch: qn != ~q -> thr_*_fault,
         //       effective value falls back to the reset value (here equal
@@ -1501,8 +1501,8 @@ module tb_hang_prot_a_wrap;
         release u_dut.u_hang_prot_top.u_hang_prot_core.r.ena_q;
         repeat (2) @(posedge aclk);
         mb_wr_wait(8'h10, 32'h0000_00AF);           // monitor back ON
-        if (fu_fault !== 1'b1) begin
-            $display("[%0t] ERR: P16 fu_fault not raised (ENA FI)", $time);
+        if (esm_fault !== 1'b1) begin
+            $display("[%0t] ERR: P16 esm_fault not raised (ENA FI)", $time);
             errors++;
         end
         force u_dut.u_hang_prot_top.u_hang_prot_core.r.thr_a_qn = u_dut.u_hang_prot_top.u_hang_prot_core.r.thr_a_q; // break
@@ -1522,8 +1522,8 @@ module tb_hang_prot_a_wrap;
             errors++;
         end
         mb_wr_wait(8'h1C, 32'h1);                   // W1C FU_FAULT
-        if (fu_fault !== 1'b0) begin
-            $display("[%0t] ERR: P16 fu_fault not cleared", $time);
+        if (esm_fault !== 1'b0) begin
+            $display("[%0t] ERR: P16 esm_fault not cleared", $time);
             errors++;
         end
         mb_rd(8'h20, rd_val);
@@ -1534,16 +1534,16 @@ module tb_hang_prot_a_wrap;
         scn_sample();
 
         // ---- P17: edge-detector rail FI (u_hang_prot_top gen_wrap) -----------------
-        // force err_event_q_n == err_event_q for one cycle: edge_dis
+        // force esm_err_q_n == esm_err_q for one cycle: edge_dis
         // combinationally raises recover_req (fail toward containment), the
         // edge flop pair rewrites the next clk (self-heal), edgeflt_ff
         // latches into the sticky skid_fault. Idle system: entry + auto exit.
         scn = 17; $display("[%0t] --- P17 ---", $time);
         @(negedge aclk);
-        force u_dut.u_hang_prot_top.r.err_event_q_n = u_dut.u_hang_prot_top.r.err_event_q;
+        force u_dut.u_hang_prot_top.r.esm_err_q_n = u_dut.u_hang_prot_top.r.esm_err_q;
         @(posedge aclk);                    // recover_req live this cycle
         @(negedge aclk);
-        release u_dut.u_hang_prot_top.r.err_event_q_n; // rail pair rewrites next clk
+        release u_dut.u_hang_prot_top.r.esm_err_q_n; // rail pair rewrites next clk
         wait_recover_entry();               // already active here: no miss
         wait_auto_exit();
         if (!skid_fault) begin
@@ -2055,7 +2055,7 @@ module tb_hang_prot_a_wrap;
         repeat (12) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[0] !== 1'b1) begin
-            $display("[%0t] ERR: P23a ena SEU did not raise fu_fault (%h)",
+            $display("[%0t] ERR: P23a ena SEU did not raise esm_fault (%h)",
                      $time, rd_val);
             errors++;
         end
@@ -2066,11 +2066,11 @@ module tb_hang_prot_a_wrap;
             errors++;
         end
         mb_wr_wait(16'h0010, 32'h0000_00AF);    // keyed clean write heals
-        mb_wr_wait(16'h0020, 32'h3F);           // W1C fu_src + fu_fault
+        mb_wr_wait(16'h0020, 32'h3F);           // W1C fu_src + esm_fault
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[0] !== 1'b0) begin
-            $display("[%0t] ERR: P23a fu_fault stuck (%h)", $time, rd_val);
+            $display("[%0t] ERR: P23a esm_fault stuck (%h)", $time, rd_val);
             errors++;
         end
 
@@ -2229,7 +2229,7 @@ module tb_hang_prot_a_wrap;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
         release u_dut.u_hang_prot_top.u_hang_prot_core.g_m[0].r.rd_a_st_n;
 `endif
-        wait_recover_entry();                  // st_rd_a re-sets -> err_event
+        wait_recover_entry();                  // st_rd_a re-sets -> esm_err
         wait_auto_exit();
         w1c_all();
 `ifdef IVERILOG
@@ -2268,7 +2268,7 @@ module tb_hang_prot_a_wrap;
                      rd_val[5:3]);
             errors++;
         end
-        mb_wr_wait(16'h0020, 32'h3F);          // W1C fu_src + fu_fault
+        mb_wr_wait(16'h0020, 32'h3F);          // W1C fu_src + esm_fault
 
         // (e) reg_wrap sticky-rail FI (dup_err self-heals to SET) -------------
 `ifdef IVERILOG

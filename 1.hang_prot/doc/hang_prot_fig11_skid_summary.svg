@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 250" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="250" fill="#FFFFFF"/>
+  <text x="590" y="26" class="title" text-anchor="middle">W skid 每 slot 状态 (两单元共享 hang_prot_wskid)</text>
+
+  <!-- 状态节点 -->
+  <rect x="40" y="56" width="130" height="44" rx="8" class="box"/>
+  <text x="105" y="84" class="bt" text-anchor="middle">FREE</text>
+  <rect x="270" y="56" width="130" height="44" rx="8" class="box"/>
+  <text x="335" y="84" class="bt" text-anchor="middle">FILL</text>
+  <rect x="500" y="56" width="130" height="44" rx="8" class="box"/>
+  <text x="565" y="84" class="bt" text-anchor="middle">READY</text>
+  <rect x="730" y="56" width="130" height="44" rx="8" class="box"/>
+  <text x="795" y="84" class="bt" text-anchor="middle">REPLAY</text>
+  <rect x="960" y="56" width="130" height="44" rx="8" class="box"/>
+  <text x="1025" y="84" class="bt" text-anchor="middle">FREE</text>
+
+  <!-- 转移箭头与标签 -->
+  <line x1="170" y1="78" x2="270" y2="78" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="220" y="48" class="sm" text-anchor="middle">m AW 握手 (锁存负载)</text>
+  <line x1="400" y1="78" x2="500" y2="78" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="450" y="48" class="sm" text-anchor="middle">WLAST</text>
+  <line x1="630" y1="78" x2="730" y2="78" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="680" y="48" class="sm" text-anchor="middle">s AW 握手</text>
+  <line x1="860" y1="78" x2="960" y2="78" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="910" y="48" class="sm" text-anchor="middle">补发完</text>
+
+  <!-- 注脚垂线与注释 -->
+  <line x1="105" y1="100" x2="105" y2="140" stroke="#94A3B8" stroke-dasharray="3 3"/>
+  <text x="105" y="158" class="sm" text-anchor="middle">仅 normal 开门</text>
+
+  <line x1="335" y1="100" x2="335" y2="140" stroke="#94A3B8" stroke-dasharray="3 3"/>
+  <text x="335" y="158" class="sm" text-anchor="middle">blk: WLAST → 丢弃回 FREE</text>
+  <text x="335" y="176" class="sm" text-anchor="middle">(m 侧剩余拍照收=吞)</text>
+
+  <line x1="565" y1="100" x2="565" y2="140" stroke="#94A3B8" stroke-dasharray="3 3"/>
+  <text x="565" y="158" class="sm" text-anchor="middle">blk: 未被接受 → 丢弃</text>
+  <text x="565" y="176" class="sm" text-anchor="middle">(从未过界)</text>
+
+  <line x1="795" y1="100" x2="795" y2="140" stroke="#94A3B8" stroke-dasharray="3 3"/>
+  <text x="795" y="158" class="sm" text-anchor="middle">即使 blk 也补发完</text>
+  <text x="795" y="176" class="sm" text-anchor="middle">(完整合法 burst)</text>
+
+  <text x="40" y="220" class="sm">环形: alloc(分配) / fill(最老FILL) / issue(最老READY|REPLAY) 三指针追逐, k 补发时 k+1 可攒</text>
+</svg>

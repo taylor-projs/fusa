@@ -1,27 +1,38 @@
 `timescale 1ns/1ps
 // ============================================================================
-// tb_apb2mbus: apb2mbus APB 域 hang 看门狗专项测试
+// tb_apb2mbus: apb2mbus APB 域 hang 看门狗 + 事件粘滞面专项测试
 //
-//   T1  正常写/读往返 (inst0/inst1), 无误响应, 无 hang 事件
+//   T1  正常写/读往返 (inst0/inst1), 无误响应, 无 hang 粘滞
 //   T2  越界实例: 立即 pready+pslverr, 不发起 mbus 传输
 //   T3  mbus_clk 停 (时钟死亡): 当笔 ~HANG_TO 拍后 SLVERR 完成 +
-//       hang_evt 单拍脉冲, mbus 侧无 ce
-//   T4  drain 期新访问: 1 拍快速 SLVERR, 不发起 mbus 传输, 无二次事件
+//       hang_flt 粘滞置位, mbus 侧无 ce
+//   T4  drain 期新访问: 1 拍快速 SLVERR, 不发起 mbus 传输, 粘滞保持
 //   T5  mbus_clk 恢复: 迟到 ack 消化 (drain 自清), 被延误的写迟到生效,
 //       链路恢复正常写读
-//   T6  hang_evt/hang_evt_n 双轨互补常时检查
+//   T6  hang_flt/hang_flt_n 双轨互补常时检查 (电平)
 //   T7  ce 拍命令奇偶 par == ^{addr,wr,wdata} 常时检查
 //   T8  slave 恢复瞬间立即访问: drain 未释放窗内立即 SLVERR (不挂死),
 //       迟到 ack 消化 (drain 自清) 后访问恢复正常
 //   T9  h_dup 双轨注错 (SEU FI): 在途等待窗内强制 hang_cnt_n 一位错误
-//       极性 -> 早熟 SLVERR + hang_evt, 迟到写仍以原负载生效
+//       极性 -> 早熟 SLVERR + hang_flt 重置位 (测前 W1C 清), 迟到写仍
+//       以原负载生效
 //   T10 覆盖率激励: 请求保持通路地址/数据位扫 (含非对齐/inst1 边界),
 //       越界地址输入位扫 (paddr[15:9] 输入翻转, 不锁存), 仿真中途复位
-//       (rstn 1->0->1, 两域同步) 后功能恢复
+//       (rstn 1->0->1, 两域同步) 后功能恢复 + 粘滞位复位清零
 //   T11 读回程奇偶 rpar: 好读通过 / 坏 rpar 读 -> pready+pslverr+prdata=0
-//       + rpar_evt 单拍脉冲 (双轨) / 坏 rpar 写 -> 不触发 (只查读) /
+//       + rpar_flt 粘滞置位 / 坏 rpar 写 -> 不触发 (只查读) /
 //       迟到 ack (drain 窗) 坏 rpar -> 不触发 (drain 路径语义隔离) /
-//       坏读后重读恢复 / rpar_evt_n 互补常时检查
+//       坏读后重读恢复 / rpar_flt_n 互补常时检查
+//   T12 0xFF 本地面: ID 读 "BM" / STA_EVT 读出 (FAULT/FAULT_N/双 W1C 位)
+//       / W1C 分通道清 / CFG_INJ 读回 0 / 未映射本地偏移 SLVERR /
+//       本地访问不产生 ce
+//   T13 注错 (CFG_INJ key=1010): hang/rpar 单路+双路注入 -> 粘滞+端口+
+//       STA 置位, W1C 连端口一起清 / 错 key 整写忽略 / 注错不产生 ce
+//   T14 本地访问不扰链路: 本地读与远端写读交错, ce 计数只计远端笔,
+//       粘滞不误置位
+//   T15 drain 期本地可读 (诊断语义): mbus 死亡超时后, 本地 STA 读照常
+//       零等待返回 (不受 drain 屏蔽), 远端访问仍快速失败; 恢复后链路
+//       自愈 + W1C 清
 // ============================================================================
 module tb_apb2mbus;
 
@@ -75,10 +86,10 @@ module tb_apb2mbus;
    end
 
    // ---------------- DUT ----------------
-   logic hang_evt;
-   logic hang_evt_n;
-   logic rpar_evt;
-   logic rpar_evt_n;
+   logic hang_flt;
+   logic hang_flt_n;
+   logic rpar_flt;
+   logic rpar_flt_n;
 
    apb2mbus #(
       .NP     (NP     ),
@@ -103,10 +114,10 @@ module tb_apb2mbus;
       .par        (par        ),
       .rdata      (rdata      ),
       .rpar       (rpar       ),
-      .hang_evt   (hang_evt   ),
-      .hang_evt_n (hang_evt_n ),
-      .rpar_evt   (rpar_evt   ),
-      .rpar_evt_n (rpar_evt_n )
+      .hang_flt   (hang_flt   ),
+      .hang_flt_n (hang_flt_n ),
+      .rpar_flt   (rpar_flt   ),
+      .rpar_flt_n (rpar_flt_n )
    );
 
    // ---------------- 常时检查: T6 双轨互补 / T7 命令奇偶 / T11 rpar 双轨 ----
@@ -115,23 +126,12 @@ module tb_apb2mbus;
    integer rrail_bad = 0;
 
    always @(posedge apb_clk) begin
-      if (hang_evt_n !== ~hang_evt) rail_bad = rail_bad + 1;
-      if (rpar_evt_n !== ~rpar_evt) rrail_bad = rrail_bad + 1;
+      if (hang_flt_n !== ~hang_flt) rail_bad = rail_bad + 1;
+      if (rpar_flt_n !== ~rpar_flt) rrail_bad = rrail_bad + 1;
    end
 
    always @(posedge mbus_clk) begin
       if (ce && (par !== ^{addr, wr, wdata})) par_bad = par_bad + 1;
-   end
-
-   // hang_evt / rpar_evt 见到即记 (单拍脉冲, 相位间清零)
-   logic hang_evt_seen = 1'b0;
-   always @(posedge apb_clk) begin
-      if (hang_evt) hang_evt_seen <= 1'b1;
-   end
-
-   integer rpar_evt_cnt = 0;
-   always @(posedge apb_clk) begin
-      if (rpar_evt) rpar_evt_cnt <= rpar_evt_cnt + 1;
    end
 
    // ---------------- 检查统计 ----------------
@@ -211,7 +211,7 @@ module tb_apb2mbus;
       chk("T1c inst1 write no err ", err === 1'b0);
       apb_acc(16'h0100+16'h0010, 32'h0, 1'b0, err, rd, wc);
       chk("T1d inst1 readback      ", (err === 1'b0) && (rd === 32'h5A5A_1111));
-      chk("T1e no hang event       ", hang_evt_seen === 1'b0);
+      chk("T1e no hang sticky      ", hang_flt === 1'b0);
 
       // ---- T2: 越界实例立即 SLVERR, 不发起 mbus 传输 ----
       ce_snap = ce_cnt;
@@ -221,26 +221,24 @@ module tb_apb2mbus;
       repeat (30) @(posedge apb_clk);
       chk("T2c oob no ce           ", ce_cnt === ce_snap);
 
-      // ---- T3: mbus_clk 死亡 -> timeout SLVERR + hang_evt ----
+      // ---- T3: mbus_clk 死亡 -> timeout SLVERR + hang 粘滞 ----
       ce_snap = ce_cnt;
-      hang_evt_seen = 1'b0;
       mbus_run = 1'b0;
       repeat (4) @(posedge apb_clk);
       apb_acc(16'h0004, 32'h1234_5678, 1'b1, err, rd, wc);
       chk("T3a timeout slverr      ", err === 1'b1);
       chk("T3b wait ~ HANG_TO      ", (wc >= HANG_TO-3) && (wc <= HANG_TO+2));
-      repeat (4) @(posedge apb_clk);   // hang_evt 在 to_fire 后 1 拍, seen 再 1 拍
-      chk("T3c hang_evt pulsed     ", hang_evt_seen === 1'b1);
+      repeat (2) @(posedge apb_clk);   // 粘滞为寄存输出, pready 拍后沿更新
+      chk("T3c hang_flt set        ", hang_flt === 1'b1);
       chk("T3d no ce while dead    ", ce_cnt === ce_snap);
 
-      // ---- T4: drain 期新访问快速失败 ----
+      // ---- T4: drain 期新访问快速失败 (粘滞保持, 无 W1C 不自清) ----
       apb_acc(16'h0008, 32'hCAFE_F00D, 1'b1, err, rd, wc);
       chk("T4a drain slverr        ", err === 1'b1);
       chk("T4b drain immediate     ", wc <= 1);
       chk("T4c drain no ce         ", ce_cnt === ce_snap);
-      hang_evt_seen = 1'b0;
-      repeat (4) @(posedge apb_clk);
-      chk("T4d no repeated event   ", hang_evt_seen === 1'b0);
+      repeat (2) @(posedge apb_clk);
+      chk("T4d sticky holds        ", hang_flt === 1'b1);
 
       // ---- T5: mbus_clk 恢复 -> 迟到 ack 消化, 链路自愈 ----
       // 请求保持寄存器 (req_fire 当拍锁存 payload) 保证超时笔迟到完成时
@@ -278,9 +276,12 @@ module tb_apb2mbus;
       // ---- T9: h_dup 双轨注错 (在途等待窗内, 早熟 SLVERR) ----
       // 正常往返 ~17 apb 拍; 第 ~6 拍把反相轨 hang_cnt_n[5] 强制成错误
       // 极性 (计数值 <32, 自然极性应为 1) -> h_dup 失配 -> to_fire 提前,
-      // mbus 侧传输照旧完成, 迟到 ack 由 drain 消化
+      // mbus 侧传输照旧完成, 迟到 ack 由 drain 消化.
+      // 测前用本地面 W1C 清 hang 粘滞 (面细节见 T12), 使事件检查有区分度
+      apb_acc(16'hFF04, 32'h4, 1'b1, err, rd, wc);
+      repeat (2) @(posedge apb_clk);   // 寄存输出 NBA: 写完成拍后隔拍再查
+      chk("T9- w1c pre-clear       ", (err === 1'b0) && (hang_flt === 1'b0));
       ce_snap = ce_cnt;
-      hang_evt_seen = 1'b0;
       fork
          apb_acc(16'h0004, 32'hF00D_0086, 1'b1, err, rd, wc);
          begin
@@ -294,8 +295,8 @@ module tb_apb2mbus;
       join
       chk("T9a h_dup early slverr  ", err === 1'b1);
       chk("T9b h_dup fast (<TO)    ", wc < HANG_TO-3);
-      repeat (4) @(posedge apb_clk);
-      chk("T9c hang_evt pulsed     ", hang_evt_seen === 1'b1);
+      repeat (2) @(posedge apb_clk);
+      chk("T9c hang_flt re-set     ", hang_flt === 1'b1);
       repeat (30) @(posedge apb_clk);       // 迟到 ack + drain 自清
       chk("T9d in-flight ce fired  ", ce_cnt === ce_snap + 1);
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
@@ -306,30 +307,30 @@ module tb_apb2mbus;
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
       chk("T11a good read passes   ", (err === 1'b0) && (rd === 32'hF00D_0086));
 
-      // 坏 rpar 读: pready+pslverr 完成, prdata 驱 0, rpar_evt 单拍
-      rpar_evt_cnt = 0;
+      // 坏 rpar 读: pready+pslverr 完成, prdata 驱 0, rpar 粘滞置位
       rpar_flip = 1'b1;
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
       chk("T11b bad rpar slverr    ", err === 1'b1);
       chk("T11c bad rpar data 0    ", rd === 32'h0);
       chk("T11d completed via rdy  ", (wc >= 3) && (wc <= 40));
-      repeat (4) @(posedge apb_clk);   // rpar_evt 为寄存输出, pready 后 1 拍可见
-      chk("T11e rpar_evt pulsed    ", rpar_evt_cnt === 1);
+      repeat (2) @(posedge apb_clk);   // rpar 粘滞为寄存输出, 完成拍沿更新
+      chk("T11e rpar_flt set       ", rpar_flt === 1'b1);
 
-      // 坏 rpar 写: 只查读 -> 写照常执行, 不触发事件
-      rpar_evt_cnt = 0;
+      // 坏 rpar 写: 只查读 -> 写照常执行, 不触发粘滞 (先 W1C 清再测)
+      apb_acc(16'hFF04, 32'h8, 1'b1, err, rd, wc);
+      repeat (2) @(posedge apb_clk);   // 寄存输出 NBA: 写完成拍后隔拍再查
+      chk("T11- w1c rpar clear     ", (err === 1'b0) && (rpar_flt === 1'b0));
       apb_acc(16'h0004, 32'h70AC_0004, 1'b1, err, rd, wc);
       chk("T11f bad rpar wr ok     ", err === 1'b0);
-      repeat (4) @(posedge apb_clk);
-      chk("T11g no evt on write    ", rpar_evt_cnt === 0);
+      repeat (2) @(posedge apb_clk);
+      chk("T11g no sticky on write ", rpar_flt === 1'b0);
 
       // 恢复: 翻转撤销后重读正常 (SW 收 bus error 后重读的恢复语义)
       rpar_flip = 1'b0;
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
       chk("T11h read recovers      ", (err === 1'b0) && (rd === 32'h70AC_0004));
 
-      // drain 窗迟到 ack 坏 rpar: 不触发 rpar_evt (drain 完成语义隔离)
-      rpar_evt_cnt = 0;
+      // drain 窗迟到 ack 坏 rpar: 不置 rpar 粘滞 (drain 完成语义隔离)
       mbus_run = 1'b0;
       repeat (4) @(posedge apb_clk);
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);   // 读超时, caps 尚未采样
@@ -337,10 +338,88 @@ module tb_apb2mbus;
       rpar_flip = 1'b1;                              // 迟到通路上翻转
       mbus_run = 1'b1;
       repeat (200) @(posedge apb_clk);               // 迟到 ack + drain 自清
-      chk("T11j drain: no rpar evt ", rpar_evt_cnt === 0);
+      chk("T11j drain: no rpar stky", rpar_flt === 1'b0);
       rpar_flip = 1'b0;
       apb_acc(16'h0004, 32'h0, 1'b0, err, rd, wc);
       chk("T11k link recovered     ", (err === 1'b0) && (rd === 32'h70AC_0004));
+
+      // ---- T12: 0xFF 本地面 (此刻 hang 粘滞=1 [T9c], rpar 粘滞=0 [T11-]) ----
+      ce_snap = ce_cnt;
+      apb_acc(16'hFF00, 32'h0, 1'b0, err, rd, wc);
+      chk("T12a ID = BM            ", (err === 1'b0) && (rd === 32'h0000_424D));
+      chk("T12b ID zero-wait       ", wc <= 1);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T12c STA = 0x5          ", (err === 1'b0) && (rd === 32'h5));
+      apb_acc(16'hFF04, 32'h4, 1'b1, err, rd, wc);   // W1C HANG
+      chk("T12d w1c hang no err    ", err === 1'b0);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T12e STA idle 0x2       ", (err === 1'b0) && (rd === 32'h2));
+      chk("T12f flt follows w1c    ", (hang_flt === 1'b0) &&
+                                     (hang_flt_n === 1'b1));
+      apb_acc(16'hFF08, 32'h0, 1'b0, err, rd, wc);
+      chk("T12g CFG_INJ reads 0    ", (err === 1'b0) && (rd === 32'h0));
+      apb_acc(16'hFF3C, 32'h0, 1'b0, err, rd, wc);   // 未映射本地偏移
+      chk("T12h unmapped slverr    ", err === 1'b1);
+      chk("T12i unmapped fast      ", wc <= 1);
+      repeat (30) @(posedge apb_clk);
+      chk("T12j local no ce        ", ce_cnt === ce_snap);
+
+      // ---- T13: 注错 (CFG_INJ key=1010, 注错 OR 在 set 项 -> 端口+粘滞同真) ----
+      apb_acc(16'hFF08, 32'h1A, 1'b1, err, rd, wc);  // key|HANG_INJ
+      chk("T13a inj hang no err    ", err === 1'b0);
+      repeat (2) @(posedge apb_clk);
+      chk("T13b inj hang flt+STA   ", (hang_flt === 1'b1) && (rpar_flt === 1'b0));
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T13c inj hang STA 0x5   ", (err === 1'b0) && (rd === 32'h5));
+      apb_acc(16'hFF08, 32'h2A, 1'b1, err, rd, wc);  // key|RPAR_INJ
+      repeat (2) @(posedge apb_clk);
+      chk("T13d inj rpar flt       ", (rpar_flt === 1'b1) && (hang_flt === 1'b1));
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T13e both STA 0xD       ", (err === 1'b0) && (rd === 32'hD));
+      apb_acc(16'hFF04, 32'hC, 1'b1, err, rd, wc);   // W1C 双通道
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T13f w1c both -> 0x2    ", (err === 1'b0) && (rd === 32'h2));
+      chk("T13g ports cleared      ", (hang_flt === 1'b0) && (rpar_flt === 1'b0));
+      // 错 key: 整写忽略 (fail-safe 拒写), 粘滞不动
+      apb_acc(16'hFF08, 32'h1B, 1'b1, err, rd, wc);  // key=1011 + HANG_INJ
+      apb_acc(16'hFF08, 32'h2B, 1'b1, err, rd, wc);  // key=1011 + RPAR_INJ
+      repeat (2) @(posedge apb_clk);
+      chk("T13h bad key rejected   ", (hang_flt === 1'b0) && (rpar_flt === 1'b0));
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T13i bad key STA 0x2    ", (err === 1'b0) && (rd === 32'h2));
+      chk("T13j inj no ce          ", ce_cnt === ce_snap);
+
+      // ---- T14: 本地访问不扰链路 (交错, ce 只计远端笔) ----
+      ce_snap = ce_cnt;
+      apb_acc(16'h0000, 32'hC0DE_0001, 1'b1, err, rd, wc);   // 远端写
+      chk("T14a remote wr ok       ", err === 1'b0);
+      apb_acc(16'hFF00, 32'h0, 1'b0, err, rd, wc);           // 本地读夹在中间
+      chk("T14b local rd ok        ", (err === 1'b0) && (rd === 32'h0000_424D));
+      apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);           // 远端读
+      chk("T14c remote rd ok       ", (err === 1'b0) && (rd === 32'hC0DE_0001));
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T14d no false sticky    ", rd === 32'h2);
+      chk("T14e ce = 2 remote only ", ce_cnt === ce_snap + 2);
+
+      // ---- T15: drain 期本地可读 (诊断不受 drain 屏蔽) ----
+      mbus_run = 1'b0;
+      repeat (4) @(posedge apb_clk);
+      apb_acc(16'h0000, 32'hD00D_0002, 1'b1, err, rd, wc);   // 超时, drain 进入
+      chk("T15a timeout slverr     ", err === 1'b1);
+      repeat (2) @(posedge apb_clk);
+      chk("T15b sticky set         ", hang_flt === 1'b1);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);           // drain 中读 STA
+      chk("T15c local rd in drain  ", (err === 1'b0) && (wc <= 1));
+      chk("T15d STA shows hang     ", rd === 32'h5);
+      apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);           // 远端仍快速失败
+      chk("T15e remote still fail  ", (err === 1'b1) && (wc <= 1));
+      mbus_run = 1'b1;
+      repeat (200) @(posedge apb_clk);                       // 迟到 ack 自愈
+      apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);
+      chk("T15f healed, late write ", (err === 1'b0) && (rd === 32'hD00D_0002));
+      apb_acc(16'hFF04, 32'h4, 1'b1, err, rd, wc);           // 诊断完 W1C 清
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T15g STA back to 0x2    ", (err === 1'b0) && (rd === 32'h2));
 
       // ---- T10a: 请求保持通路地址/数据位扫 (含非对齐与 [7:5]) ----
       // paddr[15:8]<NP 才会被锁存; 位扫均在 inst0/inst1 合法窗内,
@@ -367,6 +446,7 @@ module tb_apb2mbus;
       chk("T10j base rd ok         ", (err === 1'b0) && (rd === 32'h600D_0042));
 
       // ---- T10b: 越界地址输入位扫 (paddr[15:9] 输入翻转; 不锁存不传输) ----
+      // (0x0200/0x0800/0xF800 的 [15:8] 均非 0xFF -> 越界语义不受本地面影响)
       ce_snap = ce_cnt;
       apb_acc(16'h0200, 32'h0, 1'b0, err, rd, wc);            // bit9
       chk("T10k oob[9] slverr      ", err === 1'b1);
@@ -378,12 +458,17 @@ module tb_apb2mbus;
       chk("T10n oob sweep no ce    ", ce_cnt === ce_snap);
 
       // ---- T10c: 仿真中途复位 (rstn 1->0->1, 两域) 后功能恢复 ----
+      // 复位前注错置起双粘滞: 验证粘滞位复位清零 (双轨回到互补静息)
+      apb_acc(16'hFF08, 32'h3A, 1'b1, err, rd, wc);
+      repeat (2) @(posedge apb_clk);
+      chk("T10r0 pre-rst both set  ", (hang_flt === 1'b1) && (rpar_flt === 1'b1));
       apb_rstn  = 1'b0;
       mbus_rstn = 1'b0;
       repeat (5) @(posedge apb_clk);
       apb_rstn  = 1'b1;
       mbus_rstn = 1'b1;
       repeat (10) @(posedge apb_clk);
+      chk("T10r sticky rst-cleared ", (hang_flt === 1'b0) && (rpar_flt === 1'b0));
       apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);            // 复位丢保持值? 读回见分晓
       chk("T10o rstn recovered rd  ", err === 1'b0);
       apb_acc(16'h0008, 32'h5E53_0008, 1'b1, err, rd, wc);

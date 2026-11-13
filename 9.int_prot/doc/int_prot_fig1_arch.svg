@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 520" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .sig   { font-size: 10.5px; font-weight: bold; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="520" fill="#FFFFFF"/>
+  <text x="540" y="30" class="title" text-anchor="middle">int_prot — 顶层架构 (单时钟域, spi 互补对监视) (§2)</text>
+
+  <!-- mbus -->
+  <rect x="60" y="64" width="300" height="64" rx="8" class="box"/>
+  <text x="210" y="90" class="bt" text-anchor="middle">mbus (24MHz)</text>
+  <text x="210" y="112" class="sm" text-anchor="middle">ce &#183; wr &#183; addr &#183; wdata &#183; par &#183; 组合 rdata</text>
+  <line x1="210" y1="128" x2="210" y2="148" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- regfile -->
+  <rect x="60" y="152" width="300" height="150" rx="8" class="box"/>
+  <text x="210" y="176" class="bt" text-anchor="middle">int_prot_regfile</text>
+  <text x="210" y="198" class="txt" text-anchor="middle">CFG_EN / INJ_EN / INJ /</text>
+  <text x="210" y="216" class="txt" text-anchor="middle">STA_ERR / STA_PAR / REGST / ID</text>
+  <text x="210" y="234" class="txt" text-anchor="middle">每寄存器 reg_wrap 偶校验</text>
+  <text x="210" y="252" class="txt" text-anchor="middle">keyed 写 + 4bit 码双门控</text>
+  <text x="210" y="276" class="sm" text-anchor="middle">(house 寄存器地图)</text>
+
+  <!-- int_prot -->
+  <rect x="620" y="100" width="400" height="190" rx="8" class="box"/>
+  <text x="820" y="124" class="bt" text-anchor="middle">int_prot (同步链+边沿检测+双计数器)</text>
+  <text x="820" y="150" class="txt" text-anchor="middle">spi / spi_chk 逐通道互补监视</text>
+  <text x="820" y="172" class="txt" text-anchor="middle">change_cnt (3bit 加减): 数量失配</text>
+  <text x="820" y="194" class="txt" text-anchor="middle">diff_cnt (失配期间计时): 时间失配</text>
+  <text x="820" y="216" class="txt" text-anchor="middle">spi_err 1 拍脉冲 (原设计语义)</text>
+  <text x="820" y="244" class="sm" text-anchor="middle">sync_2dff 例化 (2/3 级 + RST_VAL,</text>
+  <text x="820" y="262" class="sm" text-anchor="middle">spi/spi_chk 复位值保持互补空闲电平 0/1)</text>
+
+  <!-- 互连箭头 -->
+  <line x1="360" y1="176" x2="618" y2="176" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="489" y="166" class="sig" text-anchor="middle">en[3:0] = 4bit SEC 解码</text>
+  <line x1="618" y1="220" x2="362" y2="220" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="489" y="210" class="sig" text-anchor="middle">spi_err &#8594; regfile 粘滞</text>
+  <line x1="360" y1="264" x2="618" y2="264" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="489" y="254" class="sig" text-anchor="middle">inj_spi / inj_chk (写拍 1 拍虚拟事件)</text>
+
+  <!-- spi 异步输入 -->
+  <rect x="620" y="330" width="400" height="56" rx="8" class="box"/>
+  <text x="820" y="354" class="txt" text-anchor="middle" font-weight="bold">spi[i] / spi_chk[i] 异步输入 (空闲 0/1 互补)</text>
+  <text x="820" y="374" class="sm" text-anchor="middle">&#8594; 内部 sync_2dff 逐通道同步后监视</text>
+  <line x1="820" y1="328" x2="820" y2="294" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- ESM 输出 -->
+  <line x1="210" y1="302" x2="210" y2="356" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="60" y="360" width="300" height="94" rx="8" class="box"/>
+  <text x="210" y="384" class="txt" text-anchor="middle">esm_err / _n — 监控职责错误 (|STA_ERR)</text>
+  <text x="210" y="404" class="txt" text-anchor="middle">esm_fault / _n — 监视器自身故障</text>
+  <text x="210" y="420" class="sm" text-anchor="middle">(cnt Q/Q_n 失配 | 在途命令奇偶 | 自测位)</text>
+  <text x="210" y="438" class="txt" text-anchor="middle">reg_par_fault / _n — 寄存器面奇偶 双轨</text>
+  <text x="210" y="454" class="sm" text-anchor="middle">&#8594; ESM (三轨各成对)</text>
+
+  <text x="28" y="500" class="txt">单时钟域: 监视器与 regfile 共 clk/rstn (mbus 域), spi_err/cnt_par_err 脉冲直接粘滞无跨域; spi/spi_chk 为异步输入由 int_prot_core 内部同步</text>
+</svg>

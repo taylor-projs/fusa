@@ -54,7 +54,10 @@
 //       set-priority W1C race, source-first clear chain), STA_FAULT
 //       (dut1 FU_SELFTEST), STA_PARCORE (dut0 PAR_SELFTEST chain),
 //       STA_RAIL (forced rail violation -> rail_fault), agg REG_SELFTEST
-//       k=0..4 + PAR_SELFTEST + quiescent 0x2
+//       k=0..5 + dup sweep (6 wraps) + PAR_SELFTEST + quiescent 0x2
+//   P17 ESM path selftest (PATH_SELFTEST, ESM 单端集成契约): 0x28 keyed
+//       掩码驱动四路 ESM 输出 (置 1/逐通道/释放 双向往复), 无源签名
+//       (通道报 1 而 STA 源全 0), 无 key 整写忽略
 //   P15 mid-sim reset pulse + re-readback (rstn 1->0, mbus_rstn 1->0)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
@@ -1623,8 +1626,8 @@ module tb_ia_timeo_gen_wrap;
             mb_rd_i(2, 8'h20, rd_val);
             if (rd_val !== 32'h0) begin $display("ERR: agg STA_RAIL[0] clear failed (%h)", rd_val); errors++; end
             else $display("agg STA_RAIL[0]: OK (dut0 pair violation -> clear)");
-            // (e) agg REG_SELFTEST k=0..4 (all 5 agg reg_wraps) + PAR_SELFTEST
-            for (k = 0; k <= 4; k++) begin
+            // (e) agg REG_SELFTEST k=0..5 (all 6 agg reg_wraps) + PAR_SELFTEST
+            for (k = 0; k <= 5; k++) begin
                 mb_wr_i(2, 8'h1C, 32'h1A | (k << 8));
                 repeat (2) @(negedge mbus_clk);
                 mb_rd_i(2, 8'h18, perr);
@@ -1651,9 +1654,9 @@ module tb_ia_timeo_gen_wrap;
             mb_rd_i(2, 8'h18, rd_val);
             if (rd_val !== 32'h2) begin $display("ERR: agg STA_PAR not quiescent at P16 end (%h)", rd_val); errors++; end
             else $display("agg self-tests: OK (REG k=0..4 + PAR latch, quiescent 0x2)");
-            // (f) agg reg_wrap dup_err FI (all 5 wraps): forced flt_q_n
+            // (f) agg reg_wrap dup_err FI (all 6 wraps): forced flt_q_n
             //     mismatch -> dup_err -> flt re-set (heal-to-SET proof on
-            //     the aggregator's own stickies), all 5 PERR re-latch,
+            //     the aggregator's own stickies), all 6 PERR re-latch,
             //     W1C rewrite clears (same contract as (e))
             force u_agg.u_w_sta_err.r.flt_q_n   = 1'b0;
             repeat (2) @(posedge mbus_clk); release u_agg.u_w_sta_err.r.flt_q_n;
@@ -1665,11 +1668,13 @@ module tb_ia_timeo_gen_wrap;
             repeat (2) @(posedge mbus_clk); release u_agg.u_w_sta_parc.r.flt_q_n;
             force u_agg.u_w_sta_rail.r.flt_q_n  = 1'b0;
             repeat (2) @(posedge mbus_clk); release u_agg.u_w_sta_rail.r.flt_q_n;
+            force u_agg.u_w_esmtst.r.flt_q_n    = 1'b0;
+            repeat (2) @(posedge mbus_clk); release u_agg.u_w_esmtst.r.flt_q_n;
             repeat (2) @(negedge mbus_clk);
             mb_rd_i(2, 8'h18, perr);
-            if (perr[6:2] !== 5'h1F) begin $display("ERR: agg dup sweep PERR map (%h)", perr[6:2]); errors++; end
-            else $display("agg dup sweep: OK (all 5 PERR re-latched after heal)");
-            for (k = 0; k <= 4; k++) begin
+            if (perr[7:2] !== 6'h3F) begin $display("ERR: agg dup sweep PERR map (%h)", perr[7:2]); errors++; end
+            else $display("agg dup sweep: OK (all 6 PERR re-latched after heal)");
+            for (k = 0; k <= 5; k++) begin
                 mb_wr_i(2, 8'h18, 32'h1 << (2+k));
             end
             repeat (4) @(negedge mbus_clk);
@@ -1681,6 +1686,59 @@ module tb_ia_timeo_gen_wrap;
             if (rd_val !== 32'h0) begin $display("ERR: agg wrong-inst 0x0300 not 0"); errors++; end
             mb_raw_rd(16'h03FC, rd_val);
             if (rd_val !== 32'h0) begin $display("ERR: agg wrong-inst 0x03FC not 0"); errors++; end
+        end
+
+        // ---- P17: ESM path self-test (PATH_SELFTEST, ESM 单端集成契约) ------
+        // 0x28 keyed 掩码驱动四路 ESM 输出: 置 1 / 逐通道 / 释放 双向往复;
+        // 无源签名 (通道报 1 而 STA 源全 0); 无 key 整写忽略。
+        $display("\n--- P17: ESM path selftest ---");
+        begin : p17
+            logic [31:0] msk;
+            // 静息: 掩码 0, 四轨全 0
+            mb_rd_i(2, 8'h28, msk);
+            if (msk !== 32'h0) begin $display("ERR: P17 mask not 0 at start (%h)", msk); errors++; end
+            // 无 key 整写忽略 (key=5)
+            mb_wr_i(2, 8'h28, 32'h0000_00F5);
+            repeat (2) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h28, msk);
+            if (msk !== 32'h0) begin $display("ERR: P17 bad-key load not ignored (%h)", msk); errors++; end
+            // 装载 msk=F: 四路全 1 (反轨全 0), 掩码读回 F0
+            mb_wr_i(2, 8'h28, 32'h0000_00FA);
+            repeat (2) @(negedge mbus_clk);
+            if (!(a_esm_err === 1'b1 && a_esm_err_n === 1'b0
+                  && a_esm_fault === 1'b1 && a_esm_fault_n === 1'b0
+                  && a_reg_par_fault === 1'b1 && a_reg_par_fault_n === 1'b0
+                  && a_rail_fault === 1'b1 && a_rail_fault_n === 1'b0)) begin
+                $display("ERR: P17 msk=F rails not all driven"); errors++;
+            end
+            mb_rd_i(2, 8'h28, msk);
+            if (msk !== 32'h0000_00F0) begin $display("ERR: P17 mask readback (%h)", msk); errors++; end
+            // 有 fault 无源: STA 源全 0, STA_PAR 静息 0x2
+            mb_rd_i(2, 8'h00, rd_val);
+            if (rd_val !== 32'h0) begin $display("ERR: P17 STA_ERR not source-free (%h)", rd_val); errors++; end
+            mb_rd_i(2, 8'h04, rd_val);
+            if (rd_val !== 32'h0) begin $display("ERR: P17 STA_FAULT not source-free"); errors++; end
+            mb_rd_i(2, 8'h20, rd_val);
+            if (rd_val !== 32'h0) begin $display("ERR: P17 STA_RAIL not source-free"); errors++; end
+            mb_rd_i(2, 8'h18, rd_val);
+            if (rd_val !== 32'h2) begin $display("ERR: P17 STA_PAR not source-free (%h)", rd_val); errors++; end
+            // 逐通道: msk=0010 -> 仅 esm_fault
+            mb_wr_i(2, 8'h28, 32'h0000_002A);
+            repeat (2) @(negedge mbus_clk);
+            if (!(a_esm_err === 1'b0 && a_esm_fault === 1'b1
+                  && a_reg_par_fault === 1'b0 && a_rail_fault === 1'b0)) begin
+                $display("ERR: P17 per-channel select failed"); errors++;
+            end
+            // 释放 msk=0: 全 0 (tie-1 方向验证)
+            mb_wr_i(2, 8'h28, 32'h0000_000A);
+            repeat (2) @(negedge mbus_clk);
+            if (a_esm_err !== 1'b0 || a_esm_fault !== 1'b0
+                || a_reg_par_fault !== 1'b0 || a_rail_fault !== 1'b0) begin
+                $display("ERR: P17 rails not released"); errors++;
+            end
+            mb_rd_i(2, 8'h28, msk);
+            if (msk !== 32'h0) begin $display("ERR: P17 mask not 0 after release"); errors++; end
+            else $display("P17 path selftest: OK (drive/per-ch/release, source-free)");
         end
 
         // ---- P15: mid-sim reset pulse -----------------------------------------
@@ -1700,6 +1758,7 @@ module tb_ia_timeo_gen_wrap;
         mb_rd_i(2, 8'h00, rd_val); if (rd_val !== 32'h0) begin $display("ERR: post-reset agg STA_ERR"); errors++; end
         mb_rd_i(2, 8'h04, rd_val); if (rd_val !== 32'h0) begin $display("ERR: post-reset agg STA_FAULT"); errors++; end
         mb_rd_i(2, 8'h18, rd_val); if (rd_val !== 32'h2) begin $display("ERR: post-reset agg STA_PAR"); errors++; end
+        mb_rd_i(2, 8'h28, rd_val); if (rd_val !== 32'h0) begin $display("ERR: post-reset agg esmtst mask"); errors++; end
         $display("mid-sim reset: OK (defaults restored, both cores + agg)");
 
         // ---- summary ------------------------------------------------------------

@@ -39,29 +39,9 @@ regfile 是唯一双域模块, 每个寄存器都是所在域的 reg_wrap, 命�
 
 ## 2. 顶层结构
 
-```
-                     mbus (APB 桥侧)
-    ce/wr/addr/wdata/par ───────────────────────────────►│
-                                                          ▼
-                    ┌───────────── dup_ctrl_regfile (双域) ─────────────┐
-                    │ [mbus 域] 译码/锁存/命令奇偶                        │
-                    │   wr_fire: 锁存{wsel_q,wdata_q,wpar_q}+翻 req_t    │
-                    │   image wraps: u_w_en/u_w_ien/u_w_fi/u_w_cmd       │
-                    │   sta 像: u_err_s2/u_raw_s2 (s1=sync_dff)          │
-                    │   cdc_busy=req_t^ack_s2 → WR_DROPPED               │──► rdata/rpar
-                    │──────────── req_t ──STAGES 2FF──► req_edge ───────│
-                    │◄─────────── ack_t ◄──(req_edge 拍翻转)────────────│
-                    │ [mod_clk 域] (复位经 u_mod_rst rst_sync)           │
-                    │   req_edge 译码锁存 payload (飞行中稳定):          │
-                    │     key/码字复检(双门) → u_c_ena/u_c_ien/u_c_fi    │
-                    │     err_w1c → u_err_st 清除 (置位优先)             │
-                    │     par_wrc_a/reg_st_a → 影子 flt W1C/自测注错     │
-                    │   u_err_st: err 粘滞捕获 (ena 门控 & err_i, 跟随型) │◄── err_i
-                    │   fi_o = INJ_EN 解码开 ? FI 影子 : 00 (mod 域组合)  │──► fi_o (直连
-                    │   影子 flt ×4 ──STAGES 2FF──► 回 mbus 聚合 PERR     │    dcls_fault_injection)
-                    └───────────────────────────────────────────────────┘
-                    esm_err/_n = STA_ERR 寄存器面 (u_err_s2); reg_par_fault/_n = PERR 聚合
-```
+![dup_ctrl 顶层结构](dup_ctrl_fig1_arch.svg)
+
+*图 1: 顶层结构 — mbus (APB) 接入, regfile 唯一双域模块 (规则 23)*
 
 - `dup_ctrl_top` — 端口壳: 仅例化 `u_dup_ctrl_regfile`, `scan_mode` 透传
   (规则 19; v2 内部 tie 0 属违规)。
@@ -85,15 +65,18 @@ addr[15:8] = IDX(实例号), addr[7:0] = 偏移; `par` = `^{addr,wr,wdata}` 命�
 | 0x0C | STA_CDC | RW1C/RO | `0x0` | **v3 新增** 命令握手状态: [0] CFG_BUSY(RO) 跨域命令在途; [1] WR_DROPPED(W1C) 忙时到达的合法写被丢弃(粘滞)。SW 契约: 依赖性写前 poll [0] 到 0 |
 | 0x10 | STA_ERR | W1C/RO | `0x0` | [0] DCLS err 粘滞 = mod 域 `u_err_st` 的同步像(RO)。写 1 = mod 域清除事件(经握手); **置位优先于清除**(源在线清不掉); 撤源后 W1C 经跨域往返生效, 软件 poll 读到 0。**v3: 与 STA_PAR bit5(PERR3 W1C) 不再等价** —— PERR 位只清奇偶粘滞, 状态值由本寄存器清 |
 | 0x14 | STA_RAW | RO | `0x0` | [0] err 当前电平同步像(区分"正在报"与"报过已粘滞")。诊断面, **允许漏拍** —— 保证捕获在 u_err_st |
-| 0x18 | STA_PAR | RW1C/RO | 静息读 `0x2` | house 标准布局: [0] PAR_FAULT 电平, 写 1 只清自测锁存; [1] PAR_FAULT_N 反轨(RO); [8:2] PERR6..PERR0(W1C, bit=2+组号, 清对应组两域粘滞) |
-| 0x1C | CFG_REGST | W+key | — | [3:0] key=`1010`; [4] REG_SELFTEST 脉冲(对 [11:8] REGSEL 组 0/1/2 注 image+shadow 两域 / 组 3 注 image+sticky / 组 4 注 image / 组 6 注 cmd wrap; 组 5 无目标忽略; >6 忽略); [5] PAR_SELFTEST 脉冲(只置自测锁存)。读回 0 |
+| 0x18 | STA_PAR | RW1C/RO | 静息读 `0x2` | house 标准布局: [0] PAR_FAULT 电平(**寄存器面**各组 flt 或 + 自测锁存; 在途事件 PERR5/PERR6 本体与 WR_DROPPED 不在此电平, 走 esm_fault 轨), 写 1 只清自测锁存; [1] PAR_FAULT_N 反轨(RO); [8:2] PERR6..PERR0(W1C, bit=2+组号, 清对应组两域粘滞) |
+| 0x1C | CFG_REGST | W+key | — | [3:0] key=`1010`; [4] REG_SELFTEST 脉冲(对 [11:8] REGSEL 组 0/1/2 注 image+shadow 两域 / 组 3 注 image+sticky / 组 4 注 image / 组 6 注 cmd wrap; 组 5 无目标忽略; >6 忽略); [5] PAR_SELFTEST 脉冲(只置自测锁存); [6] FLT_SELFTEST 脉冲(置 STA_FAULT[31] 自测位, keyed 源级注入)。读回 0 |
+| 0x20 | STA_FAULT | RW1C/RO | `0x0` | **2026-11-13 三轨统一新增** 监视器自身故障源查询面(esm_fault 之源): [0] CMD_PAR(RO, PERR6 命令在途奇偶粘滞, W1C 在 STA_PAR[8]) / [1] WLT_PAR(RO, PERR5 在途写锁存 lane, W1C 在 STA_PAR[7]) / [2] WR_DROP(RO, W1C 在 STA_CDC[1]) / [31] FLT_TEST(RW1C, CFG_REGST[6] 自测位) |
 | 0xFC | ID | RO | `5AFE_2002\|IDX` | 实例识别 (v3: 双域 regfile 改版标识; v2=2001, v1=2000) |
 
 PERR 组号 ↔ STA_PAR bit = 2+组号 (image+shadow 同组):
 **0** CFG_EN / **1** CFG_INJ_EN / **2** CFG_FI / **3** STA_ERR(image+mod 粘滞)/
 **4** STA_RAW(仅 image, mod 域无存储)/ **5** 在途写锁存奇偶(Q/Q_n lane,
 飞行窗口内 mbus 域检查, 无注错目标, REGSEL=5 忽略)/ **6** 命令在途奇偶
-(W=1 wrap, W1C 即重写重算)。
+(W=1 wrap, W1C 即重写重算)。**在途事件本体 (PERR5 lane / PERR6 粘滞)
+与 WR_DROPPED 为监视器自身故障, 聚合走 esm_fault 轨** (查询面 STA_FAULT
+0x20, 2026-11-13 三轨统一)。
 
 ## 4. CDC 策略 (v3: 全部收编在 regfile 内)
 
@@ -110,7 +93,7 @@ PERR 组号 ↔ STA_PAR bit = 2+组号 (image+shadow 同组):
 (b) mod_clk 停摆期间一切配置/W1C 写被丢弃(busy=1 可见, v2 隐性约束显性化);
 (c) W1C 语义: 置位优先, 源在线清不掉, 撤源后写一次即可(poll 读到 0)。
 
-esm_err / reg_par_fault 为 mbus 域输出, 与 int_prot 同按 ESM 侧约定消费。
+esm_err / esm_fault / reg_par_fault 三对双轨为 mbus 域输出 (2026-11-13 规则 25), 与 int_prot 同按 ESM 侧约定消费。
 
 ## 5. 加固规格
 
@@ -135,10 +118,17 @@ esm_err / reg_par_fault 为 mbus 域输出, 与 int_prot 同按 ESM 侧约定消
 5. **命令在途奇偶**(PERR6): ce 拍重组比对 par, 失配 = APB→mbus 通路在途
    损坏。fail-safe: 坏命令**写不落任何寄存器**(含不翻 req_t), **读驱 0**,
    W=1 wrap 粘滞可 W1C(W1C 即重写重算)。
-6. **ESM 双轨**(规则13): `esm_err/_n`(DCLS 检错 = STA_ERR 寄存器面)、
-   `reg_par_fault/_n`(寄存器/通路奇偶 = PERR 全组或 + 自测锁存), 互补两轨。
+6. **ESM 三轨**(规则13+25): `esm_err/_n`(DCLS 检错 = 监控职责错误,
+   STA_ERR 寄存器面)、`esm_fault/_n`(监视器自身故障 = 在途命令奇偶
+   PERR6 | 在途写锁存奇偶 PERR5 | 忙丢 WR_DROPPED | FLT_TEST 自测位,
+   查询面 STA_FAULT 0x20)、`reg_par_fault/_n`(寄存器面奇偶 = 存储
+   wrap flt 或 + 自测锁存, **不含在途事件**), 三对互补双轨。
 7. **PAR_SELFTEST 锁存**: Q/Q_n 反相副本逐拍比较, 失配自愈回 SET, W1C 走
    STA_PAR bit0。用途: ESM 服务程序自检签名("有 fault 无源" = 锁存通路完好)。
+8. **FLT_SELFTEST 锁存**(2026-11-13): keyed CFG_REGST[6] 置 STA_FAULT[31]
+   自测位(Q/Q_n 副本自愈同上, W1C 走 STA_FAULT bit31) —— **源级注入**
+   出 esm_fault 轨, fault 轨周期连通性自测(err 轨由 FI/DCLS 检错覆盖,
+   par 轨由 PAR_SELFTEST 覆盖)。
 
 ## 6. 与 dcls_auto 生成物的集成约束
 
@@ -155,7 +145,7 @@ esm_err / reg_par_fault 为 mbus 域输出, 与 int_prot 同按 ESM 侧约定消
 注: dcls_auto 生成物为多时钟 DCLS IP 时, err 通道应按"每比较时钟域一组"聚合
 (生成物强制单一主比较时钟); 跨域异步 err 的对齐不在本模块职责内。
 
-## 7. 验证计划 (tb_dup_ctrl, T1–T17)
+## 7. 验证计划 (tb_dup_ctrl, T1–T18)
 
 双时钟: mbus #21 (~23.8MHz) + mod_clk #13 (~38.5MHz, 非整数比相位渐变,
 功能快于总线 = 漏拍压力场景)。所有写经 mbus_wr(内建 poll CFG_BUSY),
@@ -171,16 +161,17 @@ esm_err / reg_par_fault 为 mbus 域输出, 与 int_prot 同按 ESM 侧约定消
 | T6 | W1C 语义 | 在线清不掉(置位优先); 撤源后清; 空闲重复 W1C 无害 |
 | T7 | EN 门控 | 影子经握手生效(写后往返延迟); 关时只 RAW 不粘滞; 重开恢复 |
 | T8 | FI 三重门 | INJ_EN 关时 FI 可写读但 fi_o=0; 开后 fi_o 跟随影子; **01→10 直切**(原子交付); 复关 fi_o=0 且存储不变 |
-| T9 | ESM 双轨电平 | 全程互补监视(run_check) + 显式电平查 |
+| T9 | ESM 三轨电平 | 全程互补监视(run_check) + 显式电平查 |
 | T10 | REGST 逐组 0–6 | 注错(两域)→PERR→治愈(重写/自愈)→W1C; REGSEL=5 无目标忽略, >6 忽略 |
 | T11 | PAR_SELFTEST | 锁存("有 fault 无源")→bit0 W1C |
-| T12 | 命令在途坏 par | PERR6: 拒写+读 0+W1C |
+| T12 | 命令在途坏 par | PERR6: 拒写+读 0+W1C (在途事件走 esm_fault 轨, STA_FAULT[0] CMD_PAR 镜像可查; 与 T16(d) PERR5 / T17 WR_DROPPED 同为监视器自身故障源) |
 | T13 | 静默类 | 未映射/错实例/写 ID/写 RAW/写 STA_CDC bit0(RO)/写 STA=0 |
 | T14 | 复位清除 + scan 旁路 | err 在线+已粘滞时复位全默认; **scan_mode 断言/释放即时透传(P0)**; 释放后握手对齐 |
 | T15 | **单功能拍捕获** (头条) | err 单个 mod_clk 拍 → STA_ERR 必粘滞; **PERR3 W1C 不清 STA_ERR**(v3 语义分离), STA bit0 才清 |
-| T16 | 存储扰动 (force SEU) | (a) u_err_st par 位翻→PERR3 值不动 (b) data 位扰 0→1→保守粘滞+PERR3 (c) u_c_fi 影子扰→PERR2 持续到重写 (d) wpar_q 扰(PERR5 飞行窗口) |
-| T17 | **CDC 忙丢** (v3 新增) | 往返内第二写被丢弃: image 不落地 + WR_DROPPED 粘滞; poll busy→0 后 W1C 清; 恢复写被接受 |
+| T16 | 存储扰动 (force SEU) | (a) u_err_st par 位翻→PERR3 值不动 (b) data 位扰 0→1→保守粘滞+PERR3 (c) u_c_fi 影子扰→PERR2 持续到重写 (d) wpar_q 扰(PERR5 飞行窗口; STA_FAULT[1] WLT_PAR 镜像 + esm_fault 轨) |
+| T17 | **CDC 忙丢** (v3 新增) | 往返内第二写被丢弃: image 不落地 + WR_DROPPED 粘滞(→ esm_fault 轨); poll busy→0 后 W1C 清; 恢复写被接受 |
+| T18 | **FLT_SELFTEST** (2026-11-13) | keyed 源级注入: 无 key 忽略 / STA_FAULT[31] + esm_fault 轨(STA_PAR 不含测试位) / W1C bit31 清 |
 
 运行: VM rocky-eda `~/work`, `bash sim/run_vcs.sh`(自检 grep TB PASS/FAIL,
-SVA/$display 不进退出码)。当前状态: **T1–T17 全绿, 105 checks**
-(TOGGLE 原始值未做结构常量排除, 排除战役另行)。
+SVA/$display 不进退出码)。当前状态: **T1–T18 全绿, 125 checks**
+(2026-11-13 三轨统一改版后复绿; TOGGLE 原始值未做结构常量排除, 排除战役另行)。

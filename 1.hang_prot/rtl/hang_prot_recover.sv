@@ -92,7 +92,7 @@
 //   at the m side stalls until the AW handshake - legal backpressure.
 //
 // ======================= RECOVER MODE (dummy engines) ====================
-// Entered on the recover_req pulse (rising edge of sticky err_event), a
+// Entered on the recover_req pulse (rising edge of sticky esm_err), a
 // skid one-hot fault, OR s_in_rst / its rail mismatch (see "S_IN_RST").
 // Exit condition - all ledgers empty:
 //   rd_otd  (m AR  - m RLAST)  -> dummy R engine: LEN-exact burst per

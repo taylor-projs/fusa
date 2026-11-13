@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 390" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .bt11  { font-size: 11px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .strip { fill: #F8FAFC; stroke: #94A3B8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="390" fill="#FFFFFF"/>
+  <text x="450" y="28" class="title" text-anchor="middle">读多类重映射 (v3.2: mcore 感知全 id 匹配)</text>
+
+  <rect x="390" y="48" width="120" height="36" rx="6" class="box"/>
+  <text x="450" y="72" class="bt" text-anchor="middle">m_arid</text>
+  <line x1="450" y1="84" x2="450" y2="102" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="280" y="104" width="340" height="44" rx="8" class="strip"/>
+  <text x="450" y="131" class="bt11" text-anchor="middle">全匹配 MCORE_MASTER_IDS[k] ?</text>
+
+  <line x1="370" y1="148" x2="300" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="322" y="166" class="txt" text-anchor="middle">是</text>
+  <line x1="530" y1="148" x2="520" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="548" y="164" class="txt">否(所有非 mcore master)</text>
+
+  <rect x="160" y="180" width="400" height="96" rx="8" class="box"/>
+  <text x="180" y="206" class="bt">AR 转发</text>
+  <text x="180" y="230" class="txt">mcore k → MCORE_REMAP_IDS[k]  (类 k+1)</text>
+  <text x="180" y="254" class="txt">其他 → AR_ID_REMAP  (类 0)</text>
+
+  <rect x="620" y="180" width="250" height="100" rx="6" class="strip"/>
+  <text x="632" y="202" class="bt11">leaf 视角:</text>
+  <text x="632" y="220" class="sm">mcore 各自独立 id,</text>
+  <text x="632" y="238" class="sm">其余 master 共享 id;</text>
+  <text x="632" y="256" class="sm">mcore 间可乱序完成、</text>
+  <text x="632" y="274" class="sm">互不堵塞</text>
+
+  <line x1="250" y1="276" x2="250" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="480" y1="276" x2="480" y2="318" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <rect x="160" y="320" width="180" height="44" rx="6" class="box"/>
+  <text x="250" y="348" class="bt" text-anchor="middle">ar_fifo[0] (共享)</text>
+  <rect x="380" y="320" width="220" height="44" rx="6" class="box"/>
+  <text x="490" y="348" class="bt" text-anchor="middle">ar_fifo[k+1] (每 mcore)</text>
+  <text x="630" y="348" class="txt">← 每类一条记分板</text>
+</svg>

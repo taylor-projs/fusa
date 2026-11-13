@@ -65,7 +65,7 @@ addFld(0x04, 'GCTRL', 'DBGSEL',  7, 4, 'RW', True, '0x0', '',
 addReg(0x08, 'GSTAT', 'RO', False, DYN, '-', 'global status (status bits 2FF-synced from clk_ref domain)')
 for field, lsb, msb, enc, desc in [
     ('ALARM',         0, 0, '', 'OR of all channel alarms (FAIL_FREQ | DEAD)'),
-    ('FU',            1, 1, '', 'OR of monitor integrity faults (cmm_fu)'),
+    ('FU',            1, 1, '', 'OR of monitor integrity faults (esm_fault rail)'),
     ('ACTIVE',        2, 2, '', 'lifecycle FSM in RUN (cmm_active output)'),
     ('FSM',           3, 5, '001=ARM; 010=RUN; 100=ERR', 'lifecycle FSM state (one-hot)'),
     ('CFG_BUSY',      6, 6, '', 'CDC write handshake in flight; poll ==0 before the next forwarded write'),
@@ -251,7 +251,7 @@ TRM = [
         ('6',    'CFG_BUSY',      'RO', DYN, 'CDC write handshake in flight; poll ==0 before the next forwarded write'),
         ('5:3',  'FSM',           'RO', DYN, 'lifecycle FSM state (one-hot): 001=ARM, 010=RUN, 100=ERR'),
         ('2',    'ACTIVE',        'RO', DYN, 'lifecycle FSM in RUN (cmm_active output)'),
-        ('1',    'FU',            'RO', DYN, 'OR of monitor integrity faults (cmm_fu)'),
+        ('1',    'FU',            'RO', DYN, 'OR of monitor integrity faults (esm_fault rail)'),
         ('0',    'ALARM',         'RO', DYN, 'OR of all channel alarms (FAIL_FREQ | DEAD)'),
      ]),
     ('ENLO', '0x000C', 'RW', False, '0xFFFFFFFF',

@@ -6,7 +6,7 @@
 //   系统集成: 各 ia_bus_timeo_core (单口 AXI4 超时监视 IP, 与被监视
 //   AXI4 接口一一对应) 的 esm_err / esm_fault / reg_par_fault 双轨
 //   分别接到本模块 core_err_i/_n / core_fault_i/_n / core_par_i/_n,
-//   本模块做四件事:
+//   本模块做五件事:
 //     1) per-core sticky status: CPU 读一次 STA_ERR / STA_FAULT 即知
 //        哪个 ia_bus_timeo_core 发生过 fault (再进该 core 寄存器查
 //        流级明细 SCMIAERR0/1STAT / SCMIAFUSRC);
@@ -17,10 +17,21 @@
 //        STA_RAIL 粘滞 + rail_fault 双轨上报 (真值捕获仍用真轨,
 //        违例只上报不改写 —— 同 ESM 接收侧行为);
 //     4) 聚合 fault 双轨送 ESM (esm_err/esm_fault/reg_par_fault/
-//        rail_fault 各带反轨).
+//        rail_fault 各带反轨);
+//     5) ESM 通路自测 (PATH_SELFTEST): keyed 掩码把测试位 OR 进四路
+//        输出, 供 ESM 单端集成时周期性验证 top->ESM 通路连通
+//        (双向往复: 置 1 观察 / 释放回 0; 判别签名 = 通道报 1 而本
+//        模块一切 STA 源读 0, "有 fault 无源"; 详见 0x28 地图项).
+//
+//   ESM 单端集成契约 (2026-11-09): ESM 输入若为单端, 连四根正轨,
+//   四根 *_n 悬空保留 (端口不删); 末段在线双轨检查随 _n 一起失效
+//   (单线传单比特警报无冗余即无自检 —— 残余, 与片内其他单轨网络
+//   同级), 潜藏故障覆盖改为周期 PATH_SELFTEST (诊断间隔 DTI 由 ESM
+//   周期任务定, 写入 safety case)。core->top 段的双轨互补检查不受
+//   影响, 必须照常六根全接。
 //
 //   两级拓扑 (本模块不接入任何 AXI 信号):
-//     ia_bus_timeo_core<0..N-1> --双轨--> ia_bus_timeo_top --双轨--> ESM
+//     ia_bus_timeo_core<0..N-1> --双轨--> ia_bus_timeo_top --双轨(或单端正轨)--> ESM
 //     各 core 自带 ESM 双轨输出仍直出可用 (集成可选, 独立冗余通道);
 //     core 的 reg_par_fault 不并入 STA_ERR/STA_FAULT (保持与超时
 //     fault 不同失效模式的独立查询通道), 走 STA_PARCORE 单独聚合.
@@ -47,17 +58,29 @@
 //     [0]    PAR_FAULT  电平 = 所有 PERR 源或 + 自测锁存 + 各 core
 //            寄存器奇偶 sticky 或
 //     [1]    PAR_FAULT_N (RO 反轨)
-//     [6:2]  PERR0..PERR4 (W1C): 组号 0=STA_ERR 1=STA_FAULT 2=命令
-//            在途 3=STA_PARCORE 4=STA_RAIL; 每笔 PERR W1C 同时重写
-   //            本组 wrap (复原注错翻转的存储奇偶), 单笔完成清除
+//     [7:2]  PERR0..PERR5 (W1C): 组号 0=STA_ERR 1=STA_FAULT 2=命令
+//            在途 3=STA_PARCORE 4=STA_RAIL 5=CFG_ESMTEST; 每笔 PERR
+   //            W1C 同时重写本组 wrap (复原注错翻转的存储奇偶), 单笔完成清除
 //   0x1C CFG_REGST  W(带key) 寄存器奇偶自测控制 (读回 0):
 //     [3:0]  key = 4'b1010, 否则整写忽略
-//     [4]    REG_SELFTEST: 对 [11:8] REGSEL 组注错 (0..4, >4 忽略)
+//     [4]    REG_SELFTEST: 对 [11:8] REGSEL 组注错 (0..5, >5 忽略)
 //     [5]    PAR_SELFTEST: 只置自测锁存 ("有 fault 无源" 签名)
 //   0x20 STA_RAIL   RW1C [NUM_CORE-1:0] 各 core 输入轨互补违例 sticky
 //                          (err/fault/par 任一对真/反轨同值; 置位优先,
 //                          源在线清不掉, 线修复/释放后可清)
 //   0x24 STA_RAWRAIL RO  [NUM_CORE-1:0] 输入轨互补违例当前电平
+//   0x28 CFG_ESMTEST W(带key)/R ESM 通路自测掩码 (PATH_SELFTEST,
+//                          复位 0; 读回 = 当前掩码在 [7:4], 其余 0):
+//     [3:0]  key = 4'b1010, 否则整写忽略 (无 key 不改掩码)
+//     [7:4]  TST_MSK: 带 key 写入时装载 —— bit0 -> esm_err,
+//            bit1 -> esm_fault, bit2 -> reg_par_fault, bit3 ->
+//            rail_fault (测试位 OR 进对应输出; 只添警报不遮蔽,
+//            忘记释放 = 持续误报, fail-visible, key+0000 释放)。
+//            自测签名: 通道报 1 而本模块 STA_ERR/STA_FAULT/
+//            STA_PARCORE/STA_RAIL/STA_PAR 全 0 (掩码可从本地址
+//            读回确认); STA_PAR[0] 电平不含测试位 (寄存器面保持
+//            真实源语义)。周期任务双向往复: 装载全 1 -> ESM 期望
+//            四通道报警 -> 装载 0000 -> 期望回 0 (tie-0/tie-1 都抓)
 //   0xFC ID         RO   32'h4941_2000 | IDX ("IA" 聚合器版)
 //
 //   sticky 无功能使能门控 (观测恒使能, fail-visible); sticky 位在
@@ -128,7 +151,7 @@ module ia_bus_timeo_top #(
    // 写译码
    //--------------------------------------------------------------------------
    logic a_staerr, a_staflt, a_rawerr, a_rawflt, a_parc, a_rawpar,
-         a_rail, a_rawrail, a_par, a_regst;
+         a_rail, a_rawrail, a_par, a_regst, a_esmtst;
    assign a_staerr  = (addr[7:0] == 8'h00);
    assign a_staflt  = (addr[7:0] == 8'h04);
    assign a_rawerr  = (addr[7:0] == 8'h08);
@@ -139,6 +162,7 @@ module ia_bus_timeo_top #(
    assign a_regst   = (addr[7:0] == 8'h1C);
    assign a_rail    = (addr[7:0] == 8'h20);
    assign a_rawrail = (addr[7:0] == 8'h24);
+   assign a_esmtst  = (addr[7:0] == 8'h28);
 
    // STA_ERR / STA_FAULT / STA_PARCORE / STA_RAIL: W1C 掩码 (置位优先
    // 在 wdata 拼接处体现)
@@ -161,15 +185,19 @@ module ia_bus_timeo_top #(
    assign par_fault_w1c = wr_ok && a_par && wdata[0];
    assign perr_w1c      = wr_ok && a_par;
 
-   // CFG_REGST: key 检查 + 自测脉冲 (REGSEL 0..4, >4 忽略)
+   // CFG_REGST: key 检查 + 自测脉冲 (REGSEL 0..5, >5 忽略)
    logic regst_ok;
    assign regst_ok = wr_ok && a_regst && (wdata[3:0] == 4'b1010);
    logic reg_selftest;
-   assign reg_selftest = regst_ok && wdata[4] && (wdata[11:8] <= 4'd4);
+   assign reg_selftest = regst_ok && wdata[4] && (wdata[11:8] <= 4'd5);
    logic par_selftest;
    assign par_selftest = regst_ok && wdata[5];
    logic [3:0] regsel;
    assign regsel = wdata[11:8];
+
+   // CFG_ESMTEST: ESM 通路自测掩码 (key 检查; 无 key 整写忽略)
+   logic esmtst_ok;
+   assign esmtst_ok = wr_ok && a_esmtst && (wdata[3:0] == 4'b1010);
 
    //--------------------------------------------------------------------------
    // 输入轨互补违例 (真轨须恒等于 ~反轨; 任一对同值即违例, 三通道
@@ -181,13 +209,16 @@ module ia_bus_timeo_top #(
                     | (~(core_par_i   ^ core_par_i_n  ));
 
    //--------------------------------------------------------------------------
-   // wrap 实例 (5 组): sticky 存储 + 偶校验 + 自测注错 + 粘滞 flt
+   // wrap 实例 (6 组): sticky 存储 + 偶校验 + 自测注错 + 粘滞 flt
    //--------------------------------------------------------------------------
    logic [31:0] sta_err_r, sta_fault_r, sta_parc_r, sta_rail_r;   // W=32 wrap, 高位恒 0
+   logic [3:0]  esmtst_r;
    logic cmd_r;
-   logic flt_err, flt_flt, flt_cmd, flt_parc, flt_rail;
+   logic flt_err, flt_flt, flt_cmd, flt_parc, flt_rail, flt_esmtst;
    logic [NUM_CORE-1:0] sta_err_w, sta_fault_w, sta_parc_w, sta_rail_w;
    logic sta_err_wr, sta_fault_wr, sta_parc_wr, sta_rail_wr, cmd_wr, cmd_w;
+   logic [3:0]  esmtst_w;
+   logic        esmtst_wr;
 
    // 置位优先于 W1C; 观测恒使能 (无功能门控, fail-visible).
    // wr 项含本组 PERR W1C (0x18 bit=2+k): reg_wrap 无写注错把 par_q
@@ -217,9 +248,13 @@ module ia_bus_timeo_top #(
    assign cmd_w  = par_cmd_bad ? 1'b1 : 1'b0;               // PERR2 粘滞本体
    assign cmd_wr = par_cmd_bad || (perr_w1c && wdata[4]);
 
+   // CFG_ESMTEST 掩码: 带 key 装载 / 保持; PERR5 W1C 同步重写复原
+   assign esmtst_w  = esmtst_ok ? wdata[7:4] : esmtst_r;
+   assign esmtst_wr = esmtst_ok || (perr_w1c && wdata[7]);
+
    reg_wrap #(
-      .W    (32      ),
-      .RESET(32'h0   )
+      .W    (32   ),
+      .RESET(32'h0)
    ) u_w_sta_err (
       .clk         (mbus_clk                        ),
       .rst_n       (mbus_rstn                       ),
@@ -232,8 +267,8 @@ module ia_bus_timeo_top #(
    );
 
    reg_wrap #(
-      .W    (32      ),
-      .RESET(32'h0   )
+      .W    (32   ),
+      .RESET(32'h0)
    ) u_w_sta_fault (
       .clk         (mbus_clk                        ),
       .rst_n       (mbus_rstn                       ),
@@ -246,8 +281,8 @@ module ia_bus_timeo_top #(
    );
 
    reg_wrap #(
-      .W    (1     ),
-      .RESET(1'b0 )
+      .W    (1   ),
+      .RESET(1'b0)
    ) u_w_cmd (
       .clk         (mbus_clk                        ),
       .rst_n       (mbus_rstn                       ),
@@ -260,8 +295,8 @@ module ia_bus_timeo_top #(
    );
 
    reg_wrap #(
-      .W    (32      ),
-      .RESET(32'h0   )
+      .W    (32   ),
+      .RESET(32'h0)
    ) u_w_sta_parc (
       .clk         (mbus_clk                        ),
       .rst_n       (mbus_rstn                       ),
@@ -274,8 +309,8 @@ module ia_bus_timeo_top #(
    );
 
    reg_wrap #(
-      .W    (32      ),
-      .RESET(32'h0   )
+      .W    (32   ),
+      .RESET(32'h0)
    ) u_w_sta_rail (
       .clk         (mbus_clk                        ),
       .rst_n       (mbus_rstn                       ),
@@ -285,6 +320,20 @@ module ia_bus_timeo_top #(
       .selftest_key(reg_selftest && (regsel == 4'd4)),
       .flt         (flt_rail                        ),
       .flt_w1c     (perr_w1c && wdata[6]            )
+   );
+
+   reg_wrap #(
+      .W    (4   ),
+      .RESET(4'h0)
+   ) u_w_esmtst (
+      .clk         (mbus_clk                        ),
+      .rst_n       (mbus_rstn                       ),
+      .wdata       (esmtst_w                        ),
+      .wr          (esmtst_wr                       ),
+      .rdata       (esmtst_r                        ),
+      .selftest_key(reg_selftest && (regsel == 4'd5)),
+      .flt         (flt_esmtst                      ),
+      .flt_w1c     (perr_w1c && wdata[7]            )
    );
 
    //--------------------------------------------------------------------------
@@ -330,6 +379,7 @@ module ia_bus_timeo_top #(
    //--------------------------------------------------------------------------
    logic par_fault_level;
    assign par_fault_level = flt_err | flt_flt | flt_cmd | flt_parc | flt_rail
+                          | flt_esmtst
                           | cmd_r | plr.q
                           | (|sta_parc_r[NUM_CORE-1:0]);
 
@@ -337,7 +387,8 @@ module ia_bus_timeo_top #(
    // rdata 组合读出 (坏命令读驱 0)
    //--------------------------------------------------------------------------
    logic [31:0] sta_par_rb;
-   assign sta_par_rb = {25'h0,
+   assign sta_par_rb = {24'h0,
+                        flt_esmtst,                // [7]    PERR5
                         flt_rail,                  // [6]    PERR4
                         flt_parc,                  // [5]    PERR3
                         flt_cmd | cmd_r,           // [4]    PERR2 (flt 或粘滞)
@@ -374,6 +425,9 @@ module ia_bus_timeo_top #(
             8'h24: begin
                rdata = {{32-NUM_CORE{1'b0}}, rail_viol};
             end
+            8'h28: begin
+               rdata = {24'h0, esmtst_r, 4'h0};   // [7:4] 当前自测掩码
+            end
             8'h18: begin
                rdata = sta_par_rb;
             end
@@ -397,13 +451,13 @@ module ia_bus_timeo_top #(
    // reg_par_fault 已折入 per-core 寄存器奇偶 sticky —— 本模块为
    // 完整汇总点, 集成可只接本模块四对双轨)
    //--------------------------------------------------------------------------
-   assign esm_err         = |sta_err_r[NUM_CORE-1:0];
+   assign esm_err         = |sta_err_r[NUM_CORE-1:0] | esmtst_r[0];
    assign esm_err_n       = ~esm_err;
-   assign esm_fault       = |sta_fault_r[NUM_CORE-1:0];
+   assign esm_fault       = |sta_fault_r[NUM_CORE-1:0] | esmtst_r[1];
    assign esm_fault_n     = ~esm_fault;
-   assign reg_par_fault   =  par_fault_level;
-   assign reg_par_fault_n = ~par_fault_level;
-   assign rail_fault      = |sta_rail_r[NUM_CORE-1:0];
+   assign reg_par_fault   =  par_fault_level | esmtst_r[2];
+   assign reg_par_fault_n = ~reg_par_fault;
+   assign rail_fault      = |sta_rail_r[NUM_CORE-1:0] | esmtst_r[3];
    assign rail_fault_n    = ~rail_fault;
 
 endmodule

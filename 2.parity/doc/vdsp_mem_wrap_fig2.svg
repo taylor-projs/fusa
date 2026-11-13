@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 350" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .cyc   { font-size: 11px; font-weight: bold; fill: #475569; }
+      .lbl   { font-size: 10.5px; fill: #334155; }
+      .bus   { font-size: 10px; font-weight: bold; }
+      .note  { font-size: 9.5px; fill: #64748B; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="350" fill="#FFFFFF"/>
+  <text x="500" y="26" class="title" text-anchor="middle">读时序 (本配置: INPUT_PIPE_EN=0 / OUTPUT_PIPE_EN=1)</text>
+
+  <!-- 周期刻度 c0..c3 -->
+  <line x1="140" y1="46" x2="140" y2="326" stroke="#E2E8F0" stroke-dasharray="4 3"/>
+  <line x1="330" y1="46" x2="330" y2="326" stroke="#E2E8F0" stroke-dasharray="4 3"/>
+  <line x1="520" y1="46" x2="520" y2="326" stroke="#E2E8F0" stroke-dasharray="4 3"/>
+  <line x1="710" y1="46" x2="710" y2="326" stroke="#E2E8F0" stroke-dasharray="4 3"/>
+  <line x1="900" y1="46" x2="900" y2="326" stroke="#E2E8F0" stroke-dasharray="4 3"/>
+  <text x="235" y="42" class="cyc" text-anchor="middle">c0</text>
+  <text x="425" y="42" class="cyc" text-anchor="middle">c1</text>
+  <text x="615" y="42" class="cyc" text-anchor="middle">c2</text>
+  <text x="805" y="42" class="cyc" text-anchor="middle">c3</text>
+
+  <!-- CLK -->
+  <text x="16" y="90" class="lbl">CLK</text>
+  <path d="M140,96 L140,80 L235,80 L235,96 L330,96 L330,80 L425,80 L425,96 L520,96 L520,80 L615,80 L615,96 L710,96 L710,80 L805,80 L805,96 L900,96" fill="none" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- CEB (低有效, c0 一拍) -->
+  <text x="16" y="138" class="lbl">CEB</text>
+  <path d="M140,128 L155,144 L315,144 L330,128 L900,128" fill="none" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- A: c0 有效 -->
+  <text x="16" y="179" class="lbl">A</text>
+  <line x1="140" y1="175" x2="160" y2="175" stroke="#94A3B8" stroke-width="1.2"/>
+  <rect x="160" y="166" width="160" height="18" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="240" y="179" class="bus" text-anchor="middle" fill="#1D4ED8">addr</text>
+  <line x1="320" y1="175" x2="900" y2="175" stroke="#94A3B8" stroke-width="1.2"/>
+
+  <!-- SRAM Q: c1 有效 -->
+  <text x="16" y="224" class="lbl">SRAM Q</text>
+  <line x1="140" y1="220" x2="345" y2="220" stroke="#94A3B8" stroke-width="1.2"/>
+  <rect x="345" y="211" width="160" height="18" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="425" y="224" class="bus" text-anchor="middle" fill="#1D4ED8">mem[A]</text>
+  <line x1="505" y1="220" x2="900" y2="220" stroke="#94A3B8" stroke-width="1.2"/>
+
+  <!-- Q_out: c2 有效 (已纠错) -->
+  <text x="16" y="269" class="lbl">Q_out</text>
+  <line x1="140" y1="265" x2="530" y2="265" stroke="#94A3B8" stroke-width="1.2"/>
+  <rect x="530" y="256" width="170" height="18" fill="#FEF9C3" stroke="#CA8A04"/>
+  <text x="615" y="269" class="bus" text-anchor="middle" fill="#92400E">已纠错数据</text>
+  <line x1="700" y1="265" x2="900" y2="265" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="908" y="269" class="note">c2 有效</text>
+
+  <!-- latent/mission/etype: c3 有效 -->
+  <text x="16" y="314" class="lbl" font-size="9.5">latent/mission/etype</text>
+  <line x1="140" y1="310" x2="725" y2="310" stroke="#94A3B8" stroke-width="1.2"/>
+  <rect x="725" y="301" width="165" height="18" fill="#ECFDF5" stroke="#16A34A"/>
+  <text x="807" y="314" class="bus" text-anchor="middle" fill="#065F46">标志</text>
+  <text x="908" y="314" class="note">c3 有效</text>
+</svg>

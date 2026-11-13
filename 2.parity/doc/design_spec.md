@@ -65,7 +65,7 @@
   - `SIDE=1`（NIC 出口 / slave 侧）：请求通道 **CHK**；响应通道
     **GEN**（`buser_o/ruser_o` 输出驱动总线 user）；
   - `SIDE=2`（观测，默认）：全通道 CHK，`user_o` 恒 0（纯挂线监控）。
-  - 进 NIC 前 `SIDE=0`、NIC 后 `SIDE=1`：req 在入口生成、出口检查，
+  - **进 NIC 前 `SIDE=0`、NIC 后 `SIDE=1`**：req 在入口生成、出口检查，
     rsp 在出口生成、入口检查，req/rsp 全部在途路径都受保护；同一 IP
     两种配置即可覆盖 NIC 前后两个接口；
   - GEN 方向注错**只翻 EDC 位**（永不破坏 payload），本地不置位，
@@ -547,7 +547,11 @@ end
 - **输入轨互补校验**：每 core 三对轨逐拍查真/反轨同值违例（真轨须
   恒等于 ~反轨），STA_RAIL per-core 粘滞 + STA_RAWRAIL 实时电平 +
   `rail_fault/_n` 双轨上报；真值捕获仍用真轨，违例只上报不改写
-  （同 ESM 接收侧行为）。
+  （同 ESM 接收侧行为）；
+- **ESM 通路自测（PATH_SELFTEST）**：keyed 掩码 0x28 CFG_ESMTEST
+  把测试位 OR 进四路 ESM 输出（只添警报不遮蔽），供 ESM 单端集成时
+  周期性验证 top→ESM 通路连通；判别签名 = 通道报 1 而聚合器一切
+  STA 源读 0（"有 fault 无源"）。
 
 | 偏移 | 寄存器 | 属性 | 说明 |
 | --- | --- | --- | --- |
@@ -557,10 +561,11 @@ end
 | 0x0C | STA_RAWFLT | RO | [N-1:0] 各 core fault 实时电平 |
 | 0x10 | STA_PARCORE | RW1C | [N-1:0] 各 core reg_par_fault sticky（置位优先，先撤 core 源再清） |
 | 0x14 | STA_RAWPAR | RO | [N-1:0] 各 core reg_par_fault 实时电平 |
-| 0x18 | STA_PAR | RW1C/R | 家族标准布局：[0] PAR_FAULT（= PERR0..4 源或 + 自测锁存 + 各 core 奇偶 sticky 或）；[1] PAR_FAULT_N 反轨；[6:2] PERR0..PERR4 W1C（0=STA_ERR 1=STA_FAULT 2=命令在途 3=STA_PARCORE 4=STA_RAIL） |
-| 0x1C | CFG_REGST | W(key) | key=4'b1010；[4] REG_SELFTEST 对 [11:8] REGSEL（0..4，>4 忽略）注错；[5] PAR_SELFTEST |
+| 0x18 | STA_PAR | RW1C/R | 家族标准布局：[0] PAR_FAULT（= PERR0..5 源或 + 自测锁存 + 各 core 奇偶 sticky 或，**不含** ESM 自测掩码）；[1] PAR_FAULT_N 反轨；[7:2] PERR0..PERR5 W1C（0=STA_ERR 1=STA_FAULT 2=命令在途 3=STA_PARCORE 4=STA_RAIL 5=CFG_ESMTEST；单笔 W1C 同时重写本组 wrap 复原注错奇偶） |
+| 0x1C | CFG_REGST | W(key) | key=4'b1010；[4] REG_SELFTEST 对 [11:8] REGSEL（0..5，>5 忽略）注错；[5] PAR_SELFTEST |
 | 0x20 | STA_RAIL | RW1C | [N-1:0] 输入轨互补违例 sticky（置位优先） |
 | 0x24 | STA_RAWRAIL | RO | [N-1:0] 违例实时电平 |
+| 0x28 | CFG_ESMTEST | W(key)/R | ESM 通路自测掩码（PATH_SELFTEST，复位 0；读回 = 当前掩码在 [7:4]）：key=4'b1010 否则整写忽略；[7:4] TST_MSK —— bit0→esm_err、bit1→esm_fault、bit2→reg_par_fault、bit3→rail_fault（测试位 OR 进对应输出，只添不遮，忘释放 = 持续误报 fail-visible，key+0000 释放）。周期任务双向往复：装载全 1 → ESM 期望四通道报警 → 装载 0000 → 期望回 0（tie-0/tie-1 都抓） |
 | 0xFC | ID | RO | 32'hEDC0_2000 \| IDX |
 
 ESM 输出四对双轨：`esm_err / esm_fault / reg_par_fault / rail_fault`
@@ -568,6 +573,13 @@ ESM 输出四对双轨：`esm_err / esm_fault / reg_par_fault / rail_fault`
 故障）。各 core 自带 ESM 双轨仍可直出（集成可选，独立冗余通道）。
 时钟域：单 mbus 域 —— core 双轨是各 core regfile（mbus_clk 域）的
 寄存器输出，mbus 树同源同时钟，同域直采粘滞，无需同步器。
+
+**ESM 单端集成契约（2026-11-09）**：ESM 输入若为单端，连四根正轨，
+四根 `*_n` 悬空保留（端口不删）；末段在线双轨检查随 `_n` 一起失效
+（单线传单比特警报无冗余即无自检 —— 信息论极限，残余文档化入
+safety case），潜藏故障覆盖改为周期 PATH_SELFTEST（0x28 掩码往返，
+诊断间隔 DTI 由 ESM 周期任务定）；core→top 片内段的双轨互补检查
+不受影响，必须照常六根全接。
 
 ## 10. 验证
 
@@ -594,6 +606,7 @@ master AXI 13ns、slave AXI 17ns。
 | T13 | 命令在途奇偶：force 翻转 apb2mbus 地址同步链（写偏移位 → 错址、读实例位 → 错实例）→ PERR14 + 双轨 ESM 置位、坏写被门控（IRQEN/INJ_POS 完好）、坏读回 0、W1C 恢复 |
 | T14..T25 | 多 beat 突发/回压/全站注错/真实连线损坏/自检扫描 regsel/双轨副本注错扫描/hang 看门狗/h_dup/rpar 回程（见 `sim/tb_edc_top.v` 头部用例索引） |
 | T26 | 聚合器 per-core 寄存器奇偶：core 自测 → STA_PARCORE 粘滞/RAWPAR/折入 PAR_FAULT、置位优先 W1C 阻塞、撤源可清、PERR3/PERR4 组自测 + 双轨副本注错；输入轨互补违例：三对轨各注错（TB 轨监视器窗口旁路）→ STA_RAIL/RAWRAIL/rail_fault、在线阻塞/修复可清 |
+| T30 | 聚合器 ESM 通路自测：错 key 忽略；掩码全 1 → 四路 ESM 输出全驱 1 且 STA 源全 0（"有 fault 无源"签名）、掩码可读回；单通道掩码 → 仅对应通道；key+0000 释放回 0；PERR5 组注错 + 单笔 W1C 复原（掩码不受扰动） |
 
 tb 在 `mm_*`（mport m 侧）与 `ss_*`（sport s 侧）之间例化 `tb_relay_cdc`
 （toggle 握手 + 稳定负载）模拟 NIC 内部 fabric，user 位全程随事务搬运，

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 290" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .txt   { font-size: 10px; fill: #334155; }
+      .cdc   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="290" fill="#FFFFFF"/>
+  <text x="500" y="28" class="title" text-anchor="middle">访问路径总览 — APB3 (apb_clk) ↔ mbus (24MHz, 广播)</text>
+
+  <!-- 时钟域 -->
+  <rect x="20" y="48" width="440" height="210" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="32" y="70" class="dom">APB3 域 (apb_clk)</text>
+  <rect x="520" y="48" width="460" height="210" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="532" y="70" class="dom">mbus 域 (24MHz, 广播)</text>
+  <line x1="500" y1="48" x2="500" y2="258" stroke="#DC2626" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.45"/>
+  <text x="500" y="42" class="cdc" text-anchor="middle">CDC</text>
+
+  <!-- APB 主端 -->
+  <rect x="40" y="110" width="140" height="60" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="110" y="145" class="bt" text-anchor="middle">APB 主端</text>
+
+  <!-- apb2mbus (跨域桥) -->
+  <rect x="420" y="110" width="160" height="60" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="500" y="136" class="bt" text-anchor="middle">apb2mbus</text>
+  <text x="500" y="156" class="sub" text-anchor="middle" font-size="9.5">toggle 握手跨域</text>
+
+  <line x1="180" y1="128" x2="420" y2="128" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="300" y="118" class="txt" text-anchor="middle">paddr/pwrite/pwdata</text>
+  <line x1="420" y1="152" x2="180" y2="152" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="300" y="168" class="txt" text-anchor="middle">pready/prdata</text>
+
+  <!-- 实例组 -->
+  <rect x="700" y="66" width="260" height="40" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="830" y="91" class="bt" text-anchor="middle" font-size="12.5">EDC_REGCHK[0]</text>
+  <text x="830" y="120" class="txt" text-anchor="middle">⋮</text>
+  <rect x="700" y="126" width="260" height="40" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="830" y="151" class="bt" text-anchor="middle" font-size="12.5">EDC_REGCHK[1]</text>
+  <rect x="700" y="186" width="260" height="40" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="830" y="211" class="bt" text-anchor="middle" font-size="12.5">EDC_REGCHK[NP-1]</text>
+
+  <!-- 去程广播总线 -->
+  <line x1="580" y1="124" x2="650" y2="124" stroke="#475569" stroke-width="1.5"/>
+  <line x1="650" y1="86" x2="650" y2="206" stroke="#475569" stroke-width="1.5"/>
+  <circle cx="650" cy="124" r="3.5" fill="#475569"/>
+  <line x1="650" y1="86" x2="700" y2="86" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="650" y1="146" x2="700" y2="146" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="650" y1="206" x2="700" y2="206" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="525" y="114" class="txt">ce/wr/addr/wdata/par</text>
+
+  <!-- 回程 rdata 按位 OR -->
+  <line x1="700" y1="96" x2="660" y2="96" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="700" y1="156" x2="660" y2="156" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="700" y1="216" x2="660" y2="216" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="660" y1="96" x2="660" y2="216" stroke="#475569" stroke-width="1.5"/>
+  <circle cx="660" cy="156" r="3.5" fill="#475569"/>
+  <line x1="660" y1="156" x2="580" y2="156" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="525" y="172" class="txt">rdata 按位 OR</text>
+</svg>

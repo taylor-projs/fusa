@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 505" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 11px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .wv    { fill: none; stroke: #0F172A; stroke-width: 1.5; }
+      .bus   { fill: #F8FAFC; stroke: #94A3B8; }
+      .grid  { stroke: #E2E8F0; stroke-width: 1; stroke-dasharray: 3 4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="505" fill="#FFFFFF"/>
+  <text x="640" y="28" class="title" text-anchor="middle">窗口机制 (§3.2) — 一个窗口 = N_WIN 个 ref 周期</text>
+
+  <!-- 列: 0 | 1 | … | N_WIN-2 | N_WIN-1 | 0 | 1 | …  (边界列高亮) -->
+  <rect x="510" y="60" width="90" height="412" fill="#FEF08A" opacity="0.35"/>
+
+  <text x="235" y="76" class="sm" text-anchor="middle">0</text>
+  <text x="325" y="76" class="sm" text-anchor="middle">1</text>
+  <text x="395" y="76" class="sm" text-anchor="middle">…</text>
+  <text x="465" y="76" class="sm" text-anchor="middle">N_WIN&#8722;2</text>
+  <text x="555" y="76" class="sm" text-anchor="middle">N_WIN&#8722;1</text>
+  <text x="645" y="76" class="sm" text-anchor="middle">0</text>
+  <text x="735" y="76" class="sm" text-anchor="middle">1</text>
+  <text x="805" y="76" class="sm" text-anchor="middle">…</text>
+
+  <line x1="280" y1="82" x2="280" y2="472" class="grid"/>
+  <line x1="370" y1="82" x2="370" y2="472" class="grid"/>
+  <line x1="420" y1="82" x2="420" y2="472" class="grid"/>
+  <line x1="510" y1="82" x2="510" y2="472" class="grid"/>
+  <line x1="690" y1="82" x2="690" y2="472" class="grid"/>
+  <line x1="780" y1="82" x2="780" y2="472" class="grid"/>
+  <line x1="600" y1="60" x2="600" y2="480" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="600" y="496" class="sm" text-anchor="middle">窗口边界</text>
+
+  <!-- win_cnt -->
+  <text x="170" y="99" class="txt" text-anchor="end">win_cnt</text>
+  <rect x="190" y="82" width="90" height="26" class="bus"/>
+  <text x="235" y="99" class="txt" text-anchor="middle">0</text>
+  <rect x="280" y="82" width="90" height="26" class="bus"/>
+  <text x="325" y="99" class="txt" text-anchor="middle">1</text>
+  <text x="395" y="99" class="sm" text-anchor="middle">…</text>
+  <rect x="420" y="82" width="90" height="26" class="bus"/>
+  <text x="465" y="99" class="txt" text-anchor="middle">N_WIN&#8722;2</text>
+  <rect x="510" y="82" width="90" height="26" class="bus"/>
+  <text x="555" y="99" class="txt" text-anchor="middle">N_WIN&#8722;1</text>
+  <rect x="600" y="82" width="90" height="26" class="bus"/>
+  <text x="645" y="99" class="txt" text-anchor="middle">0</text>
+  <rect x="690" y="82" width="90" height="26" class="bus"/>
+  <text x="735" y="99" class="txt" text-anchor="middle">1</text>
+  <text x="805" y="99" class="sm" text-anchor="middle">…</text>
+
+  <!-- window_end: N_WIN-1 当拍 1 周期脉冲 -->
+  <text x="170" y="151" class="txt" text-anchor="end">window_end</text>
+  <polyline class="wv" points="190,154 510,154 510,140 600,140 600,154 830,154"/>
+  <text x="850" y="151" class="sm">1 cycle per window</text>
+
+  <!-- window_fire: +1 拍 -->
+  <text x="170" y="203" class="txt" text-anchor="end">window_fire</text>
+  <polyline class="wv" points="190,206 600,206 600,192 690,192 690,206 830,206"/>
+  <path d="M516,156 Q560,176 592,190" fill="none" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#aS)"/>
+  <text x="608" y="180" class="sm">+1 cycle</text>
+  <text x="850" y="203" class="sm">1 cycle per window, +1 cycle</text>
+
+  <!-- edge_cnt: 边界清零 -->
+  <text x="170" y="255" class="txt" text-anchor="end">edge_cnt</text>
+  <rect x="190" y="238" width="410" height="26" class="bus"/>
+  <text x="395" y="255" class="txt" text-anchor="middle">0 &#8594; … &#8594; E</text>
+  <rect x="600" y="238" width="230" height="26" class="bus"/>
+  <text x="715" y="255" class="txt" text-anchor="middle">0 &#8594; …</text>
+  <line x1="594" y1="238" x2="606" y2="264" stroke="#475569" stroke-width="1.2"/>
+  <line x1="594" y1="264" x2="606" y2="238" stroke="#475569" stroke-width="1.2"/>
+  <text x="850" y="247" class="sm">cleared at window_end</text>
+  <text x="850" y="261" class="sm">(&#8804;1 boundary edge lost)</text>
+
+  <!-- shadow_q: 边界锁存, 整窗保持 -->
+  <text x="170" y="307" class="txt" text-anchor="end">shadow_q</text>
+  <rect x="190" y="290" width="410" height="26" class="bus"/>
+  <text x="395" y="307" class="txt" text-anchor="middle">prev win</text>
+  <rect x="600" y="290" width="230" height="26" class="bus"/>
+  <text x="715" y="307" class="txt" text-anchor="middle">this win's count</text>
+  <line x1="594" y1="290" x2="606" y2="316" stroke="#475569" stroke-width="1.2"/>
+  <line x1="594" y1="316" x2="606" y2="290" stroke="#475569" stroke-width="1.2"/>
+  <text x="850" y="299" class="sm">latched at window_end,</text>
+  <text x="850" y="313" class="sm">held all window</text>
+
+  <!-- cmp_a/b: 电平, 全窗有效 -->
+  <text x="170" y="359" class="txt" text-anchor="end">cmp_a/b</text>
+  <rect x="190" y="342" width="410" height="26" class="bus"/>
+  <text x="395" y="359" class="txt" text-anchor="middle">(prev win)</text>
+  <rect x="600" y="342" width="230" height="26" class="bus"/>
+  <text x="715" y="359" class="txt" text-anchor="middle">(this win)</text>
+  <line x1="594" y1="342" x2="606" y2="368" stroke="#475569" stroke-width="1.2"/>
+  <line x1="594" y1="368" x2="606" y2="342" stroke="#475569" stroke-width="1.2"/>
+  <text x="850" y="359" class="sm">level, whole window</text>
+
+  <!-- freq_deb: 只在 window_fire 动作 -->
+  <text x="170" y="411" class="txt" text-anchor="end">freq_deb</text>
+  <rect x="190" y="394" width="500" height="26" class="bus"/>
+  <text x="440" y="411" class="txt" text-anchor="middle">n</text>
+  <rect x="690" y="394" width="140" height="26" class="bus"/>
+  <text x="760" y="411" class="txt" text-anchor="middle">N_DEB / n&#8722;1</text>
+  <line x1="684" y1="394" x2="696" y2="420" stroke="#475569" stroke-width="1.2"/>
+  <line x1="684" y1="420" x2="696" y2="394" stroke="#475569" stroke-width="1.2"/>
+  <text x="850" y="399" class="sm">reload N_DEB on good sample /</text>
+  <text x="850" y="413" class="sm">decrement on bad</text>
+  <text x="850" y="427" class="sm">moves ONLY at window_fire</text>
+
+  <!-- fail_lvl -->
+  <text x="170" y="463" class="txt" text-anchor="end">fail_lvl</text>
+  <polyline class="wv" points="190,463 830,463"/>
+  <text x="850" y="451" class="sm">fires when freq_deb reaches 0</text>
+  <text x="850" y="465" class="sm">= N_DEB consecutive bad windows</text>
+  <text x="850" y="479" class="sm">(level while bad)</text>
+</svg>

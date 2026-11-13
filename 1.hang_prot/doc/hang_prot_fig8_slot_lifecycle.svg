@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 230" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1020" height="230" fill="#FFFFFF"/>
+  <text x="510" y="26" class="title" text-anchor="middle">W skid slot 生命周期 (每槽独立 one-hot)</text>
+
+  <!-- 状态节点 -->
+  <rect x="60" y="80" width="150" height="56" rx="8" class="box"/>
+  <text x="135" y="114" class="bt" text-anchor="middle">FREE</text>
+  <rect x="300" y="80" width="150" height="56" rx="8" class="box"/>
+  <text x="375" y="114" class="bt" text-anchor="middle">FILL</text>
+  <rect x="540" y="80" width="150" height="56" rx="8" class="box"/>
+  <text x="615" y="114" class="bt" text-anchor="middle">READY</text>
+  <rect x="780" y="80" width="150" height="56" rx="8" class="box"/>
+  <text x="855" y="114" class="bt" text-anchor="middle">REPLAY</text>
+
+  <!-- 正向转移 -->
+  <line x1="210" y1="108" x2="300" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="255" y="92" class="sm" text-anchor="middle">m AW 握手</text>
+  <text x="255" y="78" class="sm" text-anchor="middle">(alloc_p 槽)</text>
+
+  <line x1="450" y1="108" x2="540" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="495" y="92" class="sm" text-anchor="middle">WLAST</text>
+  <text x="495" y="78" class="sm" text-anchor="middle">(normal)</text>
+
+  <line x1="690" y1="108" x2="780" y2="108" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="735" y="92" class="sm" text-anchor="middle">s AW 握手</text>
+  <text x="735" y="78" class="sm" text-anchor="middle">(issue_p 槽, 仅 normal)</text>
+
+  <!-- READY → FREE (mode 直接丢弃), 顶 lane -->
+  <path d="M615,80 L615,48 L135,48 L135,78" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="375" y="42" class="sm" text-anchor="middle">READY: mode 直接 FREE (丢弃)</text>
+
+  <!-- FILL → FREE (mode 丢弃), 底 lane 1 -->
+  <path d="M375,136 L375,168 L180,168 L180,138" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="277" y="160" class="sm" text-anchor="middle">WLAST (mode → 丢弃, 回 FREE)</text>
+
+  <!-- REPLAY → FREE, 底 lane 2 -->
+  <path d="M855,136 L855,206 L135,206 L135,138" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="495" y="198" class="sm" text-anchor="middle">W 拍从缓存补发, 两模式都跑完 (末拍: ridx==beats-1)</text>
+</svg>

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 372" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="372" fill="#FFFFFF"/>
+  <text x="460" y="30" class="title" text-anchor="middle">Safety Island ↔ Main 域边界拓扑 — Unit A(出向) / Unit B(入向)</text>
+
+  <!-- 域背景 -->
+  <rect x="16" y="48" width="456" height="296" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="28" y="72" class="dom">safety island — 岛时钟/岛复位/岛电源</text>
+  <rect x="556" y="48" width="348" height="296" rx="10" fill="#FFF7ED" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="568" y="72" class="dom">main domain</text>
+
+  <!-- ADB400 跨域 -->
+  <rect x="474" y="92" width="80" height="176" rx="8" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="514" y="172" class="bt" text-anchor="middle">ADB400</text>
+  <text x="514" y="192" class="sm" text-anchor="middle">CDC / iso</text>
+
+  <!-- 出向通道 (island → main) -->
+  <rect x="36" y="88" width="100" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="86" y="116" class="bt" text-anchor="middle">masters</text>
+  <rect x="170" y="88" width="64" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="202" y="116" class="bt" text-anchor="middle">NIC</text>
+  <rect x="262" y="82" width="150" height="56" rx="8" fill="#FFFFFF" stroke="#334155" stroke-width="1.5"/>
+  <text x="337" y="106" class="bt" text-anchor="middle">Unit A 出向</text>
+  <text x="337" y="126" class="sm" text-anchor="middle">hang_prot_recover</text>
+  <rect x="636" y="88" width="110" height="184" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="691" y="184" class="bt" text-anchor="middle">main 域 IC</text>
+  <rect x="770" y="88" width="118" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="829" y="116" class="bt" text-anchor="middle">main slaves</text>
+
+  <line x1="136" y1="110" x2="170" y2="110" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="234" y1="110" x2="262" y2="110" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="443" y="100" class="txt" text-anchor="middle">AXI(出向)</text>
+  <line x1="412" y1="110" x2="474" y2="110" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="554" y1="110" x2="636" y2="110" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <line x1="746" y1="110" x2="770" y2="110" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- 入向通道 (main → island) -->
+  <rect x="36" y="228" width="130" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="101" y="252" class="bt" text-anchor="middle">island slaves</text>
+  <text x="101" y="268" class="sub" text-anchor="middle">(SRAM 等)</text>
+  <rect x="190" y="228" width="90" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="235" y="252" class="bt" text-anchor="middle">NIC</text>
+  <text x="235" y="268" class="sub" text-anchor="middle">SI 口</text>
+  <rect x="310" y="222" width="140" height="56" rx="8" fill="#FFFFFF" stroke="#334155" stroke-width="1.5"/>
+  <text x="380" y="246" class="bt" text-anchor="middle">Unit B 入向</text>
+  <text x="380" y="266" class="sm" text-anchor="middle">hang_prot_bdry_in</text>
+  <rect x="764" y="228" width="124" height="44" rx="6" fill="#FFFFFF" stroke="#475569"/>
+  <text x="826" y="252" class="bt" text-anchor="middle">main masters</text>
+  <text x="826" y="268" class="sub" text-anchor="middle">(main 发起的访问)</text>
+
+  <line x1="764" y1="250" x2="746" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="595" y="238" class="txt" text-anchor="middle">AXI(入向)</text>
+  <line x1="636" y1="250" x2="554" y2="250" stroke="#DC2626" stroke-width="1.8" marker-end="url(#aR)"/>
+  <line x1="474" y1="250" x2="450" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="310" y1="250" x2="280" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="190" y1="250" x2="166" y2="250" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+</svg>

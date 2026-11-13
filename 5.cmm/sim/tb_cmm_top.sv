@@ -16,8 +16,15 @@
 // REF_STALE -> inj_cnt/cmp/psc -> ref-domain shadow injection -> EN nibble
 // protection -> disable gating -> REFSEL switch.
 // PHASE 1a (boot): late-start clock - ch2 dead from POR, appears after ~2
-// windows; DEAD latches in ARM, alarm rails rise before window 1 ends, FSM
-// is ERR by window 2; then restart + W1C + TST_CLR restores monitoring.
+// windows; first-edge arming keeps the unarmed channel SILENT (no DEAD in
+// ARM, no FAIL_FREQ), ch2 arms on its first edge and joins normal judging.
+// PHASE 1b: NEVER_ARMED - enabled ch whose clock never arrives fires
+// FUSTAT[10] after ~(N_DEB+1) windows while DEAD/FAIL stay masked.
+// PHASE 1c: SW gate cycle (EN off -> clk off -> clk on -> EN on): zero
+// alarms, no arming while EN off, fresh debounce after re-enable.
+// PHASE 1d: armed Q/Q_n dual-rail break -> fu_cnt class.
+// DUT2: second instance N_DUT=1 / EN_RST=0 / IDX=1 - gated-clock channel
+// born disarmed (Route B): stays quiet forever, no boot race.
 //
 // Run: ./run_iverilog.sh  (WSL iverilog -g2012)
 //============================================================================
@@ -50,6 +57,7 @@ module tb_cmm_top;
     localparam logic [7:0] A_DBG1    = 8'h30;
     localparam logic [7:0] A_STAPAR  = 8'h34;   // 倒数第3 (house standard)
     localparam logic [7:0] A_REGST   = 8'h38;   // 倒数第2, key 1010
+    localparam logic [7:0] A_ARMED   = 8'h3C;   // RO per-ch armed flags
     localparam logic [7:0] A_CH0_LO  = 8'h40;   // +12 per ch: LO/HI/DEAD
 
     localparam logic [31:0] KEY = 32'h5000_0000;   // WKEY in [31:28]
@@ -101,6 +109,10 @@ module tb_cmm_top;
     logic        mbus_par   = 0;
     logic [31:0] mbus_rdata;
     logic        mbus_rpar;
+    // per-leaf readbacks, OR-merged onto the shared bus (each leaf drives 0
+    // when not selected - mbus leaf contract)
+    logic [31:0] dut_rd, dut2_rd;
+    logic        dut_rp, dut2_rp;
 
     // rpar leaf contract: rpar must track ^rdata at every mbus edge
     integer rpar_bad = 0;
@@ -111,7 +123,7 @@ module tb_cmm_top;
     end
 
     // safety outputs
-    logic nerr_n, cmm_err, cmm_err_n, cmm_fu, cmm_fu_n;
+    logic nerr_n, esm_err, esm_err_n, esm_fault, esm_fault_n;
     logic reg_par_fault, reg_par_fault_n, cfg_hang, cfg_hang_n, cmm_active;
 
     //=========================================================================
@@ -141,19 +153,61 @@ module tb_cmm_top;
         .mbus_addr      (mbus_addr      ),
         .mbus_wdata     (mbus_wdata     ),
         .mbus_par       (mbus_par       ),
-        .mbus_rdata     (mbus_rdata     ),
-        .mbus_rpar      (mbus_rpar      ),
+        .mbus_rdata     (dut_rd         ),
+        .mbus_rpar      (dut_rp         ),
         .nerr_n         (nerr_n         ),
-        .cmm_err        (cmm_err        ),
-        .cmm_err_n      (cmm_err_n      ),
-        .cmm_fu         (cmm_fu         ),
-        .cmm_fu_n       (cmm_fu_n       ),
+        .esm_err        (esm_err        ),
+        .esm_err_n      (esm_err_n      ),
+        .esm_fault         (esm_fault         ),
+        .esm_fault_n       (esm_fault_n       ),
         .reg_par_fault  (reg_par_fault  ),
         .reg_par_fault_n(reg_par_fault_n),
         .cfg_hang       (cfg_hang       ),
         .cfg_hang_n     (cfg_hang_n     ),
         .cmm_active     (cmm_active     )
     );
+
+    //=========================================================================
+    // DUT2: EN_RST route B proof - gated-clock channel BORN DISARMED
+    // (N_DUT=1, ch0 EN_RST nibble = 0, mbus IDX=1, clock always live).
+    // Its channel never enables -> no alarms, no NEVER_ARMED, forever.
+    //=========================================================================
+    logic nerr_n2, esm_err2, esm_err_n2, esm_fault2, esm_fault_n2;
+    logic rpf2, rpf_n2, chg2, chg_n2, act2;
+
+    cmm_top #(
+        .N_DUT  (1        ),
+        .EN_RST(64'h0    ),   // ch0 born disarmed (gated-clock integration)
+        .IDX    (1        )
+    ) dut2 (
+        .refclk0        (refclk0 ),
+        .refclk1        (refclk1 ),
+        .rst_n          (rst_n   ),
+        .clk_dut        (d0      ),
+        .mbus_clk       (mbus_clk),
+        .mbus_rstn      (mbus_rstn),
+        .mbus_ce        (mbus_ce ),
+        .mbus_wr        (mbus_wr ),
+        .mbus_addr      (mbus_addr),
+        .mbus_wdata     (mbus_wdata),
+        .mbus_par       (mbus_par ),
+        .mbus_rdata     (dut2_rd  ),
+        .mbus_rpar      (dut2_rp  ),
+        .nerr_n         (nerr_n2 ),
+        .esm_err        (esm_err2),
+        .esm_err_n      (esm_err_n2),
+        .esm_fault         (esm_fault2 ),
+        .esm_fault_n       (esm_fault_n2),
+        .reg_par_fault  (rpf2    ),
+        .reg_par_fault_n(rpf_n2  ),
+        .cfg_hang       (chg2    ),
+        .cfg_hang_n     (chg_n2  ),
+        .cmm_active     (act2    )
+    );
+
+    // OR-merge the leaf readbacks onto the shared mbus read bus
+    assign mbus_rdata = dut_rd | dut2_rd;
+    assign mbus_rpar  = dut_rp | dut2_rp;
 
     //=========================================================================
     // check infrastructure
@@ -351,13 +405,13 @@ module tb_cmm_top;
     begin \
         force dut.cfg_en[4*k +: 4] = 4'h3; \
         repeat (2) @(posedge refclk0); \
-        chk(cmm_fu == 1'b1, $sformatf("COVk: EN ambig ch%0d -> hierr", k)); \
+        chk(esm_fault == 1'b1, $sformatf("COVk: EN ambig ch%0d -> hierr", k)); \
         release dut.cfg_en[4*k +: 4]; \
         mb_wr_sync(A_FUSTAT, 32'h10); \
         recover(rd); \
         force dut.cfg_en[4*k +: 4] = 4'h7; \
         repeat (2) @(posedge refclk0); \
-        chk(cmm_fu == 1'b0, $sformatf("COVk: EN 3-ones ch%0d majority-decode, no alarm", k)); \
+        chk(esm_fault == 1'b0, $sformatf("COVk: EN 3-ones ch%0d majority-decode, no alarm", k)); \
         release dut.cfg_en[4*k +: 4]; \
         repeat (2) @(posedge refclk0); \
     end
@@ -408,20 +462,23 @@ module tb_cmm_top;
         #1000;
 
         // ------------------------------------------------------------------
-        // PHASE 1a: late-start clock - refclk live from POR, ch2 clock appears
-        // only after ~2 windows. dead_set is intentionally live in ARM, so the
-        // DEAD verdict must latch while the FSM is still in ARM, the alarm
-        // rails (which bypass the FSM) must rise before window 1 completes,
-        // and the FSM must sit in ERR by window 2. Starting the clock and a
-        // W1C + TST_CLR cycle must restore normal ch2 monitoring.
+        // PHASE 1a: late-start clock - refclk live from POR, ch2 clock
+        // appears only after ~2 windows. FIRST-EDGE ARMING keeps the
+        // unarmed channel completely silent: no DEAD latches in ARM (the
+        // no-edge timeout is frozen + dead_lvl masked), no FAIL_FREQ
+        // (windows are unjudged), FSM stays healthy. ch2 arms on its first
+        // edge and joins normal window judging without any W1C/TST_CLR.
         // ------------------------------------------------------------------
         repeat (NDEAD_RST + 10) @(posedge refclk0); // > NDEAD, < window 1 end
         mb_rd(A_GSTAT, rd);
-        chk(rd[0] == 1'b1 && rd[5:3] == 3'b001,
-            "LATE: alarm=1 while FSM still ARM (DEAD latched in ARM)");
-        chk(nerr_n == 1'b0, "LATE: nerr_n low in ARM (alarm bypasses FSM)");
+        chk(rd[0] == 1'b0 && rd[5:3] == 3'b001,
+            "LATE: unarmed ch2 raises NO alarm while FSM still ARM");
+        chk(nerr_n == 1'b1, "LATE: nerr_n stays high in ARM");
+        chk(esm_err == 1'b0, "LATE: esm_err rail idle");
         mb_rd(A_ERRSTAT, rd);
-        chk(rd == 32'h4, "LATE: ERRSTAT ch2 only, latched in ARM");
+        chk(rd == 32'h0, "LATE: no DEAD latched (boot race closed)");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1B, "LATE: ARMED = ch2 only unarmed (11011)");
 
         // ch4 window must be set before the 3rd window completes (default
         // [14,26] does not cover its count of 6..7)
@@ -429,30 +486,118 @@ module tb_cmm_top;
         mb_wr_sync(A_CH0_LO + 8'd52, KEY | 32'd9);   // CH4_HI = 9
 
         repeat (N_WIN + 44) @(posedge refclk0);      // ~2 windows since POR
-        mb_rd(A_GSTAT, rd);
-        chk(rd[0] == 1'b1 && rd[5:3] == 3'b100, "LATE: by window 2 alarm=1, FSM=ERR");
-        mb_rd(A_SRCSTAT, rd);
-        chk(rd[5] == 1'b1 && rd[4] == 1'b0, "LATE: SRCSTAT ch2 dead bit (2i+1=5)");
-        chk(cmm_err == 1'b1 && cmm_err_n == 1'b0, "LATE: cmm_err rail active");
-        chk(cmm_fu == 1'b0, "LATE: cmm_fu not affected");
 
-        // ch2 clock starts after 2 windows -> W1C + TST_CLR -> normal monitor
+        // ch2 clock starts after 2 windows: must arm on the first edge and
+        // stay below the NEVER_ARMED horizon (~(N_DEB+1) windows in RUN)
         d2_stop = 0;
-        repeat (2*N_WIN) @(posedge refclk0);         // edges resume, dead_lvl clears
-        mb_wr_sync(A_ERRSTAT, 32'h4);                // W1C ch2
-        recover(rd);
+        repeat (4*N_WIN) @(posedge refclk0);         // arm + settle + margin
         mb_rd(A_ERRSTAT, rd);
-        chk(rd == 32'h0, "LATE: ERRSTAT clean after restart + W1C + TST_CLR");
+        chk(rd == 32'h0, "LATE: late start latched nothing (old design: DEAD)");
+        mb_rd(A_SRCSTAT, rd);
+        chk(rd == 32'h0, "LATE: SRCSTAT clean");
+        mb_rd(A_FUSTAT, rd);
+        chk(rd == 32'h0, "LATE: no NEVER_ARMED (armed before horizon)");
         mb_rd(A_GSTAT, rd);
-        chk(rd[5:3] == 3'b010 && rd[0] == 1'b0, "LATE: FSM back to RUN, alarm=0");
-        chk(nerr_n == 1'b1 && cmm_err == 1'b0, "LATE: rails recovered");
+        chk(rd[5:3] == 3'b010 && rd[0] == 1'b0 && rd[1] == 1'b0,
+            "LATE: FSM in RUN, no alarm/fu after late start");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1F, "LATE: ARMED = all 5 channels armed");
+        chk(nerr_n == 1'b1 && esm_err == 1'b0, "LATE: rails clean");
         mb_wr_sync(A_GCTRL, KEY | 32'h20);           // dbgsel=2
         gctrl_sh = 8'h20;
         mb_rd(A_DBG0, rd);
         chk(rd[11:0] >= 12'd14 && rd[11:0] <= 12'd26,
-            "LATE: ch2 last-window count in [14,26] (monitoring live again)");
+            "LATE: ch2 last-window count in [14,26] (judging live)");
         mb_wr_sync(A_GCTRL, KEY | 32'h00);           // dbgsel back to 0
         gctrl_sh = 8'h00;
+
+        // ------------------------------------------------------------------
+        // PHASE 1b: NEVER_ARMED - enabled channel whose clock NEVER arrives.
+        // TST_CLR clears armed; ch4 stays stopped + enabled -> fires about
+        // (N_DEB+1) windows after the FSM returns to RUN, while DEAD and
+        // FAIL_FREQ must stay masked the whole time (armed=0).
+        // ------------------------------------------------------------------
+        d4_stop = 1;
+        // quiesce the stop BEFORE TST_CLR: the d4 generator can execute one
+        // in-flight toggle up to 500ns after d4_stop; a posedge landing after
+        // the clear would legitimately RE-ARM ch4 (first-edge arming) and
+        // turn this into a DEAD scenario instead of NEVER_ARMED
+        #2000;
+        recover(rd);                                 // TST_CLR: armed -> 0
+        repeat (4*N_WIN) @(posedge refclk0);         // > (N_DEB+1) windows
+        mb_rd(A_FUSTAT, rd);
+        chk(rd[10] == 1'b1, "NEVA: FUSTAT[10] NEVER_ARMED fired");
+        chk(esm_fault == 1'b1 && esm_fault_n == 1'b0, "NEVA: esm_fault rail active");
+        chk(nerr_n == 1'b0, "NEVA: nerr_n low");
+        mb_rd(A_GSTAT, rd);
+        chk(rd[1] == 1'b1 && rd[5:3] == 3'b100, "NEVA: fu=1, FSM=ERR");
+        mb_rd(A_ERRSTAT, rd);
+        chk(rd == 32'h0, "NEVA: DEAD masked while never-armed");
+        mb_rd(A_SRCSTAT, rd);
+        chk(rd == 32'h0, "NEVA: FAIL_FREQ masked (unjudged windows)");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h0F, "NEVA: ARMED pinpoints ch4 (bit4=0)");
+        mb_wr_sync(A_FUSTAT, 32'h400);               // W1C bit10
+        d4_stop = 0;
+        recover(rd);
+        mb_rd(A_FUSTAT, rd);
+        chk(rd == 32'h0, "NEVA: cleared after W1C + restart + TST_CLR");
+        mb_rd(A_GSTAT, rd);
+        chk(rd[5:3] == 3'b010 && rd[1] == 1'b0, "NEVA: back to clean RUN");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1F, "NEVA: ch4 re-armed after restart");
+
+        // ------------------------------------------------------------------
+        // PHASE 1c: SW gate-cycle protocol (EN_RST route B, runtime side).
+        // EN off -> clock off -> clock on (still EN off: NO arming) ->
+        // EN on -> re-arm: zero alarms over the whole cycle, fresh N_DEB
+        // debounce after re-enable (no FAIL_FREQ head start).
+        // ------------------------------------------------------------------
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1F, "GATE: all armed before cycle");
+        mb_wr_sync(A_ENLO, 32'h000F_FF0F);           // ch1 EN off (nibble 0)
+        #2000;                                        // disarm lands
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1D, "GATE: EN off clears armed[1]");
+        d1_stop = 1;                                  // clock off (gate closed)
+        repeat (3*N_WIN) @(posedge refclk0);          // >> NDEAD + debounce
+        mb_rd(A_ERRSTAT, rd);
+        chk(rd == 32'h0, "GATE: EN-off + dead clock: no alarms");
+        mb_rd(A_FUSTAT, rd);
+        chk(rd == 32'h0, "GATE: no NEVER_ARMED while EN off");
+        d1_stop = 0;                                  // clock on, EN still off
+        repeat (N_WIN/2) @(posedge refclk0);
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1D, "GATE: edges do NOT arm a disabled channel");
+        mb_wr_sync(A_ENLO, 32'h000F_FFFF);            // EN on (SW opened gate)
+        #2000;
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1F, "GATE: EN on re-arms on the first edge");
+        repeat (4*N_WIN) @(posedge refclk0);          // judged windows resume
+        mb_rd(A_ERRSTAT, rd);
+        chk(rd == 32'h0, "GATE: no FAIL_FREQ after re-enable (fresh debounce)");
+        mb_rd(A_FUSTAT, rd);
+        chk(rd == 32'h0, "GATE: FUSTAT clean after gate cycle");
+        mb_rd(A_GSTAT, rd);
+        chk(rd[5:3] == 3'b010 && rd[0] == 1'b0 && rd[1] == 1'b0,
+            "GATE: clean RUN after full gate cycle");
+
+        // ------------------------------------------------------------------
+        // PHASE 1d: armed Q/Q_n dual-rail break -> fu_cnt class (rule 12)
+        // ------------------------------------------------------------------
+        force dut.u_cmm_core.r_ref.armed_n[3] = 1'b1; // armed[3]=1: pair break
+        repeat (4) @(posedge refclk0);
+        mb_rd(A_FUSRC0, rd);
+        chk(rd[12] == 1'b1, "ARM_DUP: FUSRC0 ch3 cnt bit (4i+0=12)");
+        mb_rd(A_FUSTAT, rd);
+        chk(rd[0] == 1'b1, "ARM_DUP: FUSTAT[0] cnt_any");
+        chk(esm_fault == 1'b1, "ARM_DUP: esm_fault rail");
+        release dut.u_cmm_core.r_ref.armed_n[3];      // copy self-heals
+        repeat (2) @(posedge refclk0);
+        mb_wr_sync(A_FUSRC0, 32'h1000);               // W1C ch3 cnt
+        recover(rd);
+        mb_rd(A_FUSRC0, rd);
+        chk(rd == 32'h0, "ARM_DUP: cleared after heal + W1C");
 
         // ------------------------------------------------------------------
         // PHASE 1: reset values + normal run
@@ -479,13 +624,31 @@ module tb_cmm_top;
         mb_rd(A_FUSRC0, rd);
         chk(rd == 32'h0, "FUSRC0 clean");
         chk(nerr_n == 1'b1, "nerr_n high (no alarm)");
-        chk(cmm_err == 1'b0 && cmm_err_n == 1'b1, "cmm_err rail idle");
-        chk(cmm_fu == 1'b0 && cmm_fu_n == 1'b1, "cmm_fu rail idle");
+        chk(esm_err == 1'b0 && esm_err_n == 1'b1, "esm_err rail idle");
+        chk(esm_fault == 1'b0 && esm_fault_n == 1'b1, "esm_fault rail idle");
         chk(reg_par_fault == 1'b0 && reg_par_fault_n == 1'b1, "reg_par_fault rail idle");
         chk(cfg_hang == 1'b0 && cfg_hang_n == 1'b1, "cfg_hang rail idle");
         chk(cmm_active == 1'b1, "cmm_active=1");
         mb_rd(A_DBG0, rd);
         chk(rd[11:0] >= 12'd14 && rd[11:0] <= 12'd26, "DBG0 ch0 shadow in window");
+
+        // DUT2 (EN_RST=0, N_DUT=1, IDX=1): gated-clock channel born
+        // disarmed - live clock + EN=0 must stay perfectly quiet
+        mb_rd_i(8'h01, A_ID, rd);
+        chk(rd == 32'hC44D_0101, "ENRST: DUT2 ID (N_DUT=1)");
+        mb_rd_i(8'h01, A_ENLO, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 ch0 born disabled (EN_RST nibble 0)");
+        mb_rd_i(8'h01, A_ARMED, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 ch0 unarmed despite live clock");
+        mb_rd_i(8'h01, A_GSTAT, rd);
+        chk(rd[9] == 1'b0 && rd[0] == 1'b0 && rd[1] == 1'b0,
+            "ENRST: DUT2 quiet (any_en=0, no alarm/fu)");
+        mb_rd_i(8'h01, A_ERRSTAT, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 ERRSTAT quiet");
+        mb_rd_i(8'h01, A_FUSTAT, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 FUSTAT quiet (no NEVER_ARMED)");
+        chk(nerr_n2 == 1'b1 && esm_err2 == 1'b0 && esm_fault2 == 1'b0,
+            "ENRST: DUT2 safety rails idle");
 
         // ------------------------------------------------------------------
         // PHASE 2: DEAD detection (stop ch2)
@@ -498,9 +661,9 @@ module tb_cmm_top;
         chk(rd[5] == 1'b1 && rd[4] == 1'b0, "DEAD: SRCSTAT ch2 dead bit (2i+1=5)");
         mb_rd(A_GSTAT, rd);
         chk(rd[0] == 1'b1 && rd[5:3] == 3'b100, "DEAD: alarm=1, FSM=ERR");
-        chk(cmm_err == 1'b1 && cmm_err_n == 1'b0, "DEAD: cmm_err rail active");
+        chk(esm_err == 1'b1 && esm_err_n == 1'b0, "DEAD: esm_err rail active");
         chk(nerr_n == 1'b0, "DEAD: nerr_n low");
-        chk(cmm_fu == 1'b0, "DEAD: cmm_fu not affected");
+        chk(esm_fault == 1'b0, "DEAD: esm_fault not affected");
         d2_stop = 0;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_ERRSTAT, 32'h4);                  // W1C ch2
@@ -509,7 +672,7 @@ module tb_cmm_top;
         chk(rd == 32'h0, "DEAD cleared after restart + W1C + TST_CLR");
         mb_rd(A_GSTAT, rd);
         chk(rd[5:3] == 3'b010 && rd[0] == 1'b0, "FSM back to RUN");
-        chk(nerr_n == 1'b1 && cmm_err == 1'b0, "DEAD: rails recovered");
+        chk(nerr_n == 1'b1 && esm_err == 1'b0, "DEAD: rails recovered");
 
         // ------------------------------------------------------------------
         // PHASE 3: FAIL_FREQ (halve ch1: count 10 < WIN_LO 14)
@@ -520,7 +683,7 @@ module tb_cmm_top;
         chk(rd[1] == 1'b1, "FAIL_FREQ: ERRSTAT ch1 set");
         mb_rd(A_SRCSTAT, rd);
         chk(rd[2] == 1'b1 && rd[3] == 1'b0, "FAIL_FREQ: SRCSTAT ch1 fail bit (2i=2)");
-        chk(cmm_err == 1'b1 && nerr_n == 1'b0, "FAIL_FREQ: alarm rails");
+        chk(esm_err == 1'b1 && nerr_n == 1'b0, "FAIL_FREQ: alarm rails");
         d1_slow = 0;
         repeat (2*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_ERRSTAT, 32'h2);
@@ -535,7 +698,7 @@ module tb_cmm_top;
         repeat (5*N_WIN) @(posedge refclk0);
         mb_rd(A_ERRSTAT, rd);
         chk(rd[3] == 1'b1, "FORCE ch3: ERRSTAT set via injected verdict");
-        chk(cmm_err == 1'b1, "FORCE ch3: cmm_err active");
+        chk(esm_err == 1'b1, "FORCE ch3: esm_err active");
         mb_wr_sync(A_FORCE, KEY);                      // force off
         repeat (1*N_WIN) @(posedge refclk0);
         mb_wr_sync(A_ERRSTAT, 32'h8);
@@ -544,19 +707,19 @@ module tb_cmm_top;
         chk(rd == 32'h0, "FORCE ch3 cleared");
 
         // ------------------------------------------------------------------
-        // PHASE 5: key violation + RO write -> REG_PROT (joins cmm_fu)
+        // PHASE 5: key violation + RO write -> REG_PROT (joins esm_fault)
         // ------------------------------------------------------------------
         mb_wr_sync(A_GCTRL, 32'hA000_0000);            // wrong key
         mb_wr(A_GSTAT, 32'h0);                         // write to RO register
         #2000;
         mb_rd(A_FUSTAT, rd);
         chk(rd[6] == 1'b1, "REG_PROT: FUSTAT[6] on key violation + RO write");
-        chk(cmm_fu == 1'b1 && cmm_fu_n == 1'b0, "REG_PROT joins cmm_fu rail");
+        chk(esm_fault == 1'b1 && esm_fault_n == 1'b0, "REG_PROT joins esm_fault rail");
         mb_wr_sync(A_FUSTAT, 32'h40);                  // W1C bit6
         recover(rd);
         mb_rd(A_FUSTAT, rd);
         chk(rd[6] == 1'b0, "REG_PROT cleared");
-        chk(cmm_fu == 1'b0, "cmm_fu recovered");
+        chk(esm_fault == 1'b0, "esm_fault recovered");
 
         // ------------------------------------------------------------------
         // PHASE 6: threshold self-test (CH0_LO above live count; classic
@@ -606,10 +769,14 @@ module tb_cmm_top;
         #1000;
         mb_rd(A_STAPAR, rd);
         chk(rd[14] == 1'b1, "PERR_CMD latched on bad command parity");
-        chk(reg_par_fault == 1'b1, "PERR_CMD raises reg_par_fault");
+        chk(reg_par_fault == 1'b0, "PERR_CMD not on reg_par_fault (in-flight)");
+        #1000;   // iflt_lvl 2FF 同步到 clk_ref
+        chk(esm_fault == 1'b1, "PERR_CMD raises esm_fault (in-flight)");
         mb_rd(A_FORCE, rd);
         chk(rd == KEY, "bad-parity write blocked (FORCE unchanged)");
         mb_wr(A_STAPAR, 32'h4000);                     // W1C bit14 (= cmd wrap rewrite)
+        #1000;
+        chk(esm_fault == 1'b0, "PERR_CMD esm_fault cleared after W1C");
         #500;
         mb_rd(A_STAPAR, rd);
         chk(rd[14] == 1'b0 && rd[0] == 1'b0, "PERR_CMD cleared");
@@ -682,7 +849,7 @@ module tb_cmm_top;
         chk(rd[4] == 1'b1, "INJ_CNT: FUSRC0 ch1 cnt bit (4i+0=4)");
         mb_rd(A_FUSTAT, rd);
         chk(rd[0] == 1'b1, "INJ_CNT: FUSTAT[0] cnt_any");
-        chk(cmm_fu == 1'b1 && nerr_n == 1'b0, "INJ_CNT: fu rails");
+        chk(esm_fault == 1'b1 && nerr_n == 1'b0, "INJ_CNT: fu rails");
         mb_wr_sync(A_FORCE, KEY);                      // inj off
         mb_wr_sync(A_FUSRC0, 32'h10);                  // W1C ch1 cnt
         recover(rd);
@@ -720,7 +887,7 @@ module tb_cmm_top;
         // ------------------------------------------------------------------
         // PHASE 15b: edge-counter dual-rail break (real corruption via force,
         // not the sh_dup pin). Contract: ecnt_dup raises fu_cnt_lvl instantly
-        // -> FUSRC0/FUSTAT + cmm_fu rail + FSM leaves RUN; the debounced
+        // -> FUSRC0/FUSTAT + esm_fault rail + FSM leaves RUN; the debounced
         // FAIL_FREQ is thereby pre-empted (fail_set needs RUN), so ERRSTAT
         // stays clear. Guards the ecnt_flt_w clear timing (window_fire) and
         // the FU-before-FAIL severity ordering for counter integrity faults.
@@ -731,7 +898,7 @@ module tb_cmm_top;
         chk(rd[4] == 1'b1, "POISON: FUSRC0 ch1 cnt bit (4i+0=4)");
         mb_rd(A_FUSTAT, rd);
         chk(rd[0] == 1'b1, "POISON: FUSTAT[0] cnt_any");
-        chk(cmm_fu == 1'b1 && cmm_err == 1'b0 && nerr_n == 1'b0,
+        chk(esm_fault == 1'b1 && esm_err == 1'b0 && nerr_n == 1'b0,
             "POISON: fu rail only, no alarm rail");
         mb_rd(A_ERRSTAT, rd);
         chk(rd[1] == 1'b0, "POISON: no FAIL_FREQ (FU pre-empts, FSM left RUN)");
@@ -751,7 +918,7 @@ module tb_cmm_top;
         #2000;
         mb_rd(A_FUSRC0, rd);
         chk(rd[6] == 1'b1, "CFG shadow: FUSRC0 ch1 cfgpar bit (4i+2=6)");
-        chk(cmm_fu == 1'b1, "CFG shadow: joins cmm_fu");
+        chk(esm_fault == 1'b1, "CFG shadow: joins esm_fault");
         mb_wr_sync(A_CH0_LO + 8'd12, KEY | 32'd14);    // rewrite CH1_LO -> restore
         mb_wr_sync(A_FUSRC0, 32'h40);                  // W1C ch1 cfgpar
         recover(rd);
@@ -835,11 +1002,12 @@ module tb_cmm_top;
             chk(rd == 32'd200, $sformatf("COVa: CH%0d_DEAD readback", k));
         end
 
-        // 20b: REGST selftest sweep, mbus wrapper groups 0..10 + 12
+        // 20b: REGST selftest sweep, mbus wrapper groups 0..10 + 12 + 13
         //   (inject parity flip -> PERR[2+g] -> restore rewrite -> W1C;
         //    组 11 = latch 通道无 wrap, 跳过; 组 12 = u_w_cmd 命令奇偶粘滞体,
-        //    注入翻转 par_q -> PERR14, 其 W1C(bit14) 即重写自愈)
-        for (k = 0; k <= 12; k = k + 1) begin
+        //    注入翻转 par_q -> PERR14, 其 W1C(bit14) 即重写自愈;
+        //    组 13 = ARMED image, 自恢复类同 7..10)
+        for (k = 0; k <= 13; k = k + 1) begin
             if (k == 11) continue;                     // latch lane, 无 wrap
             mb_wr_sync(A_REGST, (k[7:0] << 8) | 32'h1A);
             #800;
@@ -853,7 +1021,7 @@ module tb_cmm_top;
                 4:       mb_wr_sync(A_CH0_LO,        KEY | 32'd14);
                 5:       mb_wr_sync(A_CH0_LO + 8'd4, KEY | 32'd26);
                 6:       mb_wr_sync(A_CH0_LO + 8'd8, KEY | 32'd200);
-                default: ;        // 7..10 self-resync; 12 的恢复即下方 W1C 重写
+                default: ;        // 7..10,13 self-resync; 12 的恢复即下方 W1C 重写
             endcase
             #800;
             mb_wr(A_STAPAR, 32'h4 << k);               // W1C bit (2+k)
@@ -877,7 +1045,7 @@ module tb_cmm_top;
             #2000;
             mb_rd(A_FUSRC0, rd);
             chk(rd[4*k+2] == 1'b1, $sformatf("COVc: shadow selftest ch%0d", k));
-            chk(cmm_fu == 1'b1, $sformatf("COVc: shadow ch%0d fu rail", k));
+            chk(esm_fault == 1'b1, $sformatf("COVc: shadow ch%0d fu rail", k));
             mb_wr_sync(A_CH0_LO + 12*k, KEY | ((k == 4) ? 32'd4 : 32'd14));
             mb_wr_sync(A_FUSRC0, 32'h4 << (4*k));
             recover(rd);
@@ -914,18 +1082,18 @@ module tb_cmm_top;
         mb_rd(A_FUSRC0, rd);
         chk(rd == 32'h0, "COVe: sub-debounce burst no fu");
 
-        // 20f: FUSRC1 / DBG1 / unmapped / nonexistent-channel reads,
+        // 20f: FUSRC1 / DBG1 / ARMED / unmapped / nonexistent-channel reads,
         // wrong-instance access, ENHI no-op write, dbgsel out of range
         mb_rd(A_FUSRC1, rd);
         chk(rd == 32'h0, "COVf: FUSRC1 reads 0 (no ch >= 8)");
         mb_rd(A_DBG1, rd);
         chk(1'b1, "COVf: DBG1 read");
-        mb_rd(8'h3C, rd);
-        chk(rd == 32'h0, "COVf: unmapped offset reads 0");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h1F, "COVf: ARMED reads all-armed");
         mb_rd(A_CH0_LO + 12*15 + 8, rd);               // ch15 DEAD slot
         chk(rd == 32'h0, "COVf: nonexistent channel reads 0");
-        mb_wr_i(8'h1, A_GSTAT, 32'h0);                 // wrong instance
-        mb_rd_i(8'h1, A_ID, rd);
+        mb_wr_i(8'h02, A_GSTAT, 32'h0);                // wrong instance
+        mb_rd_i(8'h02, A_ID, rd);
         chk(rd == 32'h0, "COVf: wrong-instance read returns 0");
         mb_rd(A_ID, rd);
         chk(rd == 32'hC44D_0105, "COVf: inst0 unaffected");
@@ -949,7 +1117,7 @@ module tb_cmm_top;
         repeat (4) @(posedge refclk0);
         mb_rd(A_GSTAT, rd);
         chk(rd[5:3] == 3'b100, "COVg: illegal FSM state -> ERR");
-        chk(cmm_fu == 1'b1, "COVg: illegal FSM state raises cmm_fu");
+        chk(esm_fault == 1'b1, "COVg: illegal FSM state raises esm_fault");
         recover(rd);
         mb_rd(A_GSTAT, rd);
         chk(rd[5:3] == 3'b010 && rd[1] == 1'b0, "COVg: recovered to RUN");
@@ -1131,13 +1299,13 @@ module tb_cmm_top;
         repeat (4*N_WIN) @(posedge refclk0);
         mb_rd(A_ERRSTAT, rd);
         chk(rd[1] == 1'b1, "COVk: genuine HI ch1 -> FAIL_FREQ latch");
-        chk(cmm_err == 1'b1, "COVk: HI violation -> cmm_err");
+        chk(esm_err == 1'b1, "COVk: HI violation -> esm_err");
         mb_wr_sync(A_GCTRL, KEY | (1 << 4));
         mb_wr_sync(A_FORCE, KEY | 32'h8_0000);              // inj_cmp ch1
         repeat (N_WIN) @(posedge refclk0);
         mb_rd(A_FUSRC0, rd);
         chk(rd[5] == 1'b1, "COVk: inj_cmp during alarm -> FUSRC0[5]");
-        chk(cmm_err == 1'b1 && cmm_fu == 1'b1, "COVk: alarm & fu overlap");
+        chk(esm_err == 1'b1 && esm_fault == 1'b1, "COVk: alarm & fu overlap");
         mb_wr_sync(A_FORCE, KEY);
         mb_wr_sync(A_CH0_LO + 8'd16, KEY | 32'd45);         // HI=45: winhi b1/b5 toggle
         mb_wr_sync(A_FUSRC0, 32'h20);
@@ -1211,7 +1379,7 @@ module tb_cmm_top;
         repeat (1) @(posedge refclk0);
         release dut.r.win_cnt;
         release dut.r.win_cnt_n;
-        chk(cmm_fu == 1'b1, "COVk: wend_a divergence -> win_l");
+        chk(esm_fault == 1'b1, "COVk: wend_a divergence -> win_l");
         mb_wr_sync(A_FUSTAT, 32'h4);                        // clr_fuwin
         recover(rd);
         // (ii) wend_b alone (inverted duplicate at LAST)
@@ -1223,14 +1391,14 @@ module tb_cmm_top;
         repeat (1) @(posedge refclk0);
         release dut.r.win_cnt;
         release dut.r.win_cnt_n;
-        chk(cmm_fu == 1'b1, "COVk: wend_b divergence -> win_l");
+        chk(esm_fault == 1'b1, "COVk: wend_b divergence -> win_l");
         mb_wr_sync(A_FUSTAT, 32'h4);
         recover(rd);
         // (ii-b) win_ln duplicate corrupt (heal-to-SET)
         force dut.r.win_ln = 1'b0;
         repeat (2) @(posedge refclk0);
         release dut.r.win_ln;
-        chk(cmm_fu == 1'b1, "COVk: win_ln corrupt -> heal SET");
+        chk(esm_fault == 1'b1, "COVk: win_ln corrupt -> heal SET");
         mb_wr_sync(A_FUSTAT, 32'h4);
         recover(rd);
         // (ii-c) rail mismatch without end-detect (wend_a==wend_b=0 row):
@@ -1244,7 +1412,7 @@ module tb_cmm_top;
         repeat (1) @(posedge refclk0);
         release dut.r.win_cnt;
         release dut.r.win_cnt_n;
-        chk(cmm_fu == 1'b1, "COVk: win rail mismatch (no wend) -> win_l");
+        chk(esm_fault == 1'b1, "COVk: win rail mismatch (no wend) -> win_l");
         mb_wr_sync(A_FUSTAT, 32'h4);
         recover(rd);
         // (iii) EN codeword 2-bit ambiguity per channel (ones==2 -> hierr)
@@ -1257,14 +1425,14 @@ module tb_cmm_top;
         force dut.r.hierr_ln = 1'b0;
         repeat (2) @(posedge refclk0);
         release dut.r.hierr_ln;
-        chk(cmm_fu == 1'b1, "COVk: hierr_ln corrupt -> heal SET");
+        chk(esm_fault == 1'b1, "COVk: hierr_ln corrupt -> heal SET");
         mb_wr_sync(A_FUSTAT, 32'h10);
         recover(rd);
         // (iv) fsm_ln duplicate corrupt
         force dut.r.fsm_ln = 1'b0;
         repeat (2) @(posedge refclk0);
         release dut.r.fsm_ln;
-        chk(cmm_fu == 1'b1, "COVk: fsm_ln corrupt -> heal SET");
+        chk(esm_fault == 1'b1, "COVk: fsm_ln corrupt -> heal SET");
         mb_wr_sync(A_FUSTAT, 32'h20);                       // clr_fufsm
         recover(rd);
 
@@ -1531,6 +1699,14 @@ module tb_cmm_top;
         // report
         // ------------------------------------------------------------------
         #1000;
+        // DUT2 final re-check: born-disarmed channel stayed quiet through
+        // the whole run (many of its own windows elapsed - never fired)
+        mb_rd_i(8'h01, A_ERRSTAT, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 ERRSTAT still quiet at EOT");
+        mb_rd_i(8'h01, A_FUSTAT, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 FUSTAT still quiet at EOT (no NEVA)");
+        mb_rd_i(8'h01, A_ARMED, rd);
+        chk(rd == 32'h0, "ENRST: DUT2 ch0 still unarmed at EOT");
         chk(rpar_bad == 0, "rpar leaf contract (mbus_rpar === ^mbus_rdata)");
         $display("==========================================================");
         if (nerrs == 0)

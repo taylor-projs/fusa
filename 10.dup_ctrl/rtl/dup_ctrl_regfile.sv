@@ -77,8 +77,10 @@
 //   0x14 STA_RAW    RO   [0] err 当前电平同步像 (区分 "正在报" 与
 //                          "报过已被粘滞"; 诊断面, 允许漏拍). [31:1] 读 0.
 //   0x18 STA_PAR    RW1C/R 寄存器奇偶校验状态 (house 标准布局, 倒数第3):
-//     [0]    PAR_FAULT  电平 = 所有 PERR 源或 + 自测锁存;
-//            写 1 只清自测锁存 (源仍置时保持)
+//     [0]    PAR_FAULT  电平 = 寄存器面 PERR 源或 + 自测锁存 (在途
+//            命令奇偶事件 PERR5/PERR6 本体不在内 —— 它们是监视器
+//            自身故障, 走 esm_fault 轨); 写 1 只清自测锁存 (源仍
+//            置时保持)
 //     [1]    PAR_FAULT_N (RO 反轨)
 //     [8:2]  PERR6..PERR0 (W1C): bit = 2+组号, 每位清除对应组在
 //            两域的粘滞 (mbus 当拍, mod 经命令), 见下
@@ -91,6 +93,16 @@
 //            组 5 无目标忽略 (锁存 lane); 组 6: cmd wrap; >6 忽略)
 //     [5]    PAR_SELFTEST 脉冲: 只置自测锁存 ("有 fault 无源",
 //            ESM 服务程序的自检签名)
+//     [6]    FLT_SELFTEST 脉冲: 置 STA_FAULT[31] 自测位 (源级注入,
+//            经正常 粘滞->esm_fault 轨逻辑出 ESM, 供周期性验证
+//            fault 轨连通; W1C STA_FAULT bit31 清)
+//   0x20 STA_FAULT   RW1C/R 监视器自身故障源查询面 (esm_fault 之源):
+//     [0]    CMD_PAR (RO): PERR6 命令在途奇偶粘滞电平 (W1C 在
+//            STA_PAR[8])
+//     [1]    WLT_PAR (RO): PERR5 在途写锁存奇偶 lane 电平 (W1C 在
+//            STA_PAR[7])
+//     [2]    WR_DROP (RO): WR_DROPPED 粘滞 (W1C 在 STA_CDC[1])
+//     [31]   FLT_TEST (RW1C): CFG_REGST[6] 自测位 (keyed)
 //   0xFC ID         RO   32'h5AFE_2002 | IDX (v3: 双域 regfile 改版标识)
 //
 // 寄存器奇偶保护 PERR 组号 (STA_PAR bit = 2 + 组号, image+shadow 同组):
@@ -103,12 +115,17 @@
 //          Q/Q_n 锁存 lane, 无注错目标, REGSEL=5 忽略)
 //     6  命令在途奇偶 (APB->mbus 广交通路, ce 拍重组比对; W=1 wrap,
 //          W1C 即重写重算)
-//   PAR_FAULT = 全组或 + 自测锁存 (Q/Q_n, heal-to-SET). WR_DROPPED
-//   为 CDC 记录状态位 (ia 同例, 不入组).
+//   PAR_FAULT = 寄存器面各组 flt 或 + 自测锁存 (Q/Q_n, heal-to-SET).
+//   PERR5/PERR6 的在途事件本体 (par_lq[0] / cmd_r) 与 WR_DROPPED
+//   为监视器自身故障, 聚合进 esm_fault 轨 (查询面 STA_FAULT).
 //
-// ESM 双轨输出 (mbus 域):
-//   esm_err/_n       : DCLS 检错 = STA_ERR 寄存器面 (u_err_s2)
-//   reg_par_fault/_n : 寄存器/通路奇偶错误
+// ESM 双轨输出 (mbus 域, 2026-11-13 全仓三轨统一):
+//   esm_err/_n       : 监控职责错误 = DCLS 检错 (STA_ERR 寄存器面
+//                      u_err_s2)
+//   esm_fault/_n     : 监视器自身故障 = 在途命令奇偶 (PERR6) | 在途
+//                      写锁存奇偶 (PERR5) | 忙丢 WR_DROPPED | 自测位
+//   reg_par_fault/_n : 寄存器面奇偶错误 (存储型 PERR 组的 flt, 不含
+//                      在途事件)
 //
 // 复位: rstn 异步断言 (两域共源, 系统级约束: 必须同时断言以对齐握手,
 // 同 ia); mod 域释放经 u_mod_rst (rst_sync, scan_mode 拉自 top) 对齐
@@ -140,6 +157,8 @@ module dup_ctrl_regfile #(
    // ---------------- ESM (mbus 域输出, 双轨) ----------------
    output logic        esm_err,
    output logic        esm_err_n,
+   output logic        esm_fault,
+   output logic        esm_fault_n,
    output logic        reg_par_fault,
    output logic        reg_par_fault_n
 );
@@ -213,7 +232,7 @@ module dup_ctrl_regfile #(
    logic id_sel;
    assign id_sel = (addr[7:0] == 8'hFC);          // ID (殿后)
    logic range_ok;
-   assign range_ok = (wsel <= 4'd7) || id_sel;    // 0x00..0x1C + 0xFC
+   assign range_ok = (wsel <= 4'd8) || id_sel;    // 0x00..0x20 + 0xFC
    logic ro_reg;
    assign ro_reg = (wsel == 4'd5) || id_sel;      // STA_RAW / ID
    logic addr_ok;
@@ -245,6 +264,8 @@ module dup_ctrl_regfile #(
       logic        wr_dropped_q;  // WR_DROPPED sticky (STA_CDC[1])
       logic [1:0]  par_lq;        // {PERR5 lane, PAR_SELFTEST} 锁存
       logic [1:0]  par_lq_n;      // 反相副本 (heal-to-SET)
+      logic        flt_tst_q;     // STA_FAULT[31] 自测锁存 (FLT_SELFTEST)
+      logic        flt_tst_q_n;   // 反相副本 (heal-to-SET)
    } mb_reg_t;
 
    localparam mb_reg_t MB_REG_RST = '{
@@ -254,7 +275,9 @@ module dup_ctrl_regfile #(
       wpar_q       : 1'b0,
       wr_dropped_q : 1'b0,
       par_lq       : 2'b00,
-      par_lq_n     : 2'b11
+      par_lq_n     : 2'b11,
+      flt_tst_q    : 1'b0,
+      flt_tst_q_n  : 1'b1
    };
 
    typedef struct packed {
@@ -342,6 +365,12 @@ module dup_ctrl_regfile #(
    assign reg_selftest = regst_wr && wdata[4] && (regsel <= 4'd6);
    logic selftest_pls;
    assign selftest_pls = regst_wr && wdata[5];
+   logic flt_test;                                // 源级注入: 置 STA_FAULT[31]
+   assign flt_test = regst_wr && wdata[6];
+
+   // STA_FAULT: bit31 W1C 清自测锁存 ([2:0] 为 RO 镜像, 清在原生地址)
+   logic flt_tst_w1c;
+   assign flt_tst_w1c = wr_fire && (wsel == 4'd8) && wdata[31];
 
    //--------------------------------------------------------------------------
    // STA_PAR 自身: PAR_SELFTEST + PERR5 lane 为 Q/Q_n 锁存 (heal-to-SET,
@@ -383,6 +412,16 @@ module dup_ctrl_regfile #(
       // heal-to-SET)
       v_mb.par_lq   = par_l_next;
       v_mb.par_lq_n = ~par_l_next;
+
+      // STA_FAULT[31] 自测锁存 (keyed FLT_SELFTEST 置, W1C 清,
+      // 副本失配 heal-to-SET —— 同 par_lq 论证)
+      if (flt_tst_w1c) begin
+         v_mb.flt_tst_q   = 1'b0;
+         v_mb.flt_tst_q_n = 1'b1;
+      end else if (flt_test || (r_mb.flt_tst_q_n != ~r_mb.flt_tst_q)) begin
+         v_mb.flt_tst_q   = 1'b1;
+         v_mb.flt_tst_q_n = 1'b0;
+      end
 
       rin_mb = v_mb;
    end
@@ -747,6 +786,8 @@ module dup_ctrl_regfile #(
 
    //--------------------------------------------------------------------------
    // PERR 组聚合 (image + shadow 同组) + PAR_FAULT 电平/双轨
+   //   par_fault_level 只含寄存器面 (存储 wrap 的 flt + 自测锁存);
+   //   在途事件本体 cmd_r / par_lq[0] 与 WR_DROPPED 归 esm_fault 轨
    //--------------------------------------------------------------------------
    logic g0, g1, g2, g3, g4, g6;
    assign g0 = flt_en   | flt_en_s2;    // CFG_EN:     image | shadow
@@ -757,10 +798,18 @@ module dup_ctrl_regfile #(
    assign g6 = flt_cmd  | cmd_r;        // CMD wrap (flt 与本体合并读出)
 
    logic par_fault_level;
-   assign par_fault_level = g0 | g1 | g2 | g3 | g4 | g6
-                            | r_mb.par_lq[1] | r_mb.par_lq[0];
+   assign par_fault_level = g0 | g1 | g2 | g3 | g4 | flt_cmd
+                            | r_mb.par_lq[0];
    logic par_fault_level_n;
    assign par_fault_level_n = ~par_fault_level;
+
+   //--------------------------------------------------------------------------
+   // esm_fault 轨 (监视器自身故障): 在途命令奇偶 | 在途写锁存奇偶 |
+   // 忙丢 | keyed 自测位 —— 源查询面 STA_FAULT (0x20)
+   //--------------------------------------------------------------------------
+   logic esm_fault_level;
+   assign esm_fault_level = cmd_r | r_mb.par_lq[1] | r_mb.wr_dropped_q
+                            | r_mb.flt_tst_q;
 
    //--------------------------------------------------------------------------
    // rdata 组合读出 (零等待; 坏命令/未选中/越界读驱 0)
@@ -794,6 +843,11 @@ module dup_ctrl_regfile #(
                rdata = {23'h0, g6, r_mb.par_lq[1], g4, g3, g2, g1, g0,
                         par_fault_level_n, par_fault_level};
             end
+            // STA_FAULT: esm_fault 源查询面 ([2:0] RO 镜像, [31] 自测位)
+            4'd8: begin
+               rdata = {r_mb.flt_tst_q, 28'h0,
+                        r_mb.wr_dropped_q, r_mb.par_lq[1], cmd_r};
+            end
             4'd15: begin
                rdata = ID_VAL;   // 仅 id_sel 时 wsel=15 可达
             end
@@ -815,6 +869,8 @@ module dup_ctrl_regfile #(
    //--------------------------------------------------------------------------
    assign esm_err         = err_s2;
    assign esm_err_n       = ~err_s2;
+   assign esm_fault       = esm_fault_level;
+   assign esm_fault_n     = ~esm_fault_level;
    assign reg_par_fault   = par_fault_level;
    assign reg_par_fault_n = par_fault_level_n;
 

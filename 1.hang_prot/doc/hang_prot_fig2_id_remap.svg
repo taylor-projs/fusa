@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .dom   { font-size: 13px; font-weight: bold; fill: #475569; }
+      .bt    { font-size: 13px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #475569; }
+      .sub   { font-size: 10.5px; fill: #64748B; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="880" height="300" fill="#FFFFFF"/>
+  <text x="440" y="28" class="title" text-anchor="middle">ID 重映射 — 每类一条 FIFO 即记分板</text>
+
+  <!-- master 侧 id 空间 -->
+  <text x="190" y="58" class="dom" text-anchor="middle">master 侧 id 空间</text>
+  <rect x="60" y="70" width="260" height="90" rx="8" class="box"/>
+  <text x="80" y="98" class="txt">AR: id3, id1, id7 …</text>
+  <text x="80" y="124" class="txt">AW: id2, id5 …</text>
+
+  <!-- leaf 侧 id 空间 -->
+  <text x="670" y="58" class="dom" text-anchor="middle">下游(leaf)侧 id 空间</text>
+  <rect x="520" y="70" width="300" height="110" rx="8" class="box"/>
+  <text x="536" y="96" class="txt">AR: = AR_ID_REMAP|cls</text>
+  <text x="536" y="118" class="txt">(v2.3: 每类一个 id)</text>
+  <text x="536" y="146" class="txt">AW: 全部 = AW_ID_REMAP</text>
+
+  <!-- 重映射 -->
+  <text x="420" y="103" class="bt" text-anchor="middle">重映射</text>
+  <line x1="320" y1="115" x2="520" y2="115" stroke="#475569" stroke-width="1.8" marker-end="url(#aS)"/>
+
+  <!-- ID FIFO 还原回路 -->
+  <rect x="200" y="220" width="240" height="56" rx="8" class="box"/>
+  <text x="320" y="244" class="bt" text-anchor="middle">ID FIFO {id, len}</text>
+  <text x="320" y="264" class="sub" text-anchor="middle">(AR: 每类一条 FIFO)</text>
+
+  <line x1="260" y1="220" x2="260" y2="162" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="272" y="196" class="txt">m_rid/m_bid = FIFO 头部还原</text>
+  <text x="272" y="212" class="sub">(AR: 按返回响应的类选 FIFO)</text>
+
+  <path d="M670,180 L670,248 L442,248" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="556" y="236" class="txt" text-anchor="middle">leaf 对同 id 按请求序返回响应(AXI 强制规则)</text>
+</svg>

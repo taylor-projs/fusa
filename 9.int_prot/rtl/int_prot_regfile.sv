@@ -44,26 +44,36 @@
 //                          不重置 -> 置位优先于 W1C (并发拍 W1C 不吞
 //                          脉冲, 软件多写一次即可, 见 design_spec §6).
 //   0x14 STA_PAR     RW1C/R 寄存器奇偶校验状态:
-//     [0]    PAR_FAULT  电平 = 所有 PERR 源或 + 自测锁存;
+//     [0]    PAR_FAULT  电平 = 所有寄存器面 PERR 源或 + 自测锁存;
 //            写 1 只清自测锁存 (源仍置时保持)
 //     [1]    PAR_FAULT_N (RO 反轨)
-//     [7:2]  PERR5..PERR0 (W1C): 每位清除对应组的粘滞
+//     [8:2]  PERR6..PERR0 (W1C): 每位清除对应组的粘滞
 //   0x18 CFG_REGST   W(带key) 寄存器奇偶自测控制 (读回 0):
 //     [3:0]  key, 必须为 4'b1010, 否则整写忽略
 //     [4]    REG_SELFTEST 脉冲: 对 [11:8] REGSEL 选中的组注入校验错
-//            (0..5, >5 忽略)
+//            (0..6, >6 忽略)
 //     [5]    PAR_SELFTEST 脉冲: 只置自测锁存 ("有 fault 无源",
 //            ESM 服务程序的自检签名)
+//     [6]    FLT_SELFTEST 脉冲: 置 STA_FAULT[31] 自测位 (源级注入,
+//            经正常 粘滞->esm_fault 轨逻辑出 ESM, 供周期性验证
+//            fault 轨连通; W1C STA_FAULT bit31 清)
+//   0x1C STA_FAULT   RW1C [NUM_INT-1:0] cnt_par_err 粘滞 (计数器
+//                          Q/Q_n 失配 = 监视器自身故障, 1 拍脉冲置位
+//                          优先于 W1C) + [31] FLT_SELFTEST 自测位.
+//                          在途命令奇偶 (PERR5) 的源查询在 STA_PAR[7],
+//                          其粘滞同驱 esm_fault.
 //   0xFC ID          RO   32'h5AFE_1000 | IDX
 //
 // 寄存器奇偶保护 (与 2.parity edc_regfile 同构):
 //   每个数据寄存器都是本域 reg_wrap 实例 = 存储 + 偶校验 +
 //   自测注错 + 自带粘滞 {flt, flt_w1c}:
-//     PERR 组号 (STA_PAR bit = 2 + 组号, 共 6 组):
+//     PERR 组号 (STA_PAR bit = 2 + 组号, 共 7 组):
 //       0  CFG_EN        1  CFG_INJ_EN   2  CFG_INJ_SPI
 //       3  CFG_INJ_CHK   4  STA_ERR      5  命令在途奇偶粘滞 (W=1 wrap)
-//   PAR_FAULT (bit0) = 全部 flt 之源或 + PERR5 粘滞 + 自测锁存,
-//   双轨输出 reg_par_fault/_n -> ESM (与 esm_err/esm_err_n 分开).
+//       6  STA_FAULT
+//   PAR_FAULT (bit0) = 全部 flt 之源或 + 自测锁存 (PERR5 的在途
+//   事件粘滞 cmd_r 不入 —— 在途命令奇偶属监视器自身故障, 归
+//   esm_fault 轨), 双轨输出 reg_par_fault/_n -> ESM.
 //
 //   命令在途奇偶 (PERR5): apb2mbus 在 APB 侧对 {paddr, pwrite,
 //   pwdata} 算 1 bit 偶校验 par, 与命令同深度同步广播; 本模块 ce 拍
@@ -75,14 +85,16 @@
 //     读: rdata 驱 0, 不交付错地址的数据;
 //   PERR5 粘滞本身也进 wrap (自愈双副本语义由 wrap 提供).
 //
-// ESM 双轨输出 (mbus 域):
-//   esm_err/_n       : 监视错误 = |STA_ERR (电平, 不可屏蔽)
-//   reg_par_fault/_n : 寄存器/通路奇偶错误
+// ESM 双轨输出 (mbus 域, 2026-11-13 全仓三轨统一):
+//   esm_err/_n       : 监控职责错误 = |STA_ERR (电平, 不可屏蔽)
+//   esm_fault/_n     : 监视器自身故障 = |STA_FAULT | PERR5 在途粘滞
+//                      (计数器 Q/Q_n 失配 / 在途命令奇偶 / 自测位)
+//   reg_par_fault/_n : 寄存器面奇偶错误 (存储型 PERR 组, 不含在途)
 //   双轨互补, ESM 侧对两轨做互补校验 (任一轨 stuck 都破坏互补性).
 // ============================================================================
 module int_prot_regfile #(
    parameter integer IDX     = 0,
-   parameter integer NUM_INT = 20          // 约束: 1..32 (INJ/STA 按字内位图)
+   parameter integer NUM_INT = 20          // 约束: 1..31 (INJ/STA 按字内位图; bit31 = STA_FAULT 自测位)
 )(
    input  logic                  clk,
    input  logic                  rstn,      // 异步低有效
@@ -102,11 +114,14 @@ module int_prot_regfile #(
    output logic [NUM_INT-1:0]    inj_chk,   // 虚拟 chk 事件 (写拍 1 拍脉冲, 受 INJ_EN 门控)
 
    // ---------------- sta <- int_prot ----------------
-   input  logic [NUM_INT-1:0]    spi_err,   // 本域 1 拍脉冲
+   input  logic [NUM_INT-1:0]    spi_err,      // 本域 1 拍脉冲 (监控职责)
+   input  logic [NUM_INT-1:0]    cnt_par_err,  // 本域 1 拍脉冲 (监视器自身故障)
 
    // ---------------- ESM (本域输出) ----------------
    output logic                  esm_err,
    output logic                  esm_err_n,
+   output logic                  esm_fault,
+   output logic                  esm_fault_n,
    output logic                  reg_par_fault,
    output logic                  reg_par_fault_n
 );
@@ -173,7 +188,7 @@ module int_prot_regfile #(
    //--------------------------------------------------------------------------
    // 写译码
    //--------------------------------------------------------------------------
-   logic a_en, a_ien, a_ispi, a_ichk, a_sta, a_par, a_regst;
+   logic a_en, a_ien, a_ispi, a_ichk, a_sta, a_par, a_regst, a_flt;
    assign a_en    = (addr[7:0] == 8'h00);
    assign a_ien   = (addr[7:0] == 8'h04);
    assign a_ispi  = (addr[7:0] == 8'h08);
@@ -181,6 +196,7 @@ module int_prot_regfile #(
    assign a_sta   = (addr[7:0] == 8'h10);
    assign a_par   = (addr[7:0] == 8'h14);
    assign a_regst = (addr[7:0] == 8'h18);
+   assign a_flt   = (addr[7:0] == 8'h1C);
 
    // CFG_EN: nibble 合法性检查 (1111/0000), 非法整写拒绝
    logic en_accept;
@@ -204,6 +220,10 @@ module int_prot_regfile #(
    logic [NUM_INT-1:0] sta_w1c;
    assign sta_w1c = (wr_ok && a_sta) ? wdata[NUM_INT-1:0] : {NUM_INT{1'b0}};
 
+   // STA_FAULT: W1C 掩码 (cnt 位 + [31] 自测位, 置位优先在拼接处体现)
+   logic [31:0] flt_w1c;
+   assign flt_w1c = (wr_ok && a_flt) ? wdata : 32'h0;
+
    // STA_PAR: bit0 清自测锁存, [7:2] 清各组 flt (PERR5 另清粘滞本体)
    logic par_fault_w1c;
    logic perr_w1c;
@@ -217,17 +237,19 @@ module int_prot_regfile #(
    assign reg_selftest = regst_ok && wdata[4];
    logic par_selftest;
    assign par_selftest = regst_ok && wdata[5];
+   logic flt_test;                              // 源级注入: 置 STA_FAULT[31]
+   assign flt_test = regst_ok && wdata[6];
    logic [3:0] regsel;
    assign regsel = wdata[11:8];
 
    //--------------------------------------------------------------------------
-   // wrap 实例 (6 组): 存储 + 偶校验 + 自测注错 + 粘滞 flt
+   // wrap 实例 (7 组): 存储 + 偶校验 + 自测注错 + 粘滞 flt
    //   CFG_EN 复位 1111 (监测默认开), INJ_EN 复位 0000 (注错默认关)
    //--------------------------------------------------------------------------
-   logic [31:0] en_r, ien_r, ispi_r, ichk_r, sta_err_r;
+   logic [31:0] en_r, ien_r, ispi_r, ichk_r, sta_err_r, sta_flt_r;
    logic cmd_r;
-   logic flt_en, flt_ien, flt_ispi, flt_ichk, flt_sta, flt_cmd;
-   logic [31:0] en_w, ien_w, ispi_w, ichk_w, sta_err_w;
+   logic flt_en, flt_ien, flt_ispi, flt_ichk, flt_sta, flt_cmd, flt_flt;
+   logic [31:0] en_w, ien_w, ispi_w, ichk_w, sta_err_w, sta_flt_w;
 
    // 编码使能解码: CFG_EN 默认开 / INJ_EN 默认关
    dec4_t en_dec;
@@ -236,7 +258,8 @@ module int_prot_regfile #(
    assign ien_dec = dec4(ien_r[3:0], 1'b0);
 
    // 纠正写回 (SW 合法写优先于纠正写回; 纠正值 = 解码方向对应码字)
-   logic en_wr, ien_wr, ispi_wr, ichk_wr, sta_err_wr, cmd_wr, cmd_w;
+   logic en_wr, ien_wr, ispi_wr, ichk_wr, sta_err_wr, sta_flt_wr;
+   logic cmd_wr, cmd_w;
 
    assign en_w  = en_accept  ? {28'h0, wdata[3:0]}
                               : {28'h0, (en_dec.on  ? 4'b1111 : 4'b0000)};
@@ -254,6 +277,13 @@ module int_prot_regfile #(
    assign sta_err_w = (sta_err_r & ~{{32-NUM_INT{1'b0}}, sta_w1c}) |
                       {{32-NUM_INT{1'b0}}, spi_err};        // 置位优先于 W1C
    assign sta_err_wr = (|sta_w1c) || (|spi_err);
+
+   // STA_FAULT: [NUM_INT-1:0] = cnt_par_err 粘滞, [31] = FLT_SELFTEST
+   // 自测位 (源级注入, 同一 wrap 存储受 PERR6 保护)
+   assign sta_flt_w  = ((sta_flt_r & ~flt_w1c) |
+                        {{(31-NUM_INT){1'b0}}, cnt_par_err} |
+                        (flt_test ? 32'h8000_0000 : 32'h0));
+   assign sta_flt_wr = (|flt_w1c) || (|cnt_par_err) || flt_test;
 
    assign cmd_w  = par_cmd_bad ? 1'b1 : 1'b0;               // PERR5 粘滞本体
    assign cmd_wr = par_cmd_bad || (perr_w1c && wdata[7]);
@@ -342,6 +372,20 @@ module int_prot_regfile #(
       .flt_w1c     (perr_w1c && wdata[7]            )
    );
 
+   reg_wrap #(
+      .W    (32   ),
+      .RESET(32'h0)
+   ) u_w_flt (
+      .clk         (clk                             ),
+      .rst_n       (rstn                            ),
+      .wdata       (sta_flt_w                       ),
+      .wr          (sta_flt_wr                      ),
+      .rdata       (sta_flt_r                       ),
+      .selftest_key(reg_selftest && (regsel == 4'd6)),
+      .flt         (flt_flt                         ),
+      .flt_w1c     (perr_w1c && wdata[8]            )
+   );
+
    //--------------------------------------------------------------------------
    // PAR_SELFTEST 自测锁存 (双副本自愈: 正本被 SEU 清除时反相副本
    // 失配 -> 下一拍自愈回 SET; W1C 经 STA_PAR bit0)
@@ -381,17 +425,19 @@ module int_prot_regfile #(
    end
 
    //--------------------------------------------------------------------------
-   // 聚合: PAR_FAULT 电平 + 双轨
+   // 聚合: PAR_FAULT 电平 + 双轨 (纯寄存器面: 各存储 wrap 的 flt + 自测
+   // 锁存; 在途命令奇偶事件 cmd_r 不入 —— 它是监视器自身故障, 走 esm_fault)
    //--------------------------------------------------------------------------
    logic par_fault_level;
    assign par_fault_level = flt_en | flt_ien | flt_ispi | flt_ichk |
-                            flt_sta | flt_cmd | cmd_r | plr.q;
+                            flt_sta | flt_flt | flt_cmd | plr.q;
 
    //--------------------------------------------------------------------------
    // rdata 组合读出 (坏命令读驱 0)
    //--------------------------------------------------------------------------
    logic [31:0] sta_par_rb;
-   assign sta_par_rb = {24'h0,
+   assign sta_par_rb = {23'h0,
+                        flt_flt,                  // [8]    PERR6
                         flt_cmd | cmd_r,          // [7]    PERR5 (flt 或粘滞)
                         flt_sta,                  // [6]    PERR4
                         flt_ichk,                 // [5]    PERR3
@@ -423,6 +469,9 @@ module int_prot_regfile #(
             8'h14: begin
                rdata = sta_par_rb;
             end
+            8'h1C: begin
+               rdata = sta_flt_r;
+            end
             8'hFC: begin
                rdata = ID_VAL;
             end
@@ -447,6 +496,8 @@ module int_prot_regfile #(
    assign inj_chk        = ien_dec.on ? inj_chk_c : {NUM_INT{1'b0}};
    assign esm_err        = |sta_err_r[NUM_INT-1:0];
    assign esm_err_n      = ~esm_err;
+   assign esm_fault      = |sta_flt_r[NUM_INT-1:0] | sta_flt_r[31] | cmd_r;
+   assign esm_fault_n    = ~esm_fault;
    assign reg_par_fault  = par_fault_level;
    assign reg_par_fault_n = ~par_fault_level;
 

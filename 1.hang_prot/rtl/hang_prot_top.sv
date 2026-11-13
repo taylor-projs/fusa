@@ -17,7 +17,7 @@
 //                           |  ^ handshake taps (m side!)
 //                           |  | otd counters (rd/wr)
 //                           v  |
-//                        [monitor] --err_event--> recover_req
+//                        [monitor] --esm_err--> recover_req
 //
 //   The monitor observes the m_* side of the shim, so its outstanding
 //   counters drain exactly as the shim retires dummy responses: after a
@@ -26,7 +26,7 @@
 //   (W1C by SW) and the ESM event left to service.
 //
 // RECOVERY FLOW (hardware-automatic, see hang_prot_recover header):
-//   timeout -> err_event (sticky) -> recover_req -> shim blocks new
+//   timeout -> esm_err (sticky) -> recover_req -> shim blocks new
 //   requests, sinks the master's W burst, discards W bursts that never
 //   crossed the skid, replays fully-buffered W bursts to completion,
 //   absorbs late IC responses, and returns LEN-exact SLVERR dummy R/B
@@ -59,8 +59,8 @@
 //   zero data (mux below). No register is inserted in the AR payload path.
 //
 // ESM ROUTING (dual rail):
-//   err_event / err_event_n  - real bus timeout, level, dual rail
-//   fu_fault / fu_fault_n    - monitor integrity fault, sticky, dual rail
+//   esm_err / esm_err_n  - real bus timeout, level, dual rail
+//   esm_fault / esm_fault_n    - monitor integrity fault, sticky, dual rail
 //   reg_par_fault/_n         - regfile register parity fault, dual rail
 //   skid_fault/_n            - BOUNDARY INTEGRITY fault, sticky, dual rail
 //                              (v3.1 aggregate: recover-shim wskid
@@ -187,10 +187,10 @@ module hang_prot_top #(
     output logic                 s_bready,
 
     // ---- ESM outputs (dual rail) --------------------------------------------
-    output logic                 err_event,
-    output logic                 err_event_n,
-    output logic                 fu_fault,
-    output logic                 fu_fault_n,
+    output logic                 esm_err,
+    output logic                 esm_err_n,
+    output logic                 esm_fault,
+    output logic                 esm_fault_n,
     output logic                 reg_par_fault,
     output logic                 reg_par_fault_n,
     output logic                 skid_fault,
@@ -217,8 +217,8 @@ module hang_prot_top #(
     logic [NUM_IA*OTD_W-1:0]  otd;
     logic [15:0]              thr_rd_r2a, thr_rd_r2r;
     logic [3:0]               ena_rd;
-    logic                     err_event_i, err_event_n_i;
-    logic                     fu_fault_i, fu_fault_n_i;
+    logic                     esm_err_i, esm_err_n_i;
+    logic                     esm_fault_i, esm_fault_n_i;
     logic [4+3*NUM_M-1:0]     fu_src;
 
     // recovery control (aclk domain; recover_req generated below)
@@ -270,10 +270,10 @@ module hang_prot_top #(
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
         .ena_rd        (ena_rd        ),
-        .err_event     (err_event_i   ),
-        .err_event_n   (err_event_n_i ),
-        .fu_fault      (fu_fault_i    ),
-        .fu_fault_n    (fu_fault_n_i  ),
+        .esm_err     (esm_err_i   ),
+        .esm_err_n   (esm_err_n_i ),
+        .esm_fault      (esm_fault_i    ),
+        .esm_fault_n    (esm_fault_n_i  ),
         .fu_src        (fu_src        ),
 
         .reg_par_fault  (reg_par_fault  ),
@@ -282,35 +282,35 @@ module hang_prot_top #(
 
     //--------------------------------------------------------------------------
     // Inline recovery shim (ia_bus_aclk domain) - owns the path
-    //   recover_req = RISING EDGE of the monitor's sticky err_event:
+    //   recover_req = RISING EDGE of the monitor's sticky esm_err:
     //   arm once per timeout event. A level would oscillate between
     //   recover and pass-through every other cycle while the sticky is
     //   set (exit is automatic, the level is not); a new timeout after
     //   recovery produces a new rise -> re-arms.
     //   FuSa v3.1 (SIL2): the edge flop is INVERTED-DUPLICATED
-    //   (err_event_q_n). A rail mismatch (SEU on the edge flop):
+    //   (esm_err_q_n). A rail mismatch (SEU on the edge flop):
     //     - forces a recover_req pulse THIS cycle (fail toward the
     //       contained state - a spurious recovery is the safe direction;
     //       a MISSED rise would leave the hang undrained)
     //     - latches a sticky dual-rail edge fault, aggregated into
     //       skid_fault/skid_fault_n (the boundary-integrity ESM group)
-    //     - self-heals next cycle (both rails reload from err_event_i),
+    //     - self-heals next cycle (both rails reload from esm_err_i),
     //       but the sticky latch remembers the event
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
-    //   err_event 边沿检测寄存器 (dual rail) + 粘滞 wrapper 边沿故障锁存
+    //   esm_err 边沿检测寄存器 (dual rail) + 粘滞 wrapper 边沿故障锁存
     //--------------------------------------------------------------------------
     typedef struct packed {
-        logic err_event_q;    // err_event_i 的上一拍 (dual rail 真值)
-        logic err_event_q_n;  // inverted duplicate rail
+        logic esm_err_q;    // esm_err_i 的上一拍 (dual rail 真值)
+        logic esm_err_q_n;  // inverted duplicate rail
         logic edgeflt_q;      // sticky edge-fault latch
         logic edgeflt_q_n;    // inverted duplicate rail
     } reg_t;
 
     localparam reg_t REG_RST = '{
-        err_event_q   : 1'b0,
-        err_event_q_n : 1'b1,
+        esm_err_q   : 1'b0,
+        esm_err_q_n : 1'b1,
         edgeflt_q     : 1'b0,
         edgeflt_q_n   : 1'b1
     };
@@ -319,7 +319,7 @@ module hang_prot_top #(
     reg_t rin;
 
     logic edge_dis;
-    assign edge_dis = (r.err_event_q_n != ~r.err_event_q);
+    assign edge_dis = (r.esm_err_q_n != ~r.esm_err_q);
 
     //--------------------------------------------------------------------------
     // 组合进程: 下一拍值 (默认保持)
@@ -329,9 +329,9 @@ module hang_prot_top #(
 
         v = r;
 
-        // err_event 边沿寄存器: 跟随 err_event_i (SEU 失配一拍自愈)
-        v.err_event_q   = err_event_i;
-        v.err_event_q_n = ~err_event_i;
+        // esm_err 边沿寄存器: 跟随 esm_err_i (SEU 失配一拍自愈)
+        v.esm_err_q   = esm_err_i;
+        v.esm_err_q_n = ~esm_err_i;
 
         // 粘滞边沿故障锁存 (dual rail, rst-only)
         if (edge_dis) begin
@@ -354,7 +354,7 @@ module hang_prot_top #(
     end
 
     logic recover_req;
-    assign recover_req = (err_event_i && !r.err_event_q) || edge_dis;
+    assign recover_req = (esm_err_i && !r.esm_err_q) || edge_dis;
 
     assign rd_otd_mon  = otd[0*OTD_W +: OTD_W];   // read  stream of master 0
     assign wr_otd_mon  = otd[1*OTD_W +: OTD_W];   // write stream of master 0
@@ -516,18 +516,18 @@ module hang_prot_top #(
         .otd           (otd           ),
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
-        .err_event     (err_event_i   ),
-        .err_event_n   (err_event_n_i ),
+        .esm_err     (esm_err_i   ),
+        .esm_err_n   (esm_err_n_i ),
         .ena_rd        (ena_rd        ),
-        .fu_fault      (fu_fault_i    ),
-        .fu_fault_n    (fu_fault_n_i  ),
+        .esm_fault      (esm_fault_i    ),
+        .esm_fault_n    (esm_fault_n_i  ),
         .fu_src        (fu_src        )
     );
 
     // ESM dual-rail outputs straight from the monitor (aclk domain)
-    assign err_event   = err_event_i;
-    assign err_event_n = err_event_n_i;
-    assign fu_fault    = fu_fault_i;
-    assign fu_fault_n  = fu_fault_n_i;
+    assign esm_err   = esm_err_i;
+    assign esm_err_n = esm_err_n_i;
+    assign esm_fault    = esm_fault_i;
+    assign esm_fault_n  = esm_fault_n_i;
 
 endmodule

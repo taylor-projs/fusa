@@ -14,6 +14,18 @@ register parity, fault injection and config-path hang monitoring.
   window vs programmed [WIN_LO, WIN_HI]) with **N_DEB-window debounce**.
 - Per-channel **DEAD detection** (no DUT edge for NDEAD reference cycles,
   re-issuing).
+- **First-edge arming (A1)**: each channel arms on its first synced DUT edge
+  after reset/disarm; an unarmed channel is completely silent — no DEAD, no
+  FAIL_FREQ (§4.2). Kills the boot race "ref clock ready, DUT clock not yet".
+- **NEVER_ARMED watchdog**: an *enabled* channel whose clock never arrives
+  fires the scalar FUSTAT[10] integrity fault ≈(N_DEB+1) windows after the FSM
+  reaches RUN — closes the "clock gate never opened" corner A1 alone would
+  leave silent (§4.2).
+- **EN_RST per-channel reset default** (TI-DCC-style SW enable): each
+  channel's coded-enable nibble resets to its EN_RST nibble, so a channel
+  behind a power-on clock gate is *born disarmed* — zero boot race without any
+  hardware coupling to the gate; SW opens the gate, then writes EN=1111
+  (protocol §7.1).
 - **mbus** leaf configuration interface (zero-wait, command in-flight parity).
 - **Register parity** on every SW-visible register (`reg_wrap`, storage +
   even parity + injection + sticky fault with inverted duplicate).
@@ -48,7 +60,8 @@ rtl/
                       (dual-rail), lifecycle FSM, verdict latches / sticky
                       vectors, aggregation, ESM rails, nERR
 sim/
-  tb_cmm_top.sv       self-checking TB (321 checks, N_DUT=5 instance)
+  tb_cmm_top.sv       self-checking TB (358 checks, N_DUT=5 instance + EN_RST
+                      proof instance)
   run_vcs.sh          VCS build+run (+cov: coverage & urg report)
   run_iverilog.sh     iverilog -g2012 build+run (WSL)
   excl/               urg structural exclusion set (see excl/README.md)
@@ -97,7 +110,9 @@ Verdicts (detection events; sticky latches in top):
   = CMP integrity fault; a counter-duplicate mismatch anywhere in the window
   poisons that window (forces the verdict — never late).
 - `DEAD`: no prescaled edge for NDEAD ref cycles (counter wraps and
-  re-issues while the clock stays dead). Set in ARM and RUN.
+  re-issues while the clock stays dead). Set in ARM and RUN — **armed
+  channels only** (§4.2: an unarmed channel is not "dead", it has not
+  arrived; that corner belongs to NEVER_ARMED).
 - Integrity: `FU_CNT` (counter/shadow duplicate broken), `FU_CMP`
   (comparators disagree), `FU_PSC` (prescaler duplicate, debounced 4 cycles
   to filter power-up settling of the un-reset dut-domain pair).
@@ -153,6 +168,63 @@ count raw DUT cycles in the DUT domain, capture-and-clear on the
 synchronized boundary toggle, and compare the held count in the ref domain
 — thresholds and verdict logic stay unchanged.
 
+### 4.2 First-edge arming, window qualification, NEVER_ARMED
+
+The measurement of §4 presupposes the DUT clock is *present*. Three corners
+exist around that assumption at boot and around SW clock gating; all three are
+closed in `clk_ref` (nothing depends on the clock under test):
+
+**A1 — first-edge arming (`armed[i]`, Q/Q_n dual rail).** Each channel carries
+an `armed` flag that sets on the **first synced prescaled edge** after reset or
+disarm and clears **only** on `disarm[i] = EN-off | TST_CLR` — clock death does
+NOT clear it (DEAD means "lost a previously-present clock", which is exactly
+its detection contract). While `!armed[i]`:
+
+- the no-edge counter is frozen at 0 and `dead_lvl` is masked → **no DEAD**;
+- windows are **unjudged** (below) → **no FAIL_FREQ**.
+
+So a channel whose clock starts *late* (refclk ready first, DUT PLL/gate
+still settling) raises nothing; on its first edge it arms and joins normal
+window judging without any W1C or TST_CLR — boot is race-free by construction.
+
+**A2 — window qualification (`aw_run`/`aw_hold`).** A window only counts
+toward (or refreshes) the FAIL_FREQ debounce if the channel was armed at the
+window start and no disarm landed since (`aw_hold` latched at `window_end`,
+`aw_run` reseeded from the next-cycle armed value). Unjudged windows —
+unarmed, armed mid-window, disarm in flight — neither decrement nor reload
+`freq_deb`; a disarm reloads it to N_DEB, so every (re)arm starts with a full
+fresh debounce. This removes FAIL_FREQ's accidental coverage of the
+never-arrives corner, which is why A2 made the NEVER_ARMED watchdog
+mandatory:
+
+**NEVER_ARMED (FUSTAT[10], scalar).** `never_src = "some enabled channel is
+unarmed while FSM == RUN"` is sampled at `window_fire`; a N_DEB-window
+down-counter (`never_deb`, reloaded whenever the sample is clean, by TST_CLR,
+or by EN-off) fires the sticky `never_l` (heal-to-SET, W1C via FUSTAT[10],
+cleared by TST_CLR). Detection latency ≈ (N_DEB+1) windows after the FSM
+reaches RUN — bounded regardless of when (or never) the gate opens. Per-channel
+diagnosis: read ARMED (0x3C); the zero bits are the channels that never
+arrived.
+
+Scene matrix (detection class per scenario):
+
+| Scenario | armed | Verdict |
+|---|---|---|
+| clock present from POR | 1 | normal windowed judging |
+| clock arrives late (any delay) | 0→1 | **silent** (arms, joins judging) |
+| clock never arrives, EN on | 0 | **NEVER_ARMED** ≈(N_DEB+1) windows after RUN |
+| clock dies mid-run | 1 | **DEAD** (armed persists — by contract) |
+| EN off (SW gate) | 0 | fully silent incl. NEVER_ARMED (en_v masks never_src) |
+| TST_CLR | →0 | fresh N_DEB debounces everywhere; live clocks re-arm on their next edge |
+
+**EN_RST — born-disarmed channels.** `EN_RST[4*i+:4]` (parameter, default
+`4'hF`) feeds the reset value of channel i's coded-enable nibble (and
+ENLO/ENHI of nibbles ≥ N_DUT are ignored). A channel behind a power-on clock
+gate integrates with its EN_RST nibble = `4'h0`: it resets *disarmed*, so the
+period before SW opens the gate is not a NEVER_ARMED race — it is silence by
+construction. The HW has **no coupling to the gate control** (no gate_disarm
+port): the SW protocol of §7.1 owns the ordering, TI-DCC-style.
+
 ## 5. Register map
 
 Instance selected by `addr[15:8] == IDX`; byte offset `addr[7:0]`.
@@ -166,18 +238,19 @@ rejected). All W1C writes cross to `clk_ref` through the CDC handshake.
 | 0x00 | ID | RO | | `0xC44D_0100 \| N_DUT` |
 | 0x04 | GCTRL | RW | ✓ | [0] REFSEL · [1] TST_CLR (pulse) · [7:4] DBGSEL. Every write re-stores REFSEL/DBGSEL (RMW discipline) |
 | 0x08 | GSTAT | RO | | [0] alarm · [1] fu · [2] active · [5:3] fsm (ARM=1,RUN=2,ERR=4) · [6] cfg_busy · [7] nerr_n · [8] refsel · [9] any_en · [10] reg_par_fault · [11] cfg_hang |
-| 0x0C | ENLO | RW | | ch0..7 coded enables, nibble `F`=on / `0`=off (others illegal → REG_PROT, nibble rejected) |
-| 0x10 | ENHI | RW | | ch8..15 (masked 0 beyond N_DUT) |
+| 0x0C | ENLO | RW | | ch0..7 coded enables, nibble `F`=on / `0`=off (others illegal → REG_PROT, nibble rejected); **reset = EN_RST[31:0]** (§7.1) |
+| 0x10 | ENHI | RW | | ch8..15 (masked 0 beyond N_DUT); reset = EN_RST[63:32] |
 | 0x14 | ERRSTAT | W1C | | [i] channel i alarm (fail\|dead) |
 | 0x18 | SRCSTAT | W1C | | [2i] fail · [2i+1] dead |
-| 0x1C | FUSTAT | W1C | | [0] cnt_any · [1] cmp_any · [2] win · [3] psc_any · [4] hierr · [5] fsm · [6] reg_prot · [7] wr_dropped · [8] cfg_hang · [9] ref_stale |
+| 0x1C | FUSTAT | W1C | | [0] cnt_any · [1] cmp_any · [2] win · [3] psc_any · [4] hierr · [5] fsm · [6] reg_prot · [7] wr_dropped · [8] cfg_hang · [9] ref_stale · **[10] never_armed** (scalar, W1C) |
 | 0x20 | FUSRC0 | W1C | | ch0..7 nibbles {psc, cfgpar, cmp, cnt} |
 | 0x24 | FUSRC1 | W1C | | ch8..15 |
 | 0x28 | FORCE | RW | ✓ | [N_DUT-1:0] per-ch verdict force · [16] force_hang · [17] force_stale · [18] inj_psc · [19] inj_cmp · [20] inj_cnt (inj targets channel DBGSEL) |
 | 0x2C | DBG0 | RO | | {4b0, noedge, 4b0, shadow} of channel DBGSEL |
 | 0x30 | DBG1 | RO | | {win_cnt[15:0], 4b0, edgecnt} of channel DBGSEL |
-| 0x34 | STA_PAR | W1C | | [0] PAR_FAULT (W1C 清自测锁存) · [1] _n · [14:2] PERR group 0..12 (bit = 2+组号) · [14] PERR12 CMD |
-| 0x38 | CFG_REGST | WO | ✓ | key[3:0]=1010 · [4] REG_SELFTEST + REGSEL[12:8] (0..12; 11 无注错目标) · [5] PAR_SELFTEST 无源注错 · REGSEL 16+i: ref-domain shadow of ch i |
+| 0x34 | STA_PAR | W1C | | [0] PAR_FAULT (W1C 清自测锁存) · [1] _n · [15:2] PERR group 0..13 (bit = 2+组号) · [14] PERR12 CMD |
+| 0x38 | CFG_REGST | WO | ✓ | key[3:0]=1010 · [4] REG_SELFTEST + REGSEL[12:8] (0..13; 11 无注错目标) · [5] PAR_SELFTEST 无源注错 · REGSEL 16+i: ref-domain shadow of ch i |
+| 0x3C | ARMED | RO | | [N_DUT-1:0] per-ch first-edge armed flags (§4.2); ref→mbus image, PERR group 13 |
 | 0x40+12i | CHi_WIN_LO / +4 WIN_HI / +8 NDEAD | RW | ✓ | 12-bit fields per channel |
 
 寄存器地图位置 (house standard): STA_PAR 倒数第 3、CFG_REGST 倒数第 2
@@ -187,7 +260,8 @@ house key `wdata[3:0]=4'b1010` (非 WKEY 空间), 错 key = REG_PROT。
 STA_PAR PERR groups (bit 2+k): 0 ENLO · 1 ENHI · 2 GCTRL · 3 FORCE ·
 4 CLO · 5 CHI · 6 CDEAD · 7 ERRSTAT image · 8 SRCSTAT image · 9 FUSRC
 image · 10 FUSTAT image · 11 in-flight payload (latch lane, W1C bit13,
-无注错目标) · 12 CMD (W=1 wrap: 命令在途奇偶粘滞体, W1C bit14 即重写).
+无注错目标) · 12 CMD (W=1 wrap: 命令在途奇偶粘滞体, W1C bit14 即重写) ·
+13 ARMED image (follows wr=1, self-restoring like 7..10).
 
 ## 6. CDC and liveness
 
@@ -228,14 +302,52 @@ fail-visible choice):
 A wrong/stuck REFSEL is also self-revealing: all channels report FAIL_FREQ
 (the measurement cross-checks the reference).
 
+### 7.1 Gated DUT clocks — EN_RST + SW enable protocol (route B)
+
+For channels whose DUT clock is behind a SW-controlled (or otherwise late)
+clock gate, integrate the channel with its `EN_RST` nibble = `4'h0`: the
+channel is **born disarmed** (§4.2) and stays fully silent — no boot race, no
+NEVER_ARMED — until SW brings it up. The design deliberately keeps **no
+hardware coupling to the gate control** (TI DCC likewise has a SW enable);
+ordering is a software contract:
+
+```
+bring-up:   open the clock gate (clock starts running)
+            → write EN nibble = 4'hF        [poll GSTAT[6]==0 first]
+            → channel arms on its first edge; FAIL_FREQ debounce starts
+              with a full fresh N_DEB (disarm reloads freq_deb)
+            → optionally poll ARMED[0x3C] bit i == 1, then ≥ N_DEB+2 windows
+              before declaring the channel healthy
+tear-down:  write EN nibble = 4'h0          [channel disarms; all verdicts,
+              including NEVER_ARMED, go silent]
+            → close the clock gate
+diagnosis:  FUSTAT[10] = 1 (NEVER_ARMED) → read ARMED: zero bits = channels
+            that never arrived (gate never opened / upstream dead)
+```
+
+Rules that make the protocol safe:
+
+- **EN=1111 strictly after the gate opens** — the enable is what disarms;
+  enabling a still-gated channel is legal but arms NEVER_ARMED's timer
+  (fires in (N_DEB+1) windows if the clock indeed never comes — the desired
+  watchdog, not a false alarm).
+- **EN=0000 strictly before the gate closes** — closing the gate on an armed
+  channel reports DEAD (also a real fault signal, just a different class).
+- **TST_CLR vs. gate stops**: TST_CLR is a *soft* clear — a channel whose
+  clock is still running re-arms on its next edge (that is what makes
+  TST_CLR-based recovery transparent for live channels). To retire a channel
+  via TST_CLR + gate-off, quiesce the gate stop (≥ one DUT clock period plus
+  sync) *before* issuing TST_CLR; an edge landing after the clear re-arms
+  the channel by design.
+
 ## 8. Safety outputs
 
 | Output | Domain | Meaning |
 |---|---|---|
 | `nerr_n` | clk_ref | active-low level to PMIC, 2FF glitch-filtered, held while any alarm/integrity sticky set |
-| `cmm_err`/`_n` | clk_ref | dual rail: any channel alarm (FAIL_FREQ/DEAD) |
-| `cmm_fu`/`_n` | clk_ref | dual rail: monitor integrity (counter dup, compare disagree, window dup, prescaler dup, EN codeword, FSM, config-shadow parity, key violation) |
-| `reg_par_fault`/`_n` | mbus | dual rail: register parity (incl. command + in-flight) |
+| `esm_err`/`_n` | clk_ref | dual rail: any channel alarm (FAIL_FREQ/DEAD) |
+| `esm_fault`/`_n` | clk_ref | dual rail: monitor integrity (counter dup incl. armed-flag pair, compare disagree, window dup, prescaler dup, EN codeword, FSM, config-shadow parity, key violation, NEVER_ARMED) |
+| `reg_par_fault`/`_n` | mbus | dual rail: register-plane parity (storage wrap flt + PAR_SELFTEST latch; **in-flight command parity PERR11/PERR12 moved to esm_fault rail**, 2026-11-13 rule 25) |
 | `cfg_hang`/`_n` | mbus | dual rail: config-path liveness |
 | `cmm_active` | clk_ref | FSM in RUN |
 
@@ -250,25 +362,33 @@ review checklist in `cmm_timing_sw_guide.md` §1/§4.
 | N_WIN | 32768 | window length [ref cycles] |
 | WIN_LO_RST / WIN_HI_RST | 1621 / 1792 | window bounds reset defaults |
 | NDEAD_RST | 4095 | no-edge timeout reset default [ref cycles] |
-| N_DEB | 3 | FAIL_FREQ debounce [windows] |
+| N_DEB | 3 | FAIL_FREQ debounce [windows] (also NEVER_ARMED debounce) |
 | WKEY | 4'h5 | keyed-write key [31:28] |
 | DUT_PSC | all 3 | per-channel prescaler tap (4 bits/ch), 0..15 |
+| EN_RST | all F | per-channel coded-enable reset nibble (4 bits/ch); `F`=enabled, `0`=born disarmed (gated-clock integration, §7.1); nibbles ≥ N_DUT ignored |
 | HANG_TO | 1024 | CFG_HANG timeout [mbus cycles] |
 | WIN_ALIVE_MAX | 131072 | REF_STALE timeout [mbus cycles] |
 | IDX | 0 | mbus instance id |
 
 ## 10. Verification summary
 
-`sim/tb_cmm_top.sv`, iverilog 12 (-g2012), N_DUT=5 instance with asymmetric
-channels (25 MHz ×3, 100 MHz, 1 MHz), scaled windows: **84/84 checks pass**.
+`sim/tb_cmm_top.sv`, Synopsys VCS (VM) + iverilog 12 (-g2012), N_DUT=5
+instance with asymmetric channels (25 MHz ×3, 100 MHz, 1 MHz), scaled
+windows, plus a second `N_DUT=1 / EN_RST=0 / IDX=1` instance as the
+born-disarmed integration proof: **358/358 checks pass**.
 Every FuSa mechanism is exercised end-to-end (fault → detection → sticky →
 rail → W1C → recovery): DEAD, FAIL_FREQ, FORCE, key/RO protection,
 threshold self-test with real edges, parity injection in both domains
 (image self-restore / config rewrite-restore / command parity / no-source),
 CFG_HANG + WR_DROPPED + escape, REF_STALE, inj_cnt/cmp/psc per class,
 ref-domain shadow injection, EN illegal-nibble rejection, disable gating,
-REFSEL switch with quiesce protocol. See `fusa_coverage_sil.md` for the
-check→mechanism mapping.
+REFSEL switch with quiesce protocol. Arming coverage (§4.2): late-start
+clock stays silent then arms and joins judging; NEVER_ARMED fires with
+DEAD/FAIL_FREQ masked and W1C+restart recovers; the SW gate cycle
+(EN off → clk off → clk on still EN off → EN on) produces zero alarms with
+fresh debounce; armed-flag Q/Q_n break reports FU_CNT; the EN_RST=0
+instance stays quiet forever (no boot race). See `fusa_coverage_sil.md`
+for the check→mechanism mapping.
 
 ## 11. Integration notes
 

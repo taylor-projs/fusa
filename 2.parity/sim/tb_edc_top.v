@@ -39,6 +39,10 @@
 //         断言/回落 b) dut1 站 0..17 force 扫描 (err+fault 双报)
 //         c) addr/user/wuser 走 1 扫描 (两接口, gen 端点 i_edc 位)
 //         d) 全 ready 回压双沿 / 收尾: 中途复位脉冲 (覆盖率)。
+//     T30 ESM 通路自测 (PATH_SELFTEST, ESM 单端集成契约): 0x28 keyed
+//         掩码驱动四路 ESM 输出 (置 1/逐通道/释放 双向往复), 无源签名
+//         (通道报 1 而 STA 源全 0), 无 key 整写忽略, PERR5 组注错
+//         + 单笔 W1C 复原。
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -3167,6 +3171,67 @@ module tb_edc_top;
          check(rdata === 32'h0, "T29i: dut1 ERR clean");
       end
 
+      // -------- T30: ESM 通路自测 (PATH_SELFTEST, ESM 单端集成契约) --------
+      begin : t30
+         // 静息: 掩码读 0, 四轨全 0
+         apb_rd(16'h0228, rdata);
+         check(rdata === 32'h0, "T30: mask reset 0");
+         // 无 key 整写忽略 (key=5)
+         apb_wr(16'h0228, 32'h0000_00F5);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0228, rdata);
+         check(rdata === 32'h0, "T30: bad-key load ignored");
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "T30: rails quiet after bad key");
+         // 装载 msk=1111: 四路全 1 (反轨全 0), 掩码读回 F0
+         apb_wr(16'h0228, 32'h0000_00FA);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b1 && agg_esm_err_n === 1'b0
+               && agg_esm_fault === 1'b1 && agg_esm_fault_n === 1'b0
+               && agg_reg_par_fault === 1'b1 && agg_reg_par_fault_n === 1'b0
+               && agg_rail_fault === 1'b1 && agg_rail_fault_n === 1'b0,
+               "T30: all four rails driven (msk=F)");
+         apb_rd(16'h0228, rdata);
+         check(rdata === 32'h0000_00F0, "T30: mask readback F0");
+         // 有 fault 无源: 一切 STA 源读 0, STA_PAR 静息 0x2
+         apb_rd(16'h0200, rdata);
+         check(rdata === 32'h0, "T30: STA_ERR source-free");
+         apb_rd(16'h0204, rdata);
+         check(rdata === 32'h0, "T30: STA_FAULT source-free");
+         apb_rd(16'h0220, rdata);
+         check(rdata === 32'h0, "T30: STA_RAIL source-free");
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T30: STA_PAR source-free (0x2)");
+         // 逐通道: msk=0010 -> 仅 esm_fault
+         apb_wr(16'h0228, 32'h0000_002A);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b1
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "T30: per-channel select (fault only)");
+         // 释放 msk=0000: 全 0 (tie-1 方向验证)
+         apb_wr(16'h0228, 32'h0000_000A);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "T30: all rails released");
+         apb_rd(16'h0228, rdata);
+         check(rdata === 32'h0, "T30: mask readback 0");
+         // PERR5: REGST regsel=5 注错 -> 0x18 bit7 + PAR_FAULT; 单笔 W1C 复原
+         apb_wr(16'h021C, 32'h0000_051A);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0081, "T30: PERR5 selftest");
+         check(agg_reg_par_fault === 1'b1, "T30: par rail folds PERR5");
+         apb_wr(16'h0218, 32'h0000_0080);   // 单笔 W1C (同步重写复原)
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T30: PERR5 one-shot healed");
+         check(agg_reg_par_fault === 1'b0, "T30: par rail released");
+         apb_rd(16'h0228, rdata);
+         check(rdata === 32'h0, "T30: mask untouched by selftest");
+      end
+
       // -------- 收尾: 中途复位脉冲 (覆盖率 + 复位自愈) --------
       begin : midreset
          integer rnd;
@@ -3202,6 +3267,8 @@ module tb_edc_top;
             check(rdata === 32'h0, "MR: agg par sticky reset clean");
             apb_rd(16'h0220, rdata);
             check(rdata === 32'h0, "MR: agg rail sticky reset clean");
+            apb_rd(16'h0228, rdata);
+            check(rdata === 32'h0, "MR: agg esmtst mask reset clean");
             apb_rd(16'h00FC, rdata);
             check(rdata === 32'hEDC0_1000, "MR: access recovered");
             check(dut0_esm_err === 1'b0 && agg_esm_fault === 1'b0

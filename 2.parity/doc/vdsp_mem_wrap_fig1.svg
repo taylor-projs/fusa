@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 810" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 15px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .tag   { font-size: 11px; font-weight: bold; fill: #475569; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sm    { font-size: 10px; fill: #334155; }
+      .sub   { font-size: 9.5px; fill: #64748B; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="810" fill="#FFFFFF"/>
+  <text x="500" y="28" class="title" text-anchor="middle">vdsp_sp_16384x524_d4w4_mem_wrap 结构图 (ADDR_ECC_EN=1, INPUT_PIPE_EN=0, OUTPUT_PIPE_EN=1)</text>
+
+  <!-- 地址输入: 一路进编码器, 一路下行到译码器 (地址参与编码, 不存储) -->
+  <text x="60" y="88" class="bt">A[13:0]</text>
+  <line x1="124" y1="84" x2="968" y2="84" stroke="#475569" stroke-width="1.5"/>
+  <circle cx="300" cy="84" r="3.5" fill="#475569"/>
+  <text x="320" y="76" class="sub" font-size="10">(地址参与编码, 不存储)</text>
+  <line x1="300" y1="84" x2="300" y2="170" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <line x1="968" y1="84" x2="968" y2="645" stroke="#475569" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <line x1="968" y1="645" x2="620" y2="645" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="630" y="638" class="sub">读地址 A[13:0] (重插地址域/双检)</text>
+
+  <!-- 数据输入 -->
+  <text x="60" y="132" class="bt">D_in[511:0]</text>
+  <line x1="156" y1="128" x2="170" y2="128" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <rect x="170" y="116" width="100" height="32" rx="6" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
+  <text x="220" y="136" class="sm" text-anchor="middle">补 0 成 513</text>
+  <line x1="270" y1="128" x2="370" y2="128" stroke="#475569" stroke-width="1.5"/>
+  <text x="330" y="120" class="sm" text-anchor="middle">D[512:0]</text>
+  <line x1="370" y1="128" x2="370" y2="170" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+
+  <!-- stage 1: 编码 -->
+  <text x="60" y="204" class="tag">stage 1</text>
+  <text x="60" y="220" class="sub">(组合逻辑)</text>
+  <rect x="200" y="170" width="420" height="80" rx="8" class="box"/>
+  <text x="410" y="192" class="bt" text-anchor="middle">macro_enc_527 — SECDED 编码</text>
+  <text x="216" y="216" class="txt">in : {A, D} = 527 bit</text>
+  <text x="216" y="236" class="txt">out: {par[10:0], A, D} = 538 bit</text>
+  <line x1="745" y1="186" x2="620" y2="186" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="180" class="sub">ecc_encoder_bypass</text>
+  <line x1="745" y1="208" x2="620" y2="208" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="202" class="sub">ecc_encoder_parity_in</text>
+  <line x1="620" y1="232" x2="745" y2="232" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="226" class="sub">ecc_encoder_parity_out</text>
+
+  <line x1="410" y1="250" x2="410" y2="272" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="422" y="266" class="sm">d_ecc = {par, D} = 524 bit (丢弃 A 域)</text>
+
+  <!-- stage 2: 输入 pipe -->
+  <text x="60" y="302" class="tag">stage 2</text>
+  <rect x="200" y="272" width="420" height="50" rx="8" class="box"/>
+  <text x="410" y="292" class="bt" text-anchor="middle">输入 pipe (INPUT_PIPE_EN=0 直通)</text>
+  <text x="410" y="310" class="sm" text-anchor="middle">ceb / web / ra / a / d_af_in_pipe</text>
+  <line x1="340" y1="322" x2="340" y2="356" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="332" y="344" class="sub" text-anchor="end">d_af_in_pipe</text>
+  <line x1="480" y1="322" x2="480" y2="356" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="488" y="344" class="sub">a_af_in_pipe</text>
+
+  <!-- stage 3: 存储阵列 -->
+  <text x="60" y="402" class="tag">stage 3</text>
+  <rect x="200" y="356" width="420" height="80" rx="8" class="box"/>
+  <text x="410" y="378" class="bt" text-anchor="middle">4 × vdsp_sp_16384x524_d4w4_low_mem_wrap</text>
+  <text x="410" y="398" class="txt" text-anchor="middle">(16384×131 SRAM)</text>
+  <text x="410" y="418" class="txt" text-anchor="middle">bank i: D/Q = [131*i +: 131]</text>
+  <line x1="410" y1="436" x2="410" y2="458" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="422" y="452" class="sm">q_out[523:0]</text>
+
+  <!-- stage 4: 读捕捉/输出 pipe -->
+  <text x="60" y="504" class="tag">stage 4</text>
+  <rect x="200" y="458" width="420" height="80" rx="8" class="box"/>
+  <text x="410" y="480" class="bt" text-anchor="middle">读捕捉: a_ss_ff, sram_read_ff</text>
+  <text x="410" y="500" class="txt" text-anchor="middle">输出 pipe: q_out_pipe_ff (打一拍)</text>
+  <text x="410" y="520" class="txt" text-anchor="middle">sram_read_ff = ~ceb &amp;&amp; web</text>
+  <line x1="410" y1="538" x2="410" y2="560" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="422" y="552" class="sm">{par, a_af_out_pipe, q[512:0]} = 538 bit</text>
+
+  <!-- stage 5: 译码/纠错 -->
+  <text x="60" y="604" class="tag">stage 5</text>
+  <text x="60" y="620" class="sub">(组合逻辑)</text>
+  <rect x="200" y="560" width="420" height="100" rx="8" class="box"/>
+  <text x="410" y="582" class="bt" text-anchor="middle">macro_dec_527 — SECDED 译码/纠错</text>
+  <text x="410" y="602" class="txt" text-anchor="middle">syndrom[10:0] -&gt; SEC/DED 判定</text>
+  <text x="410" y="620" class="txt" text-anchor="middle">dec_out = 纠正后的 {A, D} 527 bit</text>
+  <text x="410" y="638" class="txt" text-anchor="middle">地址双检: dec_out A 域 == 读地址?</text>
+  <line x1="745" y1="578" x2="620" y2="578" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="572" class="sub">ecc_decoder_bypass</text>
+  <line x1="620" y1="598" x2="745" y2="598" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="592" class="sub">ecc_decoder_parity_out</text>
+  <line x1="620" y1="622" x2="745" y2="622" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="616" class="sub">Q = dec_out[512:0] -&gt; Q_out[511:0]</text>
+
+  <!-- stage 6: 错误分类/注入 -->
+  <text x="60" y="740" class="tag">stage 6</text>
+  <rect x="200" y="690" width="420" height="90" rx="8" class="box"/>
+  <text x="410" y="712" class="bt" text-anchor="middle">标志寄存: syndrom_ff / outen_ff / a_ecc_dec_ff</text>
+  <text x="410" y="732" class="txt" text-anchor="middle">a_ecc_dec_ff -&gt; 错误分类与注入映射</text>
+  <text x="410" y="752" class="txt" text-anchor="middle">fault_injection 重映射</text>
+  <line x1="620" y1="708" x2="745" y2="708" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="702" class="sub">latent_err</text>
+  <line x1="620" y1="732" x2="745" y2="732" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="726" class="sub">mission_err</text>
+  <line x1="620" y1="756" x2="745" y2="756" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="745" y="750" class="sub">ecc_error_type[1:0]</text>
+</svg>
