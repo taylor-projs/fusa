@@ -8,7 +8,7 @@
 
 | 章 | 目录 | 顶层模块 | 配置总线 | 功能一句话 |
 |----|------|----------|----------|------------|
-| 1 | 1.hang_prot | `hang_prot_top` (+ mcu2main / main2mcu 两个集成变体) | mbus leaf | AXI4 互连挂死检测与自动恢复 (SLVERR dummy 排空) |
+| 1 | 1.hang_prot | `hang_prot_mcu2main_top` / `hang_prot_main2mcu_top` (两个单向顶层; v3.5 起 `hang_prot_top` 壳层已并入 mcu2main) | mbus leaf | AXI4 互连挂死检测与自动恢复 (SLVERR dummy 排空; 出向自动恢复 + 入向隔离/QSR) |
 | 2 | 2.parity | `edc_core` (×N, 单 AXI 口旁路) + `edc_top` (聚合器) | mbus leaf | NIC 每条 AXI4 端口的旁路 EDC 监控 (SIDE 定 GEN/CHK 角色) + per-core fault/rail 聚合 |
 | 3 | 3.ia_bus_timeout | `ia_bus_timeo_core` (×N, 单口) + `ia_bus_timeo_top` (聚合器) | mbus leaf | AXI 握手 req2accept/req2resp 超时监视 (只观测) + per-core fault/rail 聚合 |
 | 4 | 5.cmm | `cmm_top` | mbus leaf | N_DUT 路时钟监视 (窗口比值计数, FAIL_FREQ/DEAD) |
@@ -59,6 +59,7 @@
   - `reg_par_fault` = **寄存器面奇偶** —— 仅存储型寄存器 PERR 组 (在途命令奇偶位保留在 STA_PAR 供诊断, 但事件聚合走 esm_fault);
   - 注错一律 **keyed 源级注入**: 点亮对应 status 位、经同一 粘滞→轨 逻辑出 ESM (禁止裸轨 OR; 聚合器的 PATH_SELFTEST 0x28 为例外 —— 通路连通性测试, 掩码可读回即溯源), 严重级 (中断/fatal) 由 ESM 通道映射 G1/G2 决定, 不由轨名承载。
   - 2026-11-13 落地: int_prot (新 STA_FAULT 0x1C + PERR6 组)、dup_ctrl (新 STA_FAULT 0x20)、audio_sram/axi2sram (CNT_DUP 迁 fault 面 / PERR_ORG/DERR_ORG 迁 err 面 + STA_FAULT 源查询面 + FLT_SELFTEST)、cmm (在途自 reg_par_fault 剥离入 esm_fault)、hang_prot/cmm/reset_checker 端口改名 (err_event/fu_fault/cmm_err/cmm_fu/rst_por_n_err/rchk_par_fault → esm_err/esm_fault/reg_par_fault)。reset_checker 暂无 esm_fault 轨 (无自身故障检测机制, 文档化)。
+  - 2026-11-16 二轮补漏 (parity/ia/hang 在途剥离): edc_regfile (PERR13/14 事件 → esm_fault)、edc_top 与 ia_bus_timeo_top 聚合器 (自体 cmd_r → esm_fault)、ia_bus_timeo_regfile (PERR9 lane + PERR10 cmd_r → esm_fault)、hang_prot (PERR9/PERR10 → regfile iflt_lvl 经 2FF 折入 top esm_fault, 三 top 同款)。诊断位全部保留, reg_par_fault 全仓纯寄存器面。
 
 ---
 
@@ -66,7 +67,7 @@
 
 ### 1.1 概述
 
-hang_prot 是 AXI4 互连超时监视与恢复单元（参考 TI Hercules RM57Lx TRM SPNU562A ch.3 SCM / ch.4.3.5）：内联在单 master 通路上（单元拥有通路，m 侧=从机口、s 侧=主机口），监视器观察恢复 shim 的 m 侧握手，地址相（req2accept）/数据相（req2resp）超时即置粘滞 `esm_err`，其上升沿触发恢复流程——shim 阻断新请求、吸收迟到响应、以带正确原始 id、LEN 精确的 SLVERR dummy 响应退休全部在途事务，账本（rd/wr otd + skid 槽）清零后自动退回直通；SW 只需 W1C 状态位（+可选 TO_CLR），后续处置由 ESM 决定。配置面为 mbus leaf（单拍 `ce`、零等待、命令奇偶 `par`、字对齐），数据面为 AXI4（`m_*` / `s_*` 两组五通道）。顶层文件 `hang_prot_top.sv`，模块名 `hang_prot_top`（单主控顶层）。
+hang_prot 是 AXI4 互连超时监视与恢复单元（参考 TI Hercules RM57Lx TRM SPNU562A ch.3 SCM / ch.4.3.5）：内联在单 master 通路上（单元拥有通路，m 侧=从机口、s 侧=主机口），监视器观察恢复 shim 的 m 侧握手，地址相（req2accept）/数据相（req2resp）超时即置粘滞 `esm_err`，其上升沿触发恢复流程——shim 阻断新请求、吸收迟到响应、以带正确原始 id、LEN 精确的 SLVERR dummy 响应退休全部在途事务，账本（rd/wr otd + skid 槽）清零后自动退回直通；SW 只需 W1C 状态位（+可选 TO_CLR），后续处置由 ESM 决定。配置面为 mbus leaf（单拍 `ce`、零等待、命令奇偶 `par`、字对齐），数据面为 AXI4（`m_*` / `s_*` 两组五通道）。顶层为两个单向单元：出向 `hang_prot_mcu2main_top.sv`（岛→main，自动恢复）、入向 `hang_prot_main2mcu_top.sv`（main→岛，隔离 + keyed QSR_REL 释放；**v3.5 起 `hang_prot_top` 壳层已删除、内容并入 mcu2main**）。
 
 主要子模块（各一句话，详见各自头注释）：
 
@@ -78,7 +79,7 @@ hang_prot 是 AXI4 互连超时监视与恢复单元（参考 TI Hercules RM57Lx
 
 ### 1.2 参数 (Parameters)
 
-`hang_prot_top` 全部 parameter（共 14 个）：
+`hang_prot_mcu2main_top` 全部 parameter（共 14 个；v3.5 合并前以 `hang_prot_top` 名义发布，参数集等同，下表沿用）：
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
@@ -99,7 +100,7 @@ hang_prot 是 AXI4 互连超时监视与恢复单元（参考 TI Hercules RM57Lx
 
 ### 1.3 IO 接口 (Ports)
 
-`hang_prot_top` 全部端口按功能分组如下（方向/位宽照端口声明转录）。
+`hang_prot_mcu2main_top` 全部端口按功能分组如下（方向/位宽照端口声明转录；v3.5 合并前的 `hang_prot_top` 端口集与之逐名一致）。
 
 时钟 / 复位 / DFT / s 域复位保持：
 
@@ -202,21 +203,19 @@ FuSa / ESM 输出（双轨，aclk 域；应路由到不同 ESM 组，使坏掉�
 |---|---|---|---|
 | `esm_err` | output | 1 | 真实总线超时事件，电平（粘滞 OR），双轨真轨 |
 | `esm_err_n` | output | 1 | `esm_err` 双轨补码 |
-| `esm_fault` | output | 1 | 监视器完整性故障，粘滞，双轨真轨 |
+| `esm_fault` | output | 1 | 监视器自身故障：完整性（fu 粘滞）∨ 在途命令奇偶事件（PERR9/PERR10，2026-11-16 三轨统一经 2FF 折入），双轨真轨 |
 | `esm_fault_n` | output | 1 | `esm_fault` 双轨补码 |
-| `reg_par_fault` | output | 1 | regfile 寄存器奇偶故障（全部 PERR + 自检锁存的 OR），双轨真轨 |
+| `reg_par_fault` | output | 1 | regfile 寄存器面奇偶故障（存储型 PERR + 自测锁存的 OR，**不含在途事件**），双轨真轨 |
 | `reg_par_fault_n` | output | 1 | `reg_par_fault` 双轨补码 |
 | `skid_fault` | output | 1 | 边界完整性聚合故障，粘滞，双轨真轨（recover 内 wskid one-hot/载荷奇偶/计数器副本 + mode_r 轨 + ID-FIFO 奇偶/副本 + 本 wrapper 边沿检测轨故障；真轨 OR / 假轨 AND 聚合） |
 | `skid_fault_n` | output | 1 | `skid_fault` 双轨补码 |
 
-恢复 / 功能状态输出（双轨，aclk 域，源寄存器内部双轨）：
+恢复 / 功能状态输出（~~双轨引脚~~ **v3.4 起寄存器化退役**，读 0x30 `STA_RCV`；下表为 v3.2 旧引脚，仅存目）：
 
 | 端口 | 方向 | 位宽 | 说明 |
 |---|---|---|---|
-| `recover_active` | output | 1 | 恢复进行中（电平） |
-| `recover_active_n` | output | 1 | `recover_active` 双轨补码 |
-| `recover_done` | output | 1 | 恢复完成 |
-| `recover_done_n` | output | 1 | `recover_done` 双轨补码 |
+| ~~`recover_active`~~ | ~~output~~ | 1 | **已退役** → `STA_RCV[0]` ACTIVE（出向=mode_r / 入向=blk_r） |
+| ~~`recover_done`~~ | ~~output~~ | 1 | **已退役** → `STA_RCV[1]` DONE（出向=recover_exit / 入向=quiesce_exit，粘滞 W1C） |
 
 ### 1.4 寄存器 (Register Map)
 
@@ -232,7 +231,7 @@ FuSa / ESM 输出（双轨，aclk 域；应路由到不同 ESM 组，使坏掉�
 - 静息读值：`STA_PAR` 静息读 0x00000002（仅 PAR_FAULT_N=1）；`CFG_REGST` 与地址空洞读恒 0。
 - 复位：`mbus_rstn` 与 `rstn`（aclk 域，均异步低有效）必须系统级同时断言，否则 CDC 握手失对齐（集成约束）。注：design.md §10.2 写作"presetn 与 rst 同源同步释放"，RTL 端口名为 `mbus_rstn` / `rstn`（无 presetn），以 RTL 为准。
 
-寄存器总表（11 个寄存器 0x00–0x28 + ID 殿后 0xFC）：
+寄存器总表（13 个寄存器 0x00–0x30 + ID 殿后 0xFC；0x2C/0x30 为 v3.4/v3.6 增补）：
 
 | 偏移 | 寄存器 | 访问 | 复位值 | 说明 |
 |---|---|---|---|---|
@@ -247,6 +246,8 @@ FuSa / ESM 输出（双轨，aclk 域；应路由到不同 ESM 组，使坏掉�
 | 0x20 | `SCMIAFUSRC` | W1C/R | 0x00000000 | 完整性故障源（含顶位 OTDSAT） |
 | 0x24 | `STA_PAR` | W1C/R | 0x00000002 | 寄存器奇偶状态（house standard，倒数第 3；静息读 0x2） |
 | 0x28 | `CFG_REGST` | WO | — | 寄存器奇偶自检控制（house standard，倒数第 2；读恒 0） |
+| 0x2C | `SCMSWRST` | W(key)/R | 0x00000000 | v3.4：出向软复位保持窗（原 sl_sw_rst_on 引脚退役）。[7:4] key=1010 + [3:0] d=4 码（1111=窗开 0x000000_00AF / 0000=窗关 0x0000_00A0），SEC 纠 1 写回，平局向遏制侧；读回 SEC 后真值 |
+| 0x30 | `STA_RCV` | R/W1C | 0x00000000 | v3.6 出入向统一：[0] ACTIVE 跟随（出向=mode_r 恢复态 / 入向=blk_r 隔离态）；[1] DONE 粘滞（出向=recover_exit / 入向=quiesce_exit 脉冲，set 优先于 W1C）。S2 序列第 4 步 poll 本寄存器确认隔离退出 |
 | 0xFC | `ID` | R | 0x4841_0001 | "HA" v1（house standard 殿后） |
 
 各寄存器位域：
@@ -284,7 +285,7 @@ FuSa / ESM 输出（双轨，aclk 域；应路由到不同 ESM 组，使坏掉�
 | [8] | TO_CLR | W 脉冲 | 重启实时计数器（仅允许在业务静默/隔离态使用——会清在途账） |
 | [9] | SELFTEST | W 脉冲 | 强制比较器触发，证明 esm_err 上报链路 |
 | [10] | FU_SELFTEST | W 脉冲 | 强制 esm_fault，证明监视器故障上报链路 |
-| [12] | QSR_REL | W 脉冲 | 入向边界单元（`hang_prot_bdry_in`）隔离释放：仅在 main 保持复位时使用，配合 TO_CLR + W1C 完成服务序列；`hang_prot_top` 中无入向单元，该脉冲悬空 |
+| [12] | QSR_REL | W 脉冲 | 入向边界单元（`hang_prot_bdry_in`）隔离释放：仅在 main 保持复位时使用，配合 TO_CLR + W1C 完成服务序列；mcu2main（出向顶层）中无入向单元，该脉冲悬空，main2mcu 侧有效 |
 
 注（据 design.md §7.2）：v3.3 起 PAR_SELFTEST/REG_SELFTEST/REGSEL 从 SCMCNTRL 移至 `CFG_REGST`（0x28），原 SCMCNTRL [11]/[20]/[19:16] 位写入为无害忽略。
 
@@ -321,9 +322,9 @@ FuSa / ESM 输出（双轨，aclk 域；应路由到不同 ESM 组，使坏掉�
 
 | 位 | 字段 | 访问 | 说明 |
 |---|---|---|---|
-| [0] | PAR_FAULT | R（电平）/W1C | = 全部 PERR 位与自检锁存的 OR；直连 ESM 双轨 `reg_par_fault`/`reg_par_fault_n`；写 [0] 仅清自检锁存，各 PERR 位在各自 bit 清除 |
+| [0] | PAR_FAULT | R（电平）/W1C | = 寄存器面 PERR 位（存储型）与自检锁存的 OR（**组 9/10 在途事件不在电平，走 esm_fault**，2026-11-16 三轨统一）；直连 ESM 双轨 `reg_par_fault`/`reg_par_fault_n`；写 [0] 仅清自检锁存，各 PERR 位在各自 bit 清除 |
 | [1] | PAR_FAULT_N | R | PAR_FAULT 双轨补码 |
-| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，bit = 2+组号；组 k = 偏移 0x4*k 的寄存器（组 4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总，一次 W1C 写两域同清）；组 9 = 在途写锁存奇偶（latch lane，无注错目标）；组 10 = PERR_CMD 命令在飞奇偶（W=1 wrap：sticky 体即 wrap 存储，写 bit[12] 是一次重写并重算奇偶） |
+| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，bit = 2+组号；组 k = 偏移 0x4*k 的寄存器（组 4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总，一次 W1C 写两域同清）；组 9 = 在途写锁存奇偶（latch lane，无注错目标）；组 10 = PERR_CMD 命令在飞奇偶（W=1 wrap：sticky 体即 wrap 存储，写 bit[12] 是一次重写并重算奇偶）。**组 9/10 在途事件本体不进 PAR_FAULT 电平与 reg_par_fault 轨，聚合走 esm_fault（2026-11-16 三轨统一；诊断位不变）** |
 
 **CFG_REGST（0x28）**（WO，读恒 0）
 
@@ -451,7 +452,7 @@ qos / region 不在 EDC 站点内，旁路 IP 不触及、不引入端口。
 | `awuser_o` / `wuser_o` / `aruser_o` | output | AWUW / WUW / AWUW | SIDE=0: req EDC 重算驱动总线 user（与 payload 同拍同沿被下游采样，不插拍）；非生成方向恒 0（不接即可） |
 | `buser_o` / `ruser_o` | output | BUW / RUW | SIDE=1: rsp EDC 重算驱动；非生成方向恒 0 |
 | `esm_err` / `esm_err_n` | output | 1 / 1 | 任一站点 sticky err（含注错）→ ESM 中断级（双轨）；真轨同时是 edc_top 聚合器的每 core 输入 |
-| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 任一站点 sticky fault（organic）→ ESM fatal 级（双轨） |
+| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 监视器自身故障：任一站点 sticky fault（organic）∨ 在途命令奇偶事件（PERR13/PERR14 粘滞，2026-11-16 三轨统一折入）→ ESM（双轨） |
 | `reg_par_fault` / `reg_par_fault_n` | output | 1 / 1 | 任一寄存器奇偶错（PERR 组）→ ESM fatal 级（独立事件：寄存器损坏与总线数据错是不同失效模式） |
 | `irq` | output | 1 | \|(err_st & irqen)（冗余通知级，单轨，mbus 域输出） |
 
@@ -467,8 +468,8 @@ ESM 侧必须校验真/反轨互补（真轨 != ~反轨 即汇聚通路自身故
 | `core_fault_i` / `core_fault_i_n` | input | NUM_CORE | <- 各 core esm_fault 真轨 / 反轨 |
 | `core_par_i` / `core_par_i_n` | input | NUM_CORE | <- 各 core reg_par_fault 真轨 / 反轨 |
 | `esm_err` / `esm_err_n` | output | 1 / 1 | 聚合 sticky err（双轨）→ ESM |
-| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 聚合 sticky fault（双轨）→ ESM |
-| `reg_par_fault` / `reg_par_fault_n` | output | 1 / 1 | 聚合寄存器奇偶（含各 core STA_PARCORE，双轨）→ ESM |
+| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 聚合 sticky fault ∨ 自身在途命令奇偶事件（2026-11-16 三轨统一折入，双轨）→ ESM |
+| `reg_par_fault` / `reg_par_fault_n` | output | 1 / 1 | 聚合寄存器面奇偶（含各 core STA_PARCORE；在途事件不在内，双轨）→ ESM |
 | `rail_fault` / `rail_fault_n` | output | 1 / 1 | 输入轨互补违例（第 4 对 ESM 双轨）→ ESM |
 
 core_*_i/_n 是各 core regfile（mbus_clk 域）的寄存器输出 —— mbus 树同源同时钟，同域直采粘滞，无需同步器；若集成上有异构时钟的 core，必须在源侧同步后再接入（本模块不做）。
@@ -564,7 +565,7 @@ fail-safe 语义：任何 1bit 翻转 → 非法码 → 按关处理，注错失
 | [16:2] | PERR14..PERR0 | W1C，bit = 2 + 组号：每位清除对应寄存器的奇偶粘滞。mbus 域组当拍直接清；mod 域组（7/8/9/11/12）经握手 req_edge 译码清（一个 SW 写，两域同步清除）；组 14（bit16）= 命令在途奇偶（APB→mbus，本域检查），W1C 当拍清 |
 | [31:17] | — | 保留，读 0 |
 
-PERR 组号：0=CFG_INJ_EN 图像（mbus）；1=CFG_INJ_FORCE 图像；2=CFG_IRQEN 图像；3=CFG_INJ_POS（mbus 本体）；4=**（退役）**原 CLR_MASK —— W1C 改锁存+req_edge 一次性掩码后无 mbus 域累加寄存器，组号保留不重排（bit6 恒 0，REGSEL=4 无目标）；5=STA_ERR 镜像（err_s2，mbus）；6=STA_FAULT 镜像（fault_s2）；7=inj_en_q 影子（mod）；8=inj_force_q 影子（mod）；9=irqen_q 影子（mod）；10=**（退役）**原 inj_pos_q 影子 —— pos 不同步后无 mod 域影子（bit12 恒 0）；11=err_st sticky（mod）；12=fault_st sticky（mod）；13=在途写锁存奇偶（mbus 域锁存通道，检查在 mbus 侧）；14=命令在途奇偶（APB→mbus，mbus 本域 ce 拍检查；bit16）。
+PERR 组号：0=CFG_INJ_EN 图像（mbus）；1=CFG_INJ_FORCE 图像；2=CFG_IRQEN 图像；3=CFG_INJ_POS（mbus 本体）；4=**（退役）**原 CLR_MASK —— W1C 改锁存+req_edge 一次性掩码后无 mbus 域累加寄存器，组号保留不重排（bit6 恒 0，REGSEL=4 无目标）；5=STA_ERR 镜像（err_s2，mbus）；6=STA_FAULT 镜像（fault_s2）；7=inj_en_q 影子（mod）；8=inj_force_q 影子（mod）；9=irqen_q 影子（mod）；10=**（退役）**原 inj_pos_q 影子 —— pos 不同步后无 mod 域影子（bit12 恒 0）；11=err_st sticky（mod）；12=fault_st sticky（mod）；13=在途写锁存奇偶（mbus 域锁存通道，检查在 mbus 侧）；14=命令在途奇偶（APB→mbus，mbus 本域 ce 拍检查；bit16）。**2026-11-16 三轨统一：组 13/14 的在途事件本体不进 PAR_FAULT（bit0）电平与 reg_par_fault 轨，聚合走 esm_fault；诊断位 bit15/bit16 保留。**
 
 **CFG_REGST（0xB0，W，读回 0）**
 
@@ -610,7 +611,7 @@ PERR 组号：0=CFG_INJ_EN 图像（mbus）；1=CFG_INJ_FORCE 图像；2=CFG_IRQ
 | 0x28 | CFG_ESMTEST | W（key=0xA）/R | 0x0 | **PATH_SELFTEST** ESM 通路自测掩码：[3:0] key（不符整写忽略）；[7:4] TST_MSK 带 key 装载（读回 = 当前掩码），bit0→esm_err / bit1→esm_fault / bit2→reg_par_fault / bit3→rail_fault，测试位 OR 进对应输出（只添警报不遮蔽；忘记释放 = 持续误报，key+0000 释放）。签名 = 通道报 1 而一切 STA 源读 0（"有 fault 无源"） |
 | 0xFC | ID | RO | 0xEDC02000\|IDX | 聚合器标识 |
 
-聚合器 PERR 组号：0=STA_ERR / 1=STA_FAULT / 2=命令在途奇偶 / 3=STA_PARCORE / 4=STA_RAIL / 5=CFG_ESMTEST。
+聚合器 PERR 组号：0=STA_ERR / 1=STA_FAULT / 2=命令在途奇偶 / 3=STA_PARCORE / 4=STA_RAIL / 5=CFG_ESMTEST。**2026-11-16 三轨统一：组 2 在途事件粘滞（cmd_r）不进 PAR_FAULT 电平与 reg_par_fault 轨，聚合走 esm_fault（组 2 wrap 存储奇偶仍属寄存器面）；STA_PAR bit4 诊断读出不变。**
 
 **ESM 单端集成契约（2026-11-09）**：ESM 输入为单端时连四根正轨，四根 `*_n` 悬空保留（端口不删）；core→top 段六根双轨必须照常全接（互补检查不受影响）。top→ESM 末段在线双轨检查随 `_n` 一起失效（残余，与片内其他单轨网络同级），潜藏故障覆盖改为**周期 PATH_SELFTEST**：装载 msk=1111 → ESM 期望四通道报警 → 装载 0000 → 期望回 0（tie-0/tie-1 双向都抓）；诊断间隔 DTI 由 ESM 周期任务定义并写入 safety case。
 
@@ -689,8 +690,8 @@ ia_bus_timeo_core 的全部 parameter：
 | 端口 | 方向 | 位宽 | 说明 |
 |---|---|---|---|
 | `esm_err` / `esm_err_n` | output | 1 / 1 | 真实总线超时（esm_err 电平）；真轨同时是聚合器的每 core 输入 |
-| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 监视器完整性故障（esm_fault 粘滞） |
-| `reg_par_fault` / `reg_par_fault_n` | output | 1 / 1 | regfile 寄存器奇偶故障，粘滞 |
+| `esm_fault` / `esm_fault_n` | output | 1 / 1 | 监视器自身故障：完整性（esm_fault 粘滞）∨ 在途命令奇偶事件（2026-11-16 三轨统一折入） |
+| `reg_par_fault` / `reg_par_fault_n` | output | 1 / 1 | regfile 寄存器面奇偶故障（存储型 PERR + 自测锁存，**不含在途事件**），粘滞 |
 
 #### 3.3.5 ia_bus_timeo_top — 聚合器端口（单 mbus 域）
 
@@ -723,7 +724,7 @@ ia_bus_timeo_core 的全部 parameter：
 | 0x18 | SCMTHRESH1 | W/R | 0x000000FF | [15:0] REQ2RESP_MAX（req2resp 阈值） |
 | 0x1C | SCMIAFUSTAT | W1C/R | 0x00000000 | [0] FU_FAULT（W1C）；[1] FU_FAULT_N / [2] ERR_EVENT / [3] ERR_EVENT_N（RO 双轨）；[4] CFG_BUSY（RO）；[5] WR_DROPPED（W1C） |
 | 0x20 | SCMIAFUSRC | W1C/R | 0x00000000 | [6:0] 完整性故障源（非零写同时清 FU_FAULT + FUSRC） |
-| 0x24 | STA_PAR | W1C/R | 0x00000002 | 寄存器奇偶状态（house standard）：[0] PAR_FAULT / [1] PAR_FAULT_N / [12:2] PERR（bit = 2+组号）；静息读 0x2 |
+| 0x24 | STA_PAR | W1C/R | 0x00000002 | 寄存器奇偶状态（house standard）：[0] PAR_FAULT（寄存器面，在途事件不进电平，2026-11-16 三轨统一）/ [1] PAR_FAULT_N / [12:2] PERR（bit = 2+组号）；静息读 0x2 |
 | 0x28 | CFG_REGST | WO | — | 寄存器奇偶自检控制（house key [3:0]=1010）：[4] REG_SELFTEST + [11:8] REGSEL + [5] PAR_SELFTEST；读恒 0 |
 | 0xFC | ID | R | 0x4941_0002 | "IA" v1.3 单口两流版（house standard 殿后；v1 多主端口向量版=0x4941_0001）；仅 `addr[7:0]==8'hFC` 精确译码 |
 
@@ -816,9 +817,9 @@ ia_bus_timeo_core 的全部 parameter：
 
 | 位 | 字段 | 属性 | 说明 |
 | --- | --- | --- | --- |
-| [0] | PAR_FAULT | R（电平）/ W1C | 寄存器奇偶故障 = 全部 PERR 位与自检锁存的 OR；直连 ESM 双轨 reg_par_fault/_n。写 [0] 仅清除自检锁存 |
+| [0] | PAR_FAULT | R（电平）/ W1C | 寄存器面奇偶故障 = 存储型 PERR 位与自检锁存的 OR（**组 9/10 在途事件不在电平，走 esm_fault**，2026-11-16 三轨统一）；直连 ESM 双轨 reg_par_fault/_n。写 [0] 仅清除自检锁存 |
 | [1] | PAR_FAULT_N | R | PAR_FAULT 双轨补码 |
-| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，**bit = 2+组号**：组 k = 偏移 0x4·k 的寄存器（组 4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总）；组 9 = 在途写锁存奇偶（latch lane，无注错目标）；组 10 = PERR_CMD mbus 命令奇偶（W=1 wrap，写 bit12 是一次 wrap 重写、重算奇偶）。坏奇偶写被阻断、坏奇偶读门控为 0 |
+| [12:2] | PERR10..PERR0 | W1C/R | 每组奇偶错误，**bit = 2+组号**：组 k = 偏移 0x4·k 的寄存器（组 4..6 = mbus 镜像 + aclk 影子两处 sticky 汇总）；组 9 = 在途写锁存奇偶（latch lane，无注错目标）；组 10 = PERR_CMD mbus 命令奇偶（W=1 wrap，写 bit12 是一次 wrap 重写、重算奇偶）。坏奇偶写被阻断、坏奇偶读门控为 0。**组 9/10 在途事件本体不进 PAR_FAULT 电平与 reg_par_fault 轨，聚合走 esm_fault（2026-11-16 三轨统一；诊断位不变）** |
 | [31:13] | — | 保留，读 0 | |
 
 每个 PERR 位清除对应组在**两个域**的 sticky（mbus 镜像同拍、aclk 影子经握手 req_edge 拍）；故障仍存活时重新置位。
@@ -843,7 +844,7 @@ ia_bus_timeo_core 的全部 parameter：
 
 #### 3.4.4 ia_bus_timeo_top 聚合器寄存器（独立 mbus leaf, [NUM_CORE-1:0] 位图）
 
-布局与 2.4.4 edc_top 完全同构（镜像轨校验版）：0x00 STA_ERR / 0x04 STA_FAULT（RW1C per-core sticky）, 0x08 STA_RAWERR / 0x0C STA_RAWFLT（RO 当前电平）, 0x10 STA_PARCORE / 0x14 STA_RAWPAR（per-core 寄存器奇偶）, 0x18 STA_PAR（[0]/[1]/[7:2] PERR5..0, 组 0=STA_ERR 1=STA_FAULT 2=命令在途 3=STA_PARCORE 4=STA_RAIL 5=CFG_ESMTEST）, 0x1C CFG_REGST（REGSEL 0..5）, 0x20 STA_RAIL / 0x24 STA_RAWRAIL（输入轨互补违例）, 0x28 CFG_ESMTEST（PATH_SELFTEST keyed 掩码, 同 2.4.4）, 0xFC ID = `0x4941_2000 | IDX`（"IA" 聚合器版）。ESM 单端集成契约亦同 2.4.4。语义细节见 2.4.4。
+布局与 2.4.4 edc_top 完全同构（镜像轨校验版）：0x00 STA_ERR / 0x04 STA_FAULT（RW1C per-core sticky）, 0x08 STA_RAWERR / 0x0C STA_RAWFLT（RO 当前电平）, 0x10 STA_PARCORE / 0x14 STA_RAWPAR（per-core 寄存器奇偶）, 0x18 STA_PAR（[0]/[1]/[7:2] PERR5..0, 组 0=STA_ERR 1=STA_FAULT 2=命令在途（事件本体走 esm_fault，三轨统一） 3=STA_PARCORE 4=STA_RAIL 5=CFG_ESMTEST）, 0x1C CFG_REGST（REGSEL 0..5）, 0x20 STA_RAIL / 0x24 STA_RAWRAIL（输入轨互补违例）, 0x28 CFG_ESMTEST（PATH_SELFTEST keyed 掩码, 同 2.4.4）, 0xFC ID = `0x4941_2000 | IDX`（"IA" 聚合器版）。ESM 单端集成契约亦同 2.4.4。语义细节见 2.4.4。
 
 ### 3.5 信息来源
 

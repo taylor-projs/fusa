@@ -1,8 +1,8 @@
 ﻿# hang_prot 总线挂起监控与域边界隔离 —— 统一设计文档（v2）
 
-**模块族**：`hang_prot_core`（监控核）/ `hang_prot_recover`（出向恢复桥）/ `hang_prot_bdry_in`（入向边界单元）/ `hang_prot_wskid`（双 slot W skid，两单元共享）/ `hang_prot_top`（单主控顶层）/ `hang_prot_regfile` + `reg_wrap`（mbus leaf 寄存器）
+**模块族**：`hang_prot_core`（监控核）/ `hang_prot_recover`（出向恢复桥）/ `hang_prot_bdry_in`（入向边界单元）/ `hang_prot_wskid`（双 slot W skid，两单元共享）/ `hang_prot_mcu2main_top`（单主控顶层）/ `hang_prot_regfile` + `reg_wrap`（mbus leaf 寄存器）
 **参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM / 4.3.5；Safety Manual SPNU575；ARM AXI4（AMBA 4）；IEC 61508:2010 SIL2
-**文档版本**：v3.3（v3.2：mcore 感知读类重映射；v3.3：寄存器地图统一 house standard——SCMREGPARSTAT 更名 STA_PAR、自检键拆出 CFG_REGST 0x28、ID 殿后 0xFC，见 §7.1；v3.1：SIL2 FuSa 全机制注入验证）
+**文档版本**：v3.7（v3.7：`dum_cls` 两级优先——恢复/隔离期 dummy 引擎**先续完被切断的类**（`ar_occ≠0 && rbeat_cnt≠0`）再选最低未清类，m 侧 R 流保持 AXI4 无交织（拍间可间隔、不得插入他事务拍）；出向 recover 同构修法，TB-A P32 / TB-B P30 定向场景 + 两 TB 收集器全程无交织互锁，§3.6/D20 同步修正"跨类可交错"的旧论断）；v3.6（v3.6：入向隔离状态寄存器化——bdry_in 导出 `quiesce_exit` 脉冲、main2mcu 接 `block_active`/`quiesce_exit` 进 0x30 STA_RCV，ACTIVE=blk_r 跟随/DONE=quiesce_exit 粘滞，出入向 SW 读回契约统一）；v3.5（v3.5：hang_prot_top 并入 hang_prot_mcu2main_top（壳层删除，mcu2main 即完整单元，层次降一层，TB_GEN 直接例化）；v3.4（v3.4：sl_sw_rst_on 寄存器化 0x2C SCMSWRST（key+d=4 码+SEC 单 bit 纠正写回，平局向遏制侧）+ 恢复状态寄存器化 0x30 STA_RCV（ACTIVE 跟随/DONE 粘滞 W1C），双轨输入引脚与 recover_active/done 输出引脚退役；v3.3：v3.2：mcore 感知读类重映射；v3.3：寄存器地图统一 house standard——SCMREGPARSTAT 更名 STA_PAR、自测键拆出 CFG_REGST 0x28、ID 殿后 0xFC，见 §7.1；v3.1：SIL2 FuSa 全机制注入验证）
 **写法说明**：本文面向学习与交付——每个设计决策给出"备选方案 → 拒绝理由"，关键流程给出逐周期时序推演。
 
 > **v2 相对 v1 的核心变化**
@@ -20,6 +20,13 @@
 > 3. **wopen ≤ 1**（= wr_otd − wr_dlv）：单 slot 下 AW(k+1) 必须等 W(k) 攒齐才能握手。这个不等是过渡态、语义正确（写请求进行中）、自愈、不下溢——**不用管**（§5.7 全情形遍历）。
 > 4. 代价：边界写吞吐一次一笔 burst；req2accept 阈值须覆盖攒齐+补发时间（§10.2）。
 
+> **v2.4 变更（W skid NSLOT 参数化）**
+> `hang_prot_wskid` 从硬连线双槽改为 **NSLOT 参数化环形**（默认 2 = v2.3 行为逐位等价，全参数已贯通 `recover / bdry_in / hang_prot_mcu2main_top / mcu2main / main2mcu`，elaboration 约束 2 ≤ NSLOT ≤ OTD_MAX）：
+> 1. **动机**：AW 提前于 W 数据的 master（"AW 风暴 + 迟到 W"）被 2 槽压成 2 深写发射队列——第 3 笔 AW 等首槽整突发回放完。NSLOT=4/8 直接把 AW-ahead 深度抬到槽数，面积代价 = 每槽 `WSKID_BEATS × (data+strb)` + FuSa 副本。
+> 2. **推广的正确性依据**：环序不变式——分配/攒齐/交付都按环序推进，FILL 槽是环上 `[fill_p, alloc_p)` 连续段（`st[fill_p]` 解码 FILL ⟺ 有 FILL），下一交付槽恒为指针所指。§5.7 的 wopen ≤ NSLOT 有界自解论据对任意有限界携带。
+> 3. **验证**：三 TB 全场景 PASS（默认 NSLOT=2 回归），另以 `-pvalue NSLOT=4` 冒烟 TB-A 全 31 场景 PASS（含 skid 环弧 P19/P20 与 FuSa 注错 P24）。
+> 4. **集成取值**：NSLOT ≤ min(上游 master 实际 AW-ahead 行为, OTD_MAX)；槽是纯面积换发射深度，`wr_otd < OTD_MAX` 全局门不受影响。
+
 > **v2.3 变更（性能修复：双 slot skid + 读多类重映射 id）**
 > 性能分析（M85+DMA → 4 通道交织 DDR）发现 v2.1 的两个吞吐瓶颈：
 > 1. **写 ~50% 占空**：单 slot skid 把"攒齐 slot k"和"补发 slot k"**串行**——攒齐期间 s 侧 W 通道空闲，补发期间 m 侧 W 通道空闲。**双 slot**（`hang_prot_wskid`，两单元共享）：slot k 在 REPLAY 时 slot k+1 可同时 FILL → 写占空 ~100%。wopen ≤ 1 变为 **wopen ≤ 2**（NSLOT），§5.7 的四条论据逐条携带（"1"→"2"）。skid 从两单元**各自内嵌**重构为**共享子模块**（v2.1 后两份代码已完全同构）。
@@ -28,7 +35,7 @@
 > **v2.3 修复（复查发现，随双槽语义审查）**：
 > 3. **WLAST 拍不入 wbuf（严重，重构引入）**：buffer 写保护误写为 `!m_wlast`，但 `beats=fill_cnt+1` 计入尾拍、replay 要读 `wbuf[beats-1]` → **每笔 burst 最后一拍重放陈旧数据**。修复：写保护只看溢出门，WLAST 拍照常入 buffer。
 > 4. **恢复期孤儿 W 拍被无账消费（v2.1 遗留缺口）**：`mode ? 1'b1` 的无条件 sink 把"AW 从未握手"的 W 拍也吞掉（master 合法地 pipeline W 先于 AW 被接收）→ 退出后该 AW 握手开 FILL → 等一个已消费的 WLAST → wopen 卡 1 循环 r2a → 永卡。修复：`m_wready = has_fill && (mode || 溢出门)`——FILL 槽的拍照吞（坑 1 对象，覆盖不变），无槽拍 **stall**（与 normal 态满槽背压同形，退出后 AW 握手开的 FILL 接住）。坑 1 论证更新见 §5.5。
-> 5. **对端复位重启的通道清洁（新 §8.5）**：main 复位重启后其端口 5 通道必须 idle。1b 挂住的 dummy 由 QSR_REL 退出拍撤回（原有机制，时序契约写死）；**2b 卡死的 REPLAY 原无出口**——ESM 复位 main 后重放拍会灌进已忘记 AW 的 main（非预期 wdata）。修复：Unit A 新增 `s_in_rst`（ESM 电平，"main 在复位保持"）：强制进入恢复 + `s_force=s_in_rst∧mode∧wr_otd==0` 受控清槽 + 退出推迟到 `!s_in_rst`。ESM 序列见 §8.5。
+> 5. **对端复位重启的通道清洁（新 §8.5）**：main 复位重启后其端口 5 通道必须 idle。1b 挂住的 dummy 由 QSR_REL 退出拍撤回（原有机制，时序契约写死）；**2b 卡死的 REPLAY 原无出口**——ESM 复位 main 后重放拍会灌进已忘记 AW 的 main（非预期 wdata）。修复：Unit A 新增 `sl_sw_rst_on`（ESM 电平，"main 在复位保持"）：强制进入恢复 + `s_force=sl_sw_rst_on∧mode∧wr_otd==0` 受控清槽 + 退出推迟到 `!sl_sw_rst_on`。ESM 序列见 §8.5。
 
 > **v3.1/v3.2 变更（SIL2 FuSa + mcore 感知读类）**
 > 1. **v3.1 FuSa（§9.2c）**：regfile 奇偶之外，recover/wskid/bdry_in/gen_wrap
@@ -41,8 +48,8 @@
 >    MCORE_REMAP_IDS[k]），其余 master 共享类 0（AR_ID_REMAP）。
 >    N_MCORE 参数化（2/3/…，无需 2 的幂），N_CLS = N_MCORE+1。
 >    TB-A P12 验证（正常路由 + 按类 dummy 排空）。
-> 3. **v3.2 `s_in_rst` 双轨（§8.5）**：ESM 复位保持电平改为互补轨对
->    `{s_in_rst, s_in_rst_n}`——单轨 stuck-0 会静默丢掉复活 main 的通道
+> 3. **v3.2 `sl_sw_rst_on` 双轨（§8.5；v3.4 起寄存器化 0x2C，轨对引脚退役）**：ESM 复位保持电平改为互补轨对
+>    `{sl_sw_rst_on, sl_sw_rst_on_n}`——单轨 stuck-0 会静默丢掉复活 main 的通道
 >    清洁保护（危险失效），stuck-1 无限锁死通路。失配 → 强制进入 +
 >    退出阻塞 + 粘滞上报（与内部完整性故障同语义）。TB-A P13 注入
 >    验证。
@@ -67,7 +74,7 @@
 
 ## 1. 设计目标与场景
 
-### 1.1 单主控场景（hang_prot_top 的本命场景）
+### 1.1 单主控场景（hang_prot_mcu2main_top 的本命场景）
 
 | # | 目标 | 判据 |
 |---|---|---|
@@ -161,7 +168,7 @@ v2 新增注意：ID FIFO 满造成的 `m_arready=0` 与 slave 慢造成的 `arr
 2. **ID FIFO**（每类深度 = OTD_MAX，与监视器 otd 上限一致；**全局**监视器计数 = 各类 FIFO 水位之和，两者由**同一组握手事件**驱动，不可能漂移；全局背压 `rd_otd < OTD_MAX` 保证任何一类不可能超深）：
    - `ar_fifo[cls]`：push `{m_arid, m_arlen}` 于 m 侧 AR 握手（按请求类），pop 于 m 侧 RLAST 握手（按返回类）；`rbeat_cnt[cls]` 记该类头部条目已交付拍数。
    - `aw_fifo`：push `{m_awid}` 于 m 侧 AW 握手，pop 于 m 侧 B 握手；另有 `wm/wp` 两个进度指针（§5.3）。
-3. **id 还原在任何模式都生效**：下游回来的 rid/bid 永远是重映射 id，master 必须看到自己的原始 id → 正常模式 `m_rid` 按 **s_rid 的类域**选对应类 FIFO 头；恢复模式 dummy 引擎自选类（当前最低未清类）→ 同一套 FIFO。正常/恢复走**同一逻辑**——dummy 响应自然带正确的原始 id。
+3. **id 还原在任何模式都生效**：下游回来的 rid/bid 永远是重映射 id，master 必须看到自己的原始 id → 正常模式 `m_rid` 按 **s_rid 的类域**选对应类 FIFO 头；恢复模式 dummy 引擎自选类（两级：**断流中的类优先**，否则最低未清类，v3.7）→ 同一套 FIFO。正常/恢复走**同一逻辑**——dummy 响应自然带正确的原始 id。
 4. **精确 len**：dummy R 按剩余拍数补齐到 len+1（按所选类的头部条目）。
 
 ### 3.2 ID 重映射为什么让设计"自然"
@@ -178,11 +185,11 @@ v2 新增注意：ID FIFO 满造成的 `m_arready=0` 与 slave 慢造成的 `arr
 - master 原来用不同 id 做的响应并行度被**类内**串行化（同 id 必须保序）——v2.3 多类重映射已把**跨 master** 的串行化拆开（§3.6），类内串行化对单 master 无损（边界单口、保序交付）；
 - 需要寄存器/参数配置重映射 id 值，且 id 宽度内不得与真实路由需求冲突（重映射 id 对 leaf 只是一个普通 id）；多类时 `AR_ID_REMAP` 低 CLSW 位必须为 0（类域叠加位，综合期检查）。
 
-### 3.3 拓扑（hang_prot_top）
+### 3.3 拓扑（hang_prot_mcu2main_top）
 
-![hang_prot_top 拓扑](hang_prot_fig3_top_topology.svg)
+![hang_prot_mcu2main_top 拓扑](hang_prot_fig3_top_topology.svg)
 
-*图 3: hang_prot_top 拓扑——regfile 居 mbus_clk 域（CDC 收编于内：写 toggle 握手 / 读 2FF 同步），monitor+recover bridge 居 ia_bus_aclk 域；监控观察点在 bridge m 侧*
+*图 3: hang_prot_mcu2main_top 拓扑——regfile 居 mbus_clk 域（CDC 收编于内：写 toggle 握手 / 读 2FF 同步），monitor+recover bridge 居 ia_bus_aclk 域；监控观察点在 bridge m 侧*
 
 ### 3.4 关键架构决策：观察点放在 bridge 的 m 侧
 
@@ -231,8 +238,16 @@ HOL（head-of-line blocking）。
   每类 FIFO 头 = 该类下一笔应还的事务。跨类完成顺序任意合法。共享类内
   多个 master 的事务按请求序在该类内完成——与 v2 单 id 行为一致。
 - **返回路由**：正常模式由 `s_rid` 低 CLSW 位指出当前 R beat 属于哪类（leaf
-  回的就是我们发出的 remap id）；恢复模式 dummy 引擎自选当前最低未清类
-  （`dum_cls`），各类 dummy 可交错——跨类本来无序，不存在交错违例。
+  回的就是我们发出的 remap id）；恢复模式 dummy 引擎按 `dum_cls` 两级优先
+  选类（v3.7）：**先续完"断流中"的类**（`ar_occ≠0 && rbeat_cnt≠0`——进入
+  恢复那一刻正交付到一半的突发），没有才选最低未清类。**事务间**完成次序
+  跨类自由，但**一个事务的 beat 之间不得插入另一事务的 beat**（AXI4 R 通道
+  无交织）——拍间允许任意间隔（`m_rready` 停拍），交织则违例。不变式：
+  任意时刻至多一个类 `rbeat_cnt≠0`（正常期透传流一次只交付一个突发；
+  恢复期 tier-2 先清断流类、其余各类从 0 完整跑完；恢复期 `m_arready=0`
+  无新 AR，更低类不会中途出现，选类在断流突发 pop 前稳定）。旧版
+  "各类 dummy 可交错"的论断把**事务间次序自由**误当**拍级交织合法**，
+  v3.7 修正（两单元同构，W 侧对应规则 = skid "REPLAY completes"）。
 - **每类占用计数器 `ar_occ[c]`**（不能用指针相等判空：单类可占满全局
   OTD_MAX 预算 → 满环 wr==rp 误读为空）：与指针/监视器 rd_otd 同一组
   握手事件驱动，账本不漂移；Σar_occ = rd_otd。用途：dummy 引擎选类、
@@ -313,6 +328,63 @@ esm_err = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触发�
 
 **esm_err 与 esm_fault 刻意分开**：坏掉的监控器不能和真总线超时不可区分——各走各的 ESM 组。
 
+### 4.5 事件/故障轨速查：esm_err / esm_fault / skid_fault（+ reg_par_fault）
+
+三个安全输出回答三个不同的问题（2026-11-13 全仓三轨统一后命名；
+`reg_par_fault` 为第三轨，见 §7.6）：
+
+| 轨 | 回答的问题 | 分类（规则 25） | 置位/清除 | ESM 组 |
+|---|---|---|---|---|
+| `esm_err`（原 err_event） | **被监视的总线真挂死了吗？** | 监控职责错误 | 各流 sticky 置位，W1C 清；**上升沿**触发恢复 | err 组（中断级） |
+| `esm_fault`（原 fu_fault） | **监视器自己坏了吗？** | 监视器自身完整性故障 | 粘滞，`fu_w1c` 清（连 `fu_src` 一起清） | fault 组（服务/修复级） |
+| `skid_fault` | **边界数据通路单元坏了吗？** | 边界完整性（自身故障类别，独立第 4 轨，同 cmm `cfg_hang`/edc `rail_fault` 先例） | 粘滞，**仅复位清**（瞬时 SEU 也留案底） | 独立 ESM 组 |
+
+#### esm_err 的全部来源（每流独立 sticky，NUM_IA = 2×NUM_M 条流）
+
+`esm_err = |r2a_st | |r2r_st`（SCMIAERR0STAT / SCMIAERR1STAT 之源或）：
+
+| 源 | 流水相 | 判定（计入超时的事件） |
+|---|---|---|
+| r2a（req2accept，读流 RD / 写流 WR 各一） | 地址相 | AR/AW valid 迟迟不被 accept（请求停在门口）；含**写请求不完整**：master-slow-W / W-early 压住请求（WVALID&&!WREADY 计入写请求相） |
+| r2r（req2resp，每流各一） | 数据相 | 请求已 accept 但无响应进展：读 = 无 R 推进；写 = WLAST 已全部交付却无 B |
+| selftest_key | 自检 | keyed SCMCNTRL[9] SELFTEST 脉冲强制点亮各流 sticky（锻炼 err 轨全链，TI SPNU575 语义） |
+| 计数器副本失配（联动） | — | 计数器 Q/Q_n 失配**当拍强制点亮该流 sticky**（不等人品：被扰的计数器不可信，立即 fail-visible）→ 同时在 esm_fault 的 CNT 位留源 |
+
+阈值 = 0（keyed 显式写）关闭对应检查；复位值非 0。
+
+#### esm_fault 的全部来源（fu_src 逐位可查，宽度 4+3×NUM_M）
+
+| fu_src 位 | 源 | 含义 |
+|---|---|---|
+| [0] ENA | 使能码字失配 | 4bit 编码使能（1111/0000）正/反副本不一致 |
+| [1] THRA | req2accept 阈值副本失配 | 阈值寄存器 Q/Q_n 不一致（回落复位值） |
+| [2] THRR | req2resp 阈值副本失配 | 同上 |
+| [3+3m] CNT（每 master m） | 计数器/深度副本失配 | rd_cnt_a/r、wr_cnt_a/r、rd/wr_otd、wr_dlv 任一 Q/Q_n 失配（并联动点亮该流 esm_err，见上表） |
+| [3+3m+1] CMP（每 master） | 双比较器分歧 | r2a/r2r 超时判定算两遍（A/B 两臂），结论不一致 |
+| [3+3m+2] STAT（每 master） | 状态副本失配 | 四类 sticky（rd/wr × a/r）反相副本不一致（自愈向置位） |
+| [顶位 = 3+3×NUM_M] OTDSAT | otd 饱和掉拍 | 在 OTD_MAX 上限拍的握手被丢弃 increment → 账本此后少计、超额挂死对 r2r 不可见 → 显性上报换 SW 静默 + TO_CLR 重启（SCMOTD 逐流定位） |
+| （无源签名）fu_selftest | 自测 | keyed SCMCNTRL[10] FU_SELFTEST 脉冲强制 esm_fault 但**不锁 fu_src**——"fault 无源"即测试样式，锻炼 fault→ESM 全链 |
+
+#### skid_fault 的全部来源（聚合自边界单元 + 包裹层）
+
+`skid_fault = sk_fault_i | edgeflt_q`（hang_prot_mcu2main_top / main2mcu；mcu2main 为透传）：
+
+| 源 | 层 | 含义 |
+|---|---|---|
+| wskid L1：槽状态失 one-hot | W skid 双槽 | 每槽独立 exactly-one-hot 检测；非独热（SEU/stuck）→ 一切译码比较失败、双侧停摆（监视器 r2a 随即点火，fail-visible），状态保持到复位 |
+| wskid L2：存储载荷奇偶 | W skid 双槽 | 每 (槽,拍) {wdata,wstrb} 奇偶 + 每槽锁存 AW 载荷奇偶，重放出边界前检查——翻转在跨过 s 边界**之前**被抓（detect-and-report，不中途截断 burst） |
+| wskid L3：计数/指针反相副本 | W skid 双槽 | fill_cnt/beats/ridx（每槽）+ 三个环指针，逐拍比较 |
+| bdry_in：模式/隔离轨失配 | 入向隔离单元（main2mcu） | blk_r / qrel_pend 双轨不一致；ID-FIFO 载荷奇偶 + 指针/占用/拍数副本 + 在途账本副本失配 |
+| 包裹层 edgeflt | top（hang_prot_mcu2main_top / main2mcu） | esm_err 边沿检测寄存器正/反轨失配 → 强制 recover_req（倒向 QUARANTINE 安全侧）+ 粘滞 |
+| （联动）sk_integrity=0 | 实时电平 | L1∧L2∧L3 任一失守即拉低，父层强制 recover / 阻止入岛；sk_fault 粘滞记住事件 |
+
+#### 分类学注记
+
+- `esm_err`/`esm_fault`/`reg_par_fault` = 全仓三轨（规则 25）的前两/三轨；
+- `skid_fault` 按来源类别属"自身故障"，但边界单元是**数据通路的组成部分**
+  （store-and-forward/隔离门），与纯监视器不同——按交付设计单独成轨送
+  独立 ESM 组（规则 25 豁免清单内的第 4 轨变体，同 cmm cfg_hang）。
+
 ---
 
 ## 5. 出向恢复桥（hang_prot_recover）逐通道详设
@@ -335,10 +407,10 @@ esm_err = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触发�
 |---|---|---|---|
 | rd_otd | m AR − m RLAST | dummy R 引擎按 len 补拍（自选类），pop 于 m 侧 RLAST | 监视器（= 各类 ar_fifo 水位之和） |
 | wr_otd | m AW − m B | dummy B（SLVERR，bid=FIFO 头），pop 于 m 侧 B 握手 | 监视器（= wr−bp） |
-| wopen | m AW − m WLAST（**≤2**） | master 活着 + m_wready=1 → 必然排空 | 本地（= FILL 槽数，恰等价） |
+| wopen | m AW − m WLAST（**≤NSLOT**，默认 2） | master 活着 + m_wready=1 → 必然排空 | 本地（= FILL 槽数，恰等价） |
 | s 侧 W | 下游写完成度 | **skid replay 补发到底（真数据）**；从未过界的直接丢弃 | 本地（= 两 slot 全 FREE） |
 
-**退出条件 = `rd_otd==0 ∧ wr_otd==0 ∧ skid.all_free ∧ !s_in_rst`**（all_free 同时覆盖 wopen=0 与无 replay；`!s_in_rst` 见 §8.5——main 域复位保持期间不退出，复活时 5 通道 idle）。
+**退出条件 = `rd_otd==0 ∧ wr_otd==0 ∧ skid.all_free ∧ !sl_sw_rst_on`**（all_free 同时覆盖 wopen=0 与无 replay；`!sl_sw_rst_on` 见 §8.5——main 域复位保持期间不退出，复活时 5 通道 idle）。
 
 ### 5.3 AW FIFO 的三个指针 + skid 状态
 
@@ -352,7 +424,7 @@ esm_err = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触发�
   推论：master 若扣着 W 不发（master 侧故障），dummy B 卡在那笔上、
   wr_otd 永不归零、恢复态保持——fail-visible，等 ESM/复位。
 - `wr`：m 侧 AW 握手时 push（与 s 侧下发**解耦**——s 侧要等 skid 攒齐）。
-- **wopen（wr−wm）≤ 2**（v2.3）：skid 双 slot 占用 ⟺ 最多两笔 W 未完
+- **wopen（wr−wm）≤ NSLOT**（v2.4 参数化，默认 2）：skid 槽占用 ⟺ 最多 NSLOT 笔 W 未完
   （v2.1 单 slot 时 ≤1；四条论据见 §5.7）。
 - **s 侧 W 完成度不再用指针跟踪**：skid 环形指针体系本身就是这本账
   （两 slot 全 FREE = 无 replay 在途；v2 的 wp/wbeat_cnt 随 dummy W 引擎一并删除）。
@@ -362,7 +434,7 @@ esm_err = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触发�
 | 通道 | m 侧 | s 侧 | 说明 |
 |---|---|---|---|
 | AR | `arready = 0` | `arvalid = 0` | stall master；撤回未接受 VALID 是文档化残留 R1 |
-| R | `rvalid = dummy引擎`（otd≠0，自选最低未清类）；`rid = 类FIFO头`；`rlast = (rbeat_cnt[cls] ≥ len)`；`rresp = SLVERR`；rdata=0 | `rready = 1`（吸收迟到真 R） | LEN 精确补拍；`rbeat_cnt ≥ len` 含"slave 超发拍"强制截断路径；类间 dummy 可交错（跨类无序） |
+| R | `rvalid = dummy引擎`（otd≠0，两级选类：断流类优先、否则最低未清，v3.7）；`rid = 类FIFO头`；`rlast = (rbeat_cnt[cls] ≥ len)`；`rresp = SLVERR`；rdata=0 | `rready = 1`（吸收迟到真 R） | LEN 精确补拍；`rbeat_cnt ≥ len` 含"slave 超发拍"强制截断路径；**事务间**完成次序跨类自由，**burst 内**无交织（先续完断流类） |
 | AW | `awready = 0` | `awvalid = 0` | 同 AR；READY 槽中未过界的 burst 直接丢弃 |
 | W | `wready = has_fill`（FILL 槽的拍全吞，违例尾拍也吞） | FILL→WLAST 丢弃；REPLAY→**真数据补发到底** | 半截 W 从不过界；replay 两模式都跑完；**无 FILL 槽的孤儿拍 stall 不吞**——其 AW 从未握手，吞=丢数据且无账可还，退出后永卡；stall 留给退出后 AW 握手开的 FILL 接收（v2.3 修复） |
 | B | `bvalid = (otd≠0 ∧ bp≠wm)`；`bid = FIFO头`；`bresp = SLVERR` | `bready = 1`（吸收迟到真 B） | 每笔欠账一个 SLVERR，序守 FIFO |
@@ -421,6 +493,10 @@ ARVALID；退出只看"账平没平"（客观可证），不看"请求在不在"
 
 *图 7: 恢复状态机——recover_req 脉冲进 RECOVER（mode_r=1 自保持），四本账全零回 NORMAL（直通+重映射）*
 
+![mode_r 进入/退出/强清逻辑与时序](hang_prot_fig13_mode_r_seq.svg)
+
+*图 13: mode_r 全景——置位四源（超时/skid 活故障/sl_sw_rst_on/账本轨活故障）优先于复位五条件；下半为 case 2b 全程波形：超时→恢复排空（REPLAY 卡死 all_free 不达）→契约复位窗（sl_sw_rst_on 先行, s_force 幂等清环）→SW 关窗（0x2C=0xA0）同拍 recover_exit 成立、mode_r 次拍落 0（v3.4 起窗经寄存器，图示时序不变）*
+
 若 slave 修好了：退出后 master 挂着的/重试的请求被正常接收。
 若 slave 还死着：新请求再超时 → 新上升沿 → 再进恢复（每阈值周期一轮，ESM 持续告警）。
 若 master 死了（扣 W 不发）：wopen/wm 不动 → 恢复态保持 → ESM。
@@ -428,7 +504,7 @@ ARVALID；退出只看"账平没平"（客观可证），不看"请求在不在"
 ### 5.7 AW/W 全情形遍历与 wr_otd/wr_dlv 账目分析（v2.1）
 
 **账本恒等式**（监视器 m 侧视角）：
-`wr_otd − wr_dlv = wopen` = AW 已握手但 WLAST 未到的写笔数 ≤ 2（双 slot，v2.3；v2.1 单 slot 时 ≤1）。
+`wr_otd − wr_dlv = wopen` = AW 已握手但 WLAST 未到的写笔数 ≤ NSLOT（环形 skid 槽数，v2.4；v2.1 单 slot ≤1，v2.3 双 slot ≤2）。
 监视器把 `wopen≠0` 计入 r2a 窗口——**语义正确**：TI 定义下写请求到 WLAST
 才算发完，"不等"本身就是"请求进行中"的指示，不是异常。
 
@@ -446,7 +522,7 @@ ARVALID；退出只看"账平没平"（客观可证），不看"请求在不在"
 
 **wr_otd ≠ wr_dlv 为什么不用管（四条论据）**：
 1. **语义正确**：不等 ⟺ 有写的 W 未发完 ⟺ "写请求 pending"——r2a 本来就该计；
-2. **有界**：2 slot skid ⇒ AW(k+2) 必须等某 slot 释放才能握手 ⇒ wopen ≤ 2
+2. **有界**：NSLOT slot skid ⇒ AW(k+NSLOT) 必须等某 slot 释放才能握手 ⇒ wopen ≤ NSLOT
    （v2.1 是 ≤1；加深换吞吐，性质不变——若改 OTD_MAX 深多 slot，可到
    OTD_MAX，同样安全，但失去小常数性质且费面积）；
 3. **自愈**：恢复期 m_wready=1 sink，master 发完 WLAST → 归零；唯一不自愈是
@@ -512,7 +588,7 @@ AWLEN+1），绝不伪造、绝不截断。
 
 *图 9: 双 slot 流水重叠——slot0 在 REPLAY 时 slot1 已在 FILL，m/s 两条 W 通道各跑各的，写占空 ~100%*
 slot 0 在 REPLAY 时 slot 1 已在 FILL——**两条 W 通道各跑各的，占空由
-下游 wready 决定，不再由 skid 结构决定**。代价：存储 ×2、wopen ≤2、
+下游 wready 决定，不再由 skid 结构决定**。代价：存储 ×NSLOT、wopen ≤NSLOT、
 skid 故障面 ×2（每 slot 独立 one-hot 检测，FuSa 论证不变，§9.2b）。
 
 **写冲突无关性**（同一拍内四条规则不同状态各碰各的槽）：分配目标必为
@@ -535,12 +611,12 @@ FREE、填充目标必为 FILL、下发目标必为 READY/REPLAY——状态互�
 - **恢复静止点**：全部 slot FREE 且处于 mode 时三指针强制归 0——恢复
   结束后的环从一致起点重启（否则指针残留在不同相位，重启后 fill 路由
   可能错槽）；
-- `force_clear`（bdry_in 的 QSR_REL；recover 的 `s_in_rst ∧ mode ∧
+- `force_clear`（bdry_in 的 QSR_REL；recover 的 `sl_sw_rst_on ∧ mode ∧
   wr_otd==0`，即 2b 卡死 REPLAY 的受控出口）：同步清槽+指针，但**不清
   故障锁存**——事件必须报告到复位。
 
 **为什么不做成参数化的更深 skid**：2 slot 已达 ~100% 占空（再深无吞吐
-收益），wopen 保持小常数（§5.7 论据 2），面积/复杂度封顶；需要
+收益），wopen 保持小常数（§5.7 论据 2，v2.4 起可参数抬升 NSLOT 吸收 AW-ahead master），面积/复杂度封顶；需要
 OTD_MAX 级深度时另按论据评估，当前场景无需求。
 
 ---
@@ -712,7 +788,7 @@ len+1 拍 → rd_otd 归零 → **自动退出**（与写版出向对称：活 m
 
 ### 7.1 寄存器映射
 
-mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道；`addr[15:8]`=实例号须等于参数 `IDX`，`addr[7:0]`=字节偏移），11 个 32 位寄存器（0x00–0x28）+ ID 殿后 0xFC，字对齐访问（非对齐/越界/写只读 → 静默忽略；坏 `par` → 写阻断/读门控 + PERR_CMD 锁存）。`mbus_clk` 与 `aclk` 可异步（CDC 在内）。写为 fire-and-forget：CDC 忙时写被丢弃并置 `SCMIAFUSTAT[5]` WR_DROPPED，依赖写前须轮询 `[4]` CFG_BUSY（见 §7.6）。
+mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error 通道；`addr[15:8]`=实例号须等于参数 `IDX`，`addr[7:0]`=字节偏移），13 个 32 位寄存器（0x00–0x30）+ ID 殿后 0xFC，字对齐访问（非对齐/越界/写只读 → 静默忽略；坏 `par` → 写阻断/读门控 + PERR_CMD 锁存）。`mbus_clk` 与 `aclk` 可异步（CDC 在内）。写为 fire-and-forget：CDC 忙时写被丢弃并置 `SCMIAFUSTAT[5]` WR_DROPPED，依赖写前须轮询 `[4]` CFG_BUSY（见 §7.6）。
 
 寄存器地图位置（house standard，与 fusa 全家族一致）：**STA_PAR 倒数第 3（0x24）、CFG_REGST 倒数第 2（0x28）、ID 殿后 0xFC**。CFG_REGST 用 house key `wdata[3:0]=4'b1010`（独立于 SCMCNTRL [7:4] 的本地 key 空间），错 key 写被静默丢弃（无锁存类，与其它 keyed 违例同样处理）。
 
@@ -729,6 +805,8 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 | 0x20 | `SCMIAFUSRC` | **W1C/R** | 0x00000000 | 完整性故障源（ENA/THRA/THRR + 每 master CNT/CMP/STAT + 顶位 OTDSAT） |
 | 0x24 | `STA_PAR` | **W1C/R** | 0x00000002 | 寄存器奇偶状态（house standard 布局）：`[0]` PAR_FAULT / `[1]` PAR_FAULT_N / `[12:2]` PERR（**bit = 2+组号**），见 §7.2b。静息读 0x2 |
 | 0x28 | `CFG_REGST` | **WO** | — | 寄存器奇偶自检控制（house standard）：key[3:0]=1010 + `[4]` REG_SELFTEST + REGSEL[11:8] + `[5]` PAR_SELFTEST，见 §7.2c。读恒 0；错 key 写静默丢弃 |
+| 0x2C | `SCMSWRST` | W(key)/R | 0x00000000 | v3.4：s 侧软复位保持窗（sl_sw_rst_on 寄存器化，替代原 ESM 双轨输入引脚）。[7:4] key=1010；[3:0] 码字 1111=窗开/0000=窗关（双门）；aclk 影像 d=4 码+SEC 单 bit 纠正写回（纠1检2，码即防护），平局（2 个 1）不可纠→译码向遏制侧（ON，fail-visible），SW 重写码字即愈。R 回读 SEC 后真值。写 0xAF 开窗 / 0xA0 关窗 |
+| 0x30 | `STA_RCV` | R/W1C | 0x00000000 | v3.6 出入向统一：**出向** (mcu2main) [0] ACTIVE 跟随（=mode_r）/[1] DONE 粘滞（recover_exit 脉冲置位）；**入向** (main2mcu) [0] ACTIVE 跟随（=blk_r 隔离态）/[1] DONE 粘滞（quiesce_exit 脉冲置位）。set 优先于 W1C，同拍事件不丢（v3.4：恢复状态寄存器化，替代 recover_active/done 输出引脚） |
 | 0xFC | `ID` | R | 0x4841_0001 | `"HA"` v1（house standard 殿后）。仅 `addr[7:0]==8'hFC` 精确译码（0x3C/0x7C/0xBC 落在 wsel 15 越界读 0） |
 
 #### 7.2 SCMCNTRL 字段（0x10）
@@ -809,7 +887,7 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
 | 1 | 响应 ESM，读 `SCMIAERR0/1STAT` 定位 | — | 同 S1 第 1–3 步 |
 | 2 | 隔离 main 域 | 系统级：ADB400 iso 使能 + main 复位保持 | 硬件前提：QSR_REL 时 main **必须在复位**（否则单元退出的瞬间会把撤回的 dummy 暴露给活 master） |
 | 3 | 确认 island 干净 | （可轮询 `SCMOTD`，但死 main 挂账不归零是**预期**的——见 §8.3"检测 vs 记账"） | otd≠0 不阻塞 QSR_REL；退出条件是**本地**安全条件（s 侧无 pending R/B、无 REPLAY） |
-| 4 | 写 | `SCMCNTRL = 0x10AF`（QSR_REL，KEY+ENA+bit12） | keyed 隔离释放脉冲。单元在下一个**安全周期**退出：清 ID FIFO、强清残留 skid（死 main 留下的半截 FILL）、block_active 落 0。main 侧经 ADB400 隔离后无任何在途信号，强清是安全的 |
+| 4 | 写+读 | `SCMCNTRL = 0x10AF`（QSR_REL，KEY+ENA+bit12），然后 poll `STA_RCV (0x30)` | keyed 隔离释放脉冲。单元在下一个**安全周期**退出：清 ID FIFO、强清残留 skid（死 main 留下的半截 FILL）、block_active 落 0。main 侧经 ADB400 隔离后无任何在途信号，强清是安全的。**v3.6 退出确认读回**：`[0] ACTIVE` 落 0（=blk_r，2FF 同步到 mbus）、`[1] DONE` 置 1（quiesce_exit 粘滞）——ACTIVE 迟迟不落 = s 侧未排干/skid REPLAY/int_dis，隔离自保持继续报 ESM |
 | 5 | 写 | `SCMCNTRL = 0x1AF`（TO_CLR） | **必须**：把监视器里挂着的陈旧 otd/计数器清零（死 main 永远不会握手 dummy，这些账只能软件清；TO_CLR 后 otd 与已清空的 FIFO 重新一致） |
 | 6 | 写 | `SCMIAERR0/1STAT`（W1C） | 清 sticky → esm_err 落 → ESM 解除 |
 | 7 | 恢复 main | 系统级：解除 main 复位 → ADB400 iso 撤销 | main 从复位起来，通路两侧都是干净状态 |
@@ -867,12 +945,14 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
   恢复用真数据 replay），两个单元结构收敛，只差退出策略。
 - **v2.3 双 slot（两单元同时升级，共享 `hang_prot_wskid`）**：`m_awready`
   在任一 slot FREE 时给出（+ otd<MAX）——slot k 补发时 slot k+1 可同时
-  攒齐，边界写占空 ~100%（v2.1 单 slot ~50%）；wopen ≤2（§5.7 论据携带）。
+  攒齐，边界写占空 ~100%（v2.1 单 slot ~50%）；wopen ≤NSLOT（§5.7 论据携带，v2.4 参数化）。
   详细结构/时序/恢复语义见 **§5.9**（同一模块，此处不重复）。
 - **REPLAY 在 blk 期间也跑完**：那是一笔完整合法的突发，让它完成保持
   NIC 写通道一致性；它的 B 按隔离规则吸收/dummy。
 
 ### 8.4 隔离进入/退出与 quiesce 序列
+
+![main2mcu 隔离进入/退出全图](hang_prot_fig14_quarantine_seq.svg)
 
 ```
 进入（自动）: recover_req 脉冲 → blk_r=1 自保持
@@ -892,6 +972,9 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
   FILL 是死 main 的遗物，强制丢弃；若 SW 违反前提在 main 活着时放行，
   行为是 fail-visible 的：其 W 拍会被 stall，监视器 r2a 报警）
 随后（软件）: TO_CLR 清陈旧 otd → W1C 清状态 → 解除 main 复位/iso → 恢复
+退出确认（v3.6）: poll STA_RCV (0x30) —— [0] ACTIVE 落 0（=blk_r，
+  2FF 同步）∧ [1] DONE 置 1（quiesce_exit 粘滞）即退出确实发生；
+  ACTIVE 迟迟不落 = s 侧未排干 / skid REPLAY / int_dis（隔离自保持）
 ```
 
 **检测 vs 记账（入向的本质差异）**：监视器 otd 只经 m 侧 dummy 握手递减；
@@ -907,33 +990,33 @@ TO_CLR 把账拉平。
 
 | 通道 | 方向 | 本单元驱动的 VALID | 清洁机制 |
 |---|---|---|---|
-| Unit A W（main 在 s 侧，场景 2） | s | `s_awvalid` / `s_wvalid` | 恢复态前者恒 0；后者（2b 卡死的 REPLAY）由 **`s_in_rst` force_clear** 清 0 |
+| Unit A W（main 在 s 侧，场景 2） | s | `s_awvalid` / `s_wvalid` | 恢复态前者恒 0；后者（2b 卡死的 REPLAY）由 **`sl_sw_rst_on` force_clear** 清 0 |
 | Unit A AR（main 在 s 侧） | s | `s_arvalid` | 恢复态恒 0（单拍请求，撤回=R1；读响应**流入**死域外，无存储、无 2b 等价物——见下节） |
 | Unit B R/B（main 在 m 侧，场景 1） | m | `m_rvalid` / `m_bvalid` | 挂住的 dummy 在 **QSR_REL 退出拍撤回**（`blk_r` 的组合函数，退出下一拍即 0；FIFO/rbeat_cnt 同拍全清） |
 
 （表首两行原为一行合并，v2.3 拆分以显式覆盖 AR；READY 通道非污染向量：
 复位中的对端不采样，复活后 ready=1 只意味着"可以发"。）
 
-**Unit A 新增 `s_in_rst`（ESM 驱动，aclk 域电平，v3.2 起双轨）**："main 域
+**Unit A 新增 `sl_sw_rst_on`（ESM 驱动，aclk 域电平，v3.2 起双轨）**："main 域
 在复位保持中"。三个作用，缺一不可：
 
 1. **强制进入恢复**：main 每次复位都必须穿过一个"先排空、再清洁"的边界，
    不限于已检出的挂死——NIC 在途事务由 dummy 引擎以 SLVERR 退休（main
    已忘，SLVERR=写"结局未知"，重试覆盖）；不复位直接换 main 会留下孤儿事务。
-2. **受控槽清除（2b 出口）**：`s_force = s_in_rst ∧ mode_r ∧ wr_otd==0`
+2. **受控槽清除（2b 出口）**：`s_force = sl_sw_rst_on ∧ mode_r ∧ wr_otd==0`
    → wskid force_clear。main 已复位 ⇒ 其 AW 接受记录已抹 ⇒ 丢弃 REPLAY
    剩余真数据拍是**双方一致遗忘**的选择；该条目的账早已由 dummy B 退休。
    `wr_otd==0` 门控保住 FILL 吸收通路（活 NIC 的 W 中途不得强清，坑 1）。
    故障锁存不清——受监督的恢复，事件仍上报。
-3. **退出推迟到 `!s_in_rst`**：整个复位窗口内 mode 保持（m 侧停发、s 侧
+3. **退出推迟到 `!sl_sw_rst_on`**：整个复位窗口内 mode 保持（m 侧停发、s 侧
    静默），没有新请求被 offer 给复位中的 main；ESM 先释放 main 复位、再
-   撤 s_in_rst → 下一拍退出 → 通道重开。
+   撤 sl_sw_rst_on → 下一拍退出 → 通道重开。
 
-**`s_in_rst` 双轨（v3.2 FuSa）**：单轨下 stuck 是危险失效——**stuck-0**
+**`sl_sw_rst_on` 双轨（v3.2 FuSa）**：单轨下 stuck 是危险失效——**stuck-0**
 静默丢掉复活 main 的通道清洁保护（2b 的 REPLAY 拍会灌进已忘 AW 的 main，
 非预期数据）；**stuck-1** 把边界永远锁死（fail-visible 但无人知道）。
-故 ESM 契约改为互补双 `{s_in_rst, s_in_rst_n}`（同源复位保持触发器或
-双份序列器输出）：每拍 XOR 检查（`sir_dis`，1 拍检出），失配按内部完整性
+故 ESM 契约改为互补双 `{sl_sw_rst_on, sl_sw_rst_on_n}`（同源复位保持触发器或
+双份序列器输出）：每拍 XOR 检查（`swr_dis`，1 拍检出），失配按内部完整性
 故障同一语义处理——**强制进入恢复（fail toward containment：复位状态
 不可信时唯一安全方向是通路关闭）、失配存活期间退出阻塞、iflt 粘滞经
 sk_fault 双轨上报**。双轨残余（两线同翻转）由周期 SELFTEST + ESM 端到端
@@ -942,9 +1025,9 @@ sk_fault 双轨上报**。双轨残余（两线同翻转）由周期 SELFTEST + 
 **ESM 服务序列（Unit A，2b）**：
 ```
 卡死可见（mode=1 长期不退，recover_done 不来）→ ESM 拉 main rst
-  ∧ s_in_rst/_n 轨对 → 排空（dummy 退休 NIC 在途）→ wr_otd=0 → s_force
-  清 REPLAY → all_free（退出仍被 !s_in_rst 压住）→ 释放 main rst → 撤
-  s_in_rst/_n 轨对 → 退出 → NIC 挂着的 awvalid 下一拍握手，流水续上
+  ∧ sl_sw_rst_on/_n 轨对 → 排空（dummy 退休 NIC 在途）→ wr_otd=0 → s_force
+  清 REPLAY → all_free（退出仍被 !sl_sw_rst_on 压住）→ 释放 main rst → 撤
+  sl_sw_rst_on/_n 轨对 → 退出 → NIC 挂着的 awvalid 下一拍握手，流水续上
 ```
 
 **SW 服务序列（Unit B，1b 挂住的 dummy）**：QSR_REL 写入时 main 必须在
@@ -954,7 +1037,7 @@ sk_fault 双轨上报**。双轨残余（两线同翻转）由周期 SELFTEST + 
 满足）。
 
 **读通道为何无 2b 等价物（读/写不对称性）**：W 的 REPLAY 是"**我们持有
-数据、要推进死域**"——skid 存着 burst，死 main 永不接，故需 `s_in_rst`
+数据、要推进死域**"——skid 存着 burst，死 main 永不接，故需 `sl_sw_rst_on`
 受控清。读的响应数据**流向相反**——从死域流出，边界只是阀门：真拍来了
 **吸收不存储**（R 通道组合透传，无 buffer——挂住的绝不该是缓存的数据）；
 缺的拍由 m 侧 dummy 凭账本（ar FIFO + rbeat_cnt）现造，接收方是**活着的**
@@ -969,7 +1052,7 @@ QSR_REL 兜底——**读不需要 force_clear**。
 
 **残留分类**：对端复位保持期间的 VALID 撤回/丢弃，与 s 侧撤回（R1）同类
 ——协议约束针对"活着的事务"，复位重启后双方状态同零，无事务可违。SW
-违反前提（对端活着时 QSR_REL / 撤 s_in_rst 早于复位释放）行为是 fail-visible
+违反前提（对端活着时 QSR_REL / 撤 sl_sw_rst_on 早于复位释放）行为是 fail-visible
 的：脏 W/响应触发 r2a 报警，不会静默损坏。
 
 ### 8.6 ADB400 的职责边界
@@ -984,10 +1067,10 @@ ADB400（或等效 CDC/隔离单元）在 main↔island 边界做：时钟域转
 
 ![复位树](hang_prot_fig12_reset_tree.svg)
 
-*图 12: 复位树——island rstn / main rst / s_in_rst 三分支，presetn+rstn 同源同步释放对齐 regfile CDC*
+*图 12: 复位树——island rstn / main rst / sl_sw_rst_on 三分支，presetn+rstn 同源同步释放对齐 regfile CDC*
 
 岛复位**永不**来自 main 域；QSR_REL 服务序列里 main 复位的拉起/放下都
-在隔离态中完成；main 复位的拉起/放下必须伴随 `s_in_rst` 窗口（§8.5）。
+在隔离态中完成；main 复位的拉起/放下必须伴随 `sl_sw_rst_on` 窗口（§8.5）。
 
 ---
 
@@ -1058,9 +1141,9 @@ v3.1 之前 regfile=偶校验、core=反相双份、wskid=one-hot，其余 sv �
 | 单元 / 文件 | 机制 | 失效反应 |
 |---|---|---|
 | hang_prot_wskid | 存储载荷奇偶：每 (slot,beat) 一位 `{wdata,wstrb}` 校验 + 每 slot AW 载荷一位；计数器/指针（fill_cnt/beats/ridx/alloc_p/fill_p/issue_p）反相双份 | `sk_integrity=0`（实时聚合）→ 父单元强制进入；sticky sk_fault；burst 照常完成（不中途截断，理由见 §9.2 表） |
-| hang_prot_recover | mode_r 双轨；ar/aw FIFO 表项奇偶（push 写、head 查）；指针/占用/rbeat 反相双份；内部 sticky iflt；**v3.2：`s_in_rst` 输入轨对（sir_dis）** | 轨/失配 → 强制进入 + recover_exit 加 `!int_dis`（活失配不退出）；自愈瞬态仍被 sticky 记住；s_in_rst 轨失配同语义（复位状态不可信 → 通路必须关闭） |
+| hang_prot_recover | mode_r 双轨；ar/aw FIFO 表项奇偶（push 写、head 查）；指针/占用/rbeat 反相双份；内部 sticky iflt；**v3.2：`sl_sw_rst_on` 输入轨对（swr_dis）** | 轨/失配 → 强制进入 + recover_exit 加 `!int_dis`（活失配不退出）；自愈瞬态仍被 sticky 记住；sl_sw_rst_on 轨失配同语义（复位状态不可信 → 通路必须关闭） |
 | hang_prot_bdry_in | blk_r/qrel_pend 双轨；FIFO 表项奇偶 + 指针/占用/rbeat 反相双份（与 recover 同构） | 失配 → 强制进入 + quiesce_exit 加 `!int_dis`（不确定态永不退出——本单元危险方向是带在途流量退出） |
-| hang_prot_top / main2mcu_mon | esm_err 边沿检测器双轨（esm_err_q_n） | 轨失配 → 强制一次 recover_req（脉冲进受控态）+ sticky edgeflt |
+| hang_prot_mcu2main_top / main2mcu_mon | esm_err 边沿检测器双轨（esm_err_q_n） | 轨失配 → 强制一次 recover_req（脉冲进受控态）+ sticky edgeflt |
 | mon 顶层（两方向） | 状态输出双轨化：recover_active/_n、recover_done/_n、block_active/_n（源寄存器内部双轨，ESM 传输侧可比对） | ESM 侧双轨比较 |
 
 **聚合语义**：`sk_fault/sk_fault_n` 从"wskid 槽状态非独热"升级为**边界
@@ -1074,7 +1157,7 @@ mode/blk 轨失配与 FIFO 指针副本失配，确认：(1) 强制进入受控�
 (2) 活失配期间退出被阻塞；(3) 指针补码注错必须用**全宽真补码**
 `~aw_bp` heal（固定字面量 1'b1 不是 3-bit 补码，曾导致"heal 后仍失配"
 的 TB bug——指针空闲值经回绕未必为 0）。
-TB-A P13（v3.2）注入 `s_in_rst` 轨对失配（翻转单轨）：强制进入、
+TB-A P13（v3.2）注入 `sl_sw_rst_on` 轨对失配（翻转单轨）：强制进入、
 失配存活期间退出阻塞（idle 账本也不重开通路）、heal 后自动退出、
 skid_fault 保持粘滞。
 
@@ -1115,7 +1198,7 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
   mcore id（全匹配 MCORE_MASTER_IDS）各用 MCORE_REMAP_IDS[k]；正常模式
   逐 burst 校验还原 rid/次序/拍数；三类同时在途恢复时校验 dummy 引擎
   按类排空、每类还原该笔事务自己的 rid、真实+dummy 总拍数 = len+1；
-- **s_in_rst 轨对失配（v3.2 FuSa，TB-A P13 已实现）**：翻转单轨 →
+- **sl_sw_rst_on 轨对失配（v3.2 FuSa，TB-A P13 已实现）**：翻转单轨 →
   强制进入受控态；失配存活期间退出阻塞（idle 账本也不重开）；heal 后
   自动退出；skid_fault 保持粘滞；
 - dummy R 长度：len=0/1/15/255 各档，校验 dummy 精确补到 len+1 拍；
@@ -1158,7 +1241,7 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 13. **边界写吞吐（v2.3 已解）**：双 slot skid 下写占空 ~100%（slot k 补发
     时 slot k+1 可攒齐）；wopen ≤2 由 §5.7 论据覆盖。单 slot v2.1 的
     "一次一笔 burst"约束作废。
-14. **ESM 必须互补驱动 `{s_in_rst, s_in_rst_n}`（v3.2）**：两根出自同一
+14. **ESM 必须互补驱动 `{sl_sw_rst_on, sl_sw_rst_on_n}`（v3.2）**：两根出自同一
     复位保持源（或双份序列器输出），任何时刻互为反相；失配会被本单元
     判为完整性故障并关闭通路（fail toward containment）。ESM 序列见
     §8.5。
@@ -1171,7 +1254,7 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 
 | # | 残余 | 等级 | 处置 |
 |---|---|---|---|
-| R1 | 进入恢复时撤回未被接受的 s 侧 VALID（AXI master 侧违例）；同类：对端复位保持窗口内撤回/丢弃 VALID（Unit B dummy 于 QSR_REL 退出拍、Unit A 卡死 REPLAY 于 s_in_rst 清除，§8.5） | 低 | 互连普遍容忍；复位窗口内对端不采样、事务已系统级死亡；文档化 |
+| R1 | 进入恢复时撤回未被接受的 s 侧 VALID（AXI master 侧违例）；同类：对端复位保持窗口内撤回/丢弃 VALID（Unit B dummy 于 QSR_REL 退出拍、Unit A 卡死 REPLAY 于 sl_sw_rst_on 清除，§8.5） | 低 | 互连普遍容忍；复位窗口内对端不采样、事务已系统级死亡；文档化 |
 | R2 | master 扣 W 不发 → wopen 不归零 → 恢复态保持 | 设计意图 | fail-visible，ESM/复位路径 |
 | R3 | ID FIFO 无条目级奇偶（SEU → 单笔 dummy id/len 错） | 低 | master 可检；扩展点 |
 | R4 | 共模（双副本同值同翻） | 极低 | 周期 selftest + 端到端启动测试 |
@@ -1205,8 +1288,8 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 | D17 | 两单元均无 dummy W | v2 的假数据补拍方案 | skid 保证过界的 W 永远完整；超时未过界的丢弃数据、账走 dummy B（数据丢、账不丢） |
 | D18 | sk_e one-hot + 恰好独热检测 + sticky 双轨 sk_fault（v2.2） | 二进制编码 / 仅 sim 断言 | 全解码比较天然遏制（非法码全失配、不可能半转发）；故障强制进入恢复/隔离；退出用显式解码防"REPLAY 腐化成非法码后强清楔死 NIC"；硬件不自愈不可信状态 |
 | D19 | 双 slot W skid（v2.3，两单元共享 `hang_prot_wskid`） | 保持 1 slot / OTD_MAX 深 | 1 slot 写占空 ~50%（DDR 目标不可接受）；2 slot 已 ~100%，再深无吞吐收益且 wopen 失去小常数；共享模块消除两份同构代码的漂移风险 |
-| D20 | 读多类 remap：类域取自 m_arid 位（v2.3） | 保持单 id / 完整透传原始 id | 单 id 跨 master HOL（M85 堵 DMA）；完整透传需要 per-id 记分板（比较硬件，v2 已拒绝）；类域把保序论证无损缩小到类内，FIFO 记分板结构不变。写不分类（被 skid 串行化，无收益） |
-| D21 | 对端复位重启走"清洁通道"：Unit A `s_in_rst`（强制入恢复 + 受控清 REPLAY + 退出推迟），Unit B QSR_REL 退出拍撤回 dummy（v2.3，§8.5） | ESM 直接复位 main / 挂住不管 | 复位使对端遗忘接受记录——挂住的 VALID（dummy 或重放 W 拍）复活即成非预期数据；`wr_otd==0` 门控保住活 NIC 的吸收通路；5 通道 idle 是重启的前提 |
+| D20 | 读多类 remap：类域取自 m_arid 位（v2.3）；dummy 选类两级优先——断流类先续完（v3.7） | 保持单 id / 完整透传原始 id / 维持"各类 dummy 可交错" | 单 id 跨 master HOL（M85 堵 DMA）；完整透传需要 per-id 记分板（比较硬件，v2 已拒绝）；类域把保序论证无损缩小到类内，FIFO 记分板结构不变。写不分类（被 skid 串行化，无收益）。交错方案违 AXI4 R 无交织（切断的突发半途插入他类 dummy——对活 master 是协议违例），与 W 侧 skid "REPLAY completes" 对偶 |
+| D21 | 对端复位重启走"清洁通道"：Unit A `sl_sw_rst_on`（强制入恢复 + 受控清 REPLAY + 退出推迟），Unit B QSR_REL 退出拍撤回 dummy（v2.3，§8.5） | ESM 直接复位 main / 挂住不管 | 复位使对端遗忘接受记录——挂住的 VALID（dummy 或重放 W 拍）复活即成非预期数据；`wr_otd==0` 门控保住活 NIC 的吸收通路；5 通道 idle 是重启的前提 |
 
 ### 11.3 学习要点（最浓缩的十条）
 
@@ -1230,7 +1313,7 @@ rtl/    hang_prot_core.sv        监控核（v1，未改）
 rtl/    hang_prot_wskid.sv      双 slot W skid（v2.3 新增：两单元共享，环形三指针，每槽 one-hot；v3.1 FuSa 载荷奇偶/计数器副本）
 rtl/    hang_prot_recover.sv    出向恢复桥（v3.2：mcore 感知多类 AR remap + 共享双 slot skid + v3.1 FuSa 双轨/条目奇偶）
 rtl/    hang_prot_bdry_in.sv    入向边界单元（v2.3 位域多类 AR remap——main 单主口无 mcore 语义，见 §3.6；共享双 slot skid + QSR 强清 + v3.1 FuSa）
-rtl/    hang_prot_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + s_in_rst 透传 + FuSa 边沿双轨）
+rtl/    hang_prot_mcu2main_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + sl_sw_rst_on 透传 + FuSa 边沿双轨）
 rtl/    hang_prot_mcu2main_top.sv Unit A 集成顶层（v3.2 mcore 参数透传）
 rtl/    hang_prot_main2mcu_top.sv Unit B 集成顶层（v2.3 + FuSa）
 rtl/    hang_prot_regfile.sv mbus leaf (reg_wrap 单一源在 fusa 根 common_modules/) 寄存器（奇偶保护，含 QSR_REL）
@@ -1241,7 +1324,7 @@ doc/    hang_prot_design.md     本文档
 
 **待办**：① 覆盖率跑数（Questa/VCS，按 coverage_plan §1 激励映射）；
 ② 岛边界顶层组装（Unit A/B + NUM_M=2 监视器 + 双 ADB400 + 每流边沿
-检测/QSR_REL 布线 + **ESM 复位序列器输出 s_in_rst**，§8.5 契约）；
+检测/QSR_REL 布线 + **ESM 复位序列器输出 sl_sw_rst_on**，§8.5 契约）；
 ③ 若 main 侧将来也聚合多 mcore 主，bdry_in 需对称引入 mcore 类（§3.6 末注）。
 
 

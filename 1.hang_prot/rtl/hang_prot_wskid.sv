@@ -1,30 +1,46 @@
 `timescale 1ns/1ps
 //============================================================================
-// hang_prot_wskid - dual-slot AW/W store-and-forward skid
-// (shared by hang_prot_recover and hang_prot_bdry_in; v2.3)
+// hang_prot_wskid - N-slot AW/W store-and-forward skid
+// (shared by hang_prot_recover and hang_prot_bdry_in; v2.3 dual-slot,
+//  v2.4 NSLOT-parameterized ring - default 2 = the v2.3 behavior)
 //
 // PURPOSE: an AW is held until its COMPLETE W burst is buffered, then AW+W
 //   are issued downstream TOGETHER - a partial W burst can never cross the
-//   unit boundary. TWO slots pipeline the boundary: while slot k REPLAYs
-//   its burst to the s side, slot k+1 can already be FILLing from the
-//   master - write duty cycle ~100% (the single-slot v2.1 skid serialized
-//   fill and replay, ~50% at full rate - the DDR use case made dual-slot
-//   mandatory).
+//   unit boundary. Successive slots pipeline the boundary: while slot k
+//   REPLAYs its burst to the s side, slot k+1 can already be FILLing from
+//   the master. With NSLOT=2 (v2.3) the write duty cycle is ~100% for
+//   back-to-back bursts (the single-slot v2.1 skid serialized fill and
+//   replay, ~50% at full rate - the DDR use case made pipelining
+//   mandatory). NSLOT > 2 (v2.4) additionally absorbs "AW-storm + late-W"
+//   masters: AW acceptance depth = number of slots (wopen <= NSLOT),
+//   so a master that pushes many AWs ahead of their W data is throttled
+//   at NSLOT, not at 2. Size NSLOT <= OTD_MAX (elaboration-checked in the
+//   parents) and to the master's actual AW-ahead behavior - each slot
+//   costs WSKID_BEATS x (data+strb) storage plus its FuSa duplicates.
+//
+// RING ORDER (the invariant that makes any NSLOT work): allocation,
+//   fill completion and issue completion all happen in RING order -
+//   alloc_p advances on m AW handshake, W beats always belong to the
+//   OLDEST FILL slot (AXI in-order W per master), and fills complete in
+//   that same order, so the next slot to offer/finish is always the one
+//   the pointers name. The FILL slots are therefore a contiguous ring
+//   segment [fill_p .. alloc_p): fill_p is valid whenever any FILL
+//   exists, which is what fsl/has_fill decode.
 //
 // SLOT LIFECYCLE (per slot; one-hot coded, FuSa - see below):
 //   FREE --m AW handshake (alloc_p slot)--> FILL
-//   FILL --W beats in (oldest FILL slot, fill_sel)--> WLAST:
+//   FILL --W beats in (oldest FILL slot = fill_p)--> WLAST:
 //            normal : -> READY (beats latched, burst fully buffered)
 //            mode   : -> FREE  (discard - never crossed)
 //   READY --s AW handshake (issue_p slot, normal only)--> REPLAY
 //          --mode--> FREE (discard - never crossed)
 //   REPLAY --W beats out of the buffer, REAL data, in BOTH modes--> FREE
 //
-// ORDERING (single ring, 2 slots; allocation order == AW order):
+// ORDERING (single ring, NSLOT slots; allocation order == AW order):
 //   alloc_p : next slot to allocate (must be FREE; drives m_awready)
 //   fill_p  : oldest FILL slot (W beats always belong to the oldest
 //             outstanding burst - AXI in-order W; a master that issues
-//             AW(k+1) before WLAST(k) simply fills both slots)
+//             AW(k+1) before WLAST(k) simply fills several slots)
 //   issue_p : oldest READY-or-REPLAY slot (s-side AW offer / W replay)
 //   The three pointers chase each other in the same ring order (W
 //   completion order == allocation order). While quiescent in mode (all
@@ -61,19 +77,19 @@
 //   COUNTERPARTY downstream is held in reset - its acceptance is then
 //   forgotten, so discarding buffered/replayed beats is consistent):
 //   - bdry_in: quiesce_exit (QSR_REL) - stale FILL/READY of a dead main.
-//   - recover: s_force = s_in_rst && mode_r && wr_otd==0 - a REPLAY stuck
+//   - recover: s_force = sl_sw_rst_on && mode_r && wr_otd==0 - a REPLAY stuck
 //     on a dead-then-reset main (2b); wr_otd==0 keeps the FILL sink path
 //     (alive NIC mid-W) intact. The FuSa fault latch is NOT cleared by
 //   force_clear - the event is remembered.
 //
 // FUSA (v3.1, SIL2 target): three independent layers -
-//   L1 slot state ONE-HOT coding with exactly-one-hot detectors: a
-//     non-one-hot code (SEU / stuck-at):
+//   L1 slot state ONE-HOT coding with exactly-one-hot detectors (every
+//     slot): a non-one-hot code (SEU / stuck-at):
 //     - latches a sticky dual-rail fault (sk_fault/sk_fault_n -> own ESM
 //       group; cleared only by rstn - a transient SEU is still reported)
 //     - fails EVERY decoded comparison (m_awready needs FREE, m_wready
 //       needs FILL, s_awvalid needs READY, s_wvalid needs REPLAY,
-//       all_free needs both FREE) - nothing is half-forwarded, both
+//       all_free needs ALL FREE) - nothing is half-forwarded, both
 //       sides stall, the parent monitor's r2a fires -> fail-visible
 //     - is exported live (sk_onehot) so the parent unit can force
 //       recover/block entry; the state holds (no case branch matches)
@@ -85,8 +101,9 @@
 //     sk_fault, sk_integrity=0) - the burst is never truncated mid-way
 //     (that would wedge the island NIC; worse than one bounded bad beat
 //     the end-to-end system check will catch).
-//   L3 inverted duplicates of fill_cnt/beats/ridx and the three ring
-//     pointers, compared every cycle -> sk_integrity=0 + sticky fault.
+//   L3 inverted duplicates of fill_cnt/beats/ridx (per slot) and the
+//     three ring pointers, compared every cycle -> sk_integrity=0 +
+//     sticky fault.
 //   sk_integrity (live) = L1 && L2 && L3: parents force recover/block
 //     entry on its loss; sk_fault (sticky, dual-rail) is the ESM report.
 //   Pointer faults previously relied on wedge->r2a; now caught in 1 cycle.
@@ -99,18 +116,20 @@
 // STYLE: GRLIB two-process - one packed record r (slots + pointers +
 //   buffers + fault), comb process (v = r; ...; rin = v), seq process
 //   (reset load / r <= rin). Per-slot storage is packed sub-arrays of the
-//   record so the TB keeps flat paths (u_hang_prot_wskid.r.st[0], ...). All decode
-//   reads r (现态), all next-state writes go to v - NBA-equivalent
-//   last-write-wins order is the textual order of the rules below
-//   (write-conflict freedom: the allocation target is FREE, the fill
-//   target is FILL, the issue target is READY/REPLAY - three distinct
-//   slots by state, so at most one rule touches each slot).
+//   record so the TB keeps flat paths (u_hang_prot_wskid.r.st[0], ... -
+//   index-based, valid for any NSLOT). All decode reads r (现态), all
+//   next-state writes go to v - NBA-equivalent last-write-wins order is
+//   the textual order of the rules below (write-conflict freedom: the
+//   allocation target is FREE, the fill target is FILL, the issue target
+//   is READY/REPLAY - three distinct slots by state, so at most one rule
+//   touches each slot).
 //============================================================================
 module hang_prot_wskid #(
     parameter int AXI_ADDR_W  = 32,
     parameter int AXI_DATA_W  = 32,
     parameter int STRB_W      = AXI_DATA_W/8,
-    parameter int WSKID_BEATS = 16             // max W burst beats per slot
+    parameter int WSKID_BEATS = 16,            // max W burst beats per slot
+    parameter int NSLOT       = 2              // ring depth (>=2; v2.4)
 )(
     input  logic clk,
     input  logic rstn,                         // async active-low
@@ -145,21 +164,33 @@ module hang_prot_wskid #(
     input  logic                  s_wready,
 
     // ---- status / FuSa ------------------------------------------------------
-    output logic                  all_free,    // both slots FREE (decoded)
+    output logic                  all_free,    // every slot FREE (decoded)
     output logic                  any_replay,  // some slot REPLAY (decoded)
-    output logic                  quiesce_ok,  // both slots decode to a VALID
+    output logic                  quiesce_ok,  // every slot decodes to a VALID
                                                // non-REPLAY code (bdry_in exit)
-    output logic                  sk_onehot,   // live: both states one-hot
+    output logic                  sk_onehot,   // live: all slot states one-hot
     output logic                  sk_integrity,// live: onehot AND stored-payload
                                                // parity AND counter duplicates
                                                // all healthy (SIL2 aggregate)
     output logic                  sk_fault,    // sticky: any internal integrity
                                                // fault (onehot / parity / dup)
     output logic                  sk_fault_n,
-    output logic [7:0]            slot_st      // {slot1, slot0} one-hot
+    output logic [4*NSLOT-1:0]    slot_st      // {slotN-1..slot0} one-hot
 );
 
-    localparam int FC_W = $clog2(WSKID_BEATS+1);
+    localparam int FC_W  = $clog2(WSKID_BEATS+1);
+    localparam int PTR_W = $clog2(NSLOT);      // NSLOT=2 -> 1 (v2.3 shape)
+
+`ifndef SYNTHESIS
+    initial begin : param_chk
+        if (NSLOT < 2) begin
+            $error("[hang_prot_wskid] NSLOT must be >= 2 (got %0d)", NSLOT);
+        end
+        if ((2 ** PTR_W) < NSLOT) begin
+            $error("[hang_prot_wskid] NSLOT=%0d not encodable in PTR_W", NSLOT);
+        end
+    end
+`endif
 
     //--------------------------------------------------------------------------
     // Slot state (one-hot, per slot) + ring pointers
@@ -172,33 +203,40 @@ module hang_prot_wskid #(
                            SK_READY  = 4'b0100,
                            SK_REPLAY = 4'b1000;
 
+    // ring pointer increment (wrap at NSLOT - any NSLOT >= 2, power-of-2
+    //   or not; the parents' wopen <= NSLOT bound is argument-checked for
+    //   any finite bound, doc §5.7)
+    function automatic logic [PTR_W-1:0] nxt_ptr(input logic [PTR_W-1:0] p);
+        nxt_ptr = (p == PTR_W'(NSLOT-1)) ? '0 : (p + 1'b1);
+    endfunction
+
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
     //   st[slot] / counters[slot] / buffers[slot][beat] are packed
     //   sub-arrays - flat TB paths u_hang_prot_wskid.r.st[0] etc.
     //--------------------------------------------------------------------------
     typedef struct packed {
-        logic [1:0][3:0]                             st;         // slot state, one-hot
-        logic                                        alloc_p;    // next slot to allocate
-        logic                                        alloc_p_n;  // inverted duplicate
-        logic                                        fill_p;     // oldest FILL slot
-        logic                                        fill_p_n;
-        logic                                        issue_p;    // oldest READY/REPLAY slot
-        logic                                        issue_p_n;
-        logic [1:0][FC_W-1:0]                        fill_cnt;   // beats stored (filling slot)
-        logic [1:0][FC_W-1:0]                        fill_cnt_n;
-        logic [1:0][FC_W-1:0]                        beats;      // beats latched at WLAST
-        logic [1:0][FC_W-1:0]                        beats_n;
-        logic [1:0][FC_W-1:0]                        ridx;       // replay index
-        logic [1:0][FC_W-1:0]                        ridx_n;
-        logic [1:0][AXI_ADDR_W-1:0]                  awaddr_q;   // latched AW payload
-        logic [1:0][7:0]                             awlen_q;
-        logic [1:0][2:0]                             awsize_q;
-        logic [1:0][1:0]                             awburst_q;
-        logic [1:0]                                  apar;       // AW payload parity
-        logic [1:0][WSKID_BEATS-1:0][AXI_DATA_W-1:0] wbuf;       // W data buffer
-        logic [1:0][WSKID_BEATS-1:0][STRB_W-1:0]     sbuf;       // W strb buffer
-        logic [1:0][WSKID_BEATS-1:0]                 wpar;       // per-beat {wdata,wstrb} parity
+        logic [NSLOT-1:0][3:0]                       st;         // slot state, one-hot
+        logic [PTR_W-1:0]                            alloc_p;    // next slot to allocate
+        logic [PTR_W-1:0]                            alloc_p_n;  // inverted duplicate
+        logic [PTR_W-1:0]                            fill_p;     // oldest FILL slot
+        logic [PTR_W-1:0]                            fill_p_n;
+        logic [PTR_W-1:0]                            issue_p;    // oldest READY/REPLAY slot
+        logic [PTR_W-1:0]                            issue_p_n;
+        logic [NSLOT-1:0][FC_W-1:0]                  fill_cnt;   // beats stored (filling slot)
+        logic [NSLOT-1:0][FC_W-1:0]                  fill_cnt_n;
+        logic [NSLOT-1:0][FC_W-1:0]                  beats;      // beats latched at WLAST
+        logic [NSLOT-1:0][FC_W-1:0]                  beats_n;
+        logic [NSLOT-1:0][FC_W-1:0]                  ridx;       // replay index
+        logic [NSLOT-1:0][FC_W-1:0]                  ridx_n;
+        logic [NSLOT-1:0][AXI_ADDR_W-1:0]            awaddr_q;   // latched AW payload
+        logic [NSLOT-1:0][7:0]                       awlen_q;
+        logic [NSLOT-1:0][2:0]                       awsize_q;
+        logic [NSLOT-1:0][1:0]                       awburst_q;
+        logic [NSLOT-1:0]                            apar;       // AW payload parity
+        logic [NSLOT-1:0][WSKID_BEATS-1:0][AXI_DATA_W-1:0] wbuf; // W data buffer
+        logic [NSLOT-1:0][WSKID_BEATS-1:0][STRB_W-1:0]     sbuf; // W strb buffer
+        logic [NSLOT-1:0][WSKID_BEATS-1:0]                 wpar; // per-beat {wdata,wstrb} parity
         logic                                        sk_fault_q; // sticky FuSa fault
     } reg_t;
 
@@ -207,10 +245,10 @@ module hang_prot_wskid #(
     // them, so a defined reset value is observationally identical)
     localparam reg_t REG_RST = '{
         default   : '0,
-        st        : {SK_FREE, SK_FREE},
-        alloc_p_n : 1'b1,
-        fill_p_n  : 1'b1,
-        issue_p_n : 1'b1,
+        st        : {NSLOT{SK_FREE}},
+        alloc_p_n : '1,
+        fill_p_n  : '1,
+        issue_p_n : '1,
         fill_cnt_n: '1,
         beats_n   : '1,
         ridx_n    : '1
@@ -238,51 +276,57 @@ module hang_prot_wskid #(
 
     // handshakes
     logic m_aw_hs;
-    assign m_aw_hs = m_awvalid && m_awready;
     logic m_w_hs;
+    assign m_aw_hs = m_awvalid && m_awready;
     assign m_w_hs  = m_wvalid  && m_wready;
 
-    // fill routing: fill_p maintained as the OLDEST FILL slot (updated on
-    // allocation when no FILL exists, and on fill completion)
+    // fill routing: fill_p maintained as the OLDEST FILL slot - FILL slots
+    //   are the contiguous ring segment [fill_p .. alloc_p) (alloc/fill/
+    //   issue all proceed in ring order), so st[fill_p] decodes FILL
+    //   exactly whenever a FILL exists
     logic has_fill;
-    assign has_fill = (r.st[r.fill_p] == SK_FILL) || (r.st[~r.fill_p] == SK_FILL);
-    logic fsl;
-    assign fsl      = (r.st[r.fill_p] == SK_FILL) ? r.fill_p : ~r.fill_p;
+    assign has_fill = (r.st[r.fill_p] == SK_FILL);
+    logic [PTR_W-1:0] fsl;
+    assign fsl        = r.fill_p;
 
     //--------------------------------------------------------------------------
-    // FuSa: exactly-one-hot detector (both slots), sticky dual-rail fault
+    // FuSa: exactly-one-hot detector (every slot), sticky dual-rail fault
     //--------------------------------------------------------------------------
     function automatic logic onehot4(input logic [3:0] v);
         onehot4 = (v != '0) && ((v & (v - 4'b0001)) == '0);
     endfunction
 
-    logic oh0;
-    assign oh0 = onehot4(r.st[0]);
-    logic oh1;
-    assign oh1 = onehot4(r.st[1]);
-    assign sk_onehot = oh0 && oh1;
+    logic [NSLOT-1:0] oh;
+    always_comb begin : oh_dec
+        for (int s = 0; s < NSLOT; s++) begin
+            oh[s] = onehot4(r.st[s]);
+        end
+    end
+    assign sk_onehot = &oh;
 
     // live integrity checks (SIL2): one-hot + stored-payload parity + dup
-    logic wpar_err;
+    logic  wpar_err;
+    logic  apar_err;
+    logic  cnt_dup_err;
     assign wpar_err = (r.st[r.issue_p] == SK_REPLAY) &&
                       (((^r.wbuf[r.issue_p][r.ridx[r.issue_p]]) ^
                         (^r.sbuf[r.issue_p][r.ridx[r.issue_p]])) != r.wpar[r.issue_p][r.ridx[r.issue_p]]);
-    logic apar_err;
     assign apar_err = (r.st[r.issue_p] == SK_READY ) &&
                       (((^r.awaddr_q[r.issue_p]) ^
                         (^r.awlen_q [r.issue_p]) ^
                         (^r.awsize_q[r.issue_p]) ^
                         (^r.awburst_q[r.issue_p])) != r.apar[r.issue_p]);
-    logic cnt_dup_err;
-    assign cnt_dup_err = (r.fill_cnt[0] != ~r.fill_cnt_n[0])
-                      || (r.fill_cnt[1] != ~r.fill_cnt_n[1])
-                      || (r.beats[0]    != ~r.beats_n[0]   )
-                      || (r.beats[1]    != ~r.beats_n[1]   )
-                      || (r.ridx[0]     != ~r.ridx_n[0]    )
-                      || (r.ridx[1]     != ~r.ridx_n[1]    )
-                      || (r.alloc_p     != ~r.alloc_p_n    )
-                      || (r.fill_p      != ~r.fill_p_n     )
-                      || (r.issue_p     != ~r.issue_p_n    );
+    always_comb begin : dup_chk
+        cnt_dup_err = (r.alloc_p != ~r.alloc_p_n)
+                   || (r.fill_p  != ~r.fill_p_n )
+                   || (r.issue_p != ~r.issue_p_n);
+        for (int s = 0; s < NSLOT; s++) begin
+            cnt_dup_err = cnt_dup_err
+                       || (r.fill_cnt[s] != ~r.fill_cnt_n[s])
+                       || (r.beats[s]    != ~r.beats_n[s]   )
+                       || (r.ridx[s]     != ~r.ridx_n[s]    );
+        end
+    end
     assign sk_integrity = sk_onehot && !wpar_err && !apar_err && !cnt_dup_err;
 
     assign sk_fault   =  r.sk_fault_q;
@@ -291,8 +335,12 @@ module hang_prot_wskid #(
 `ifndef SYNTHESIS
     always @(posedge clk) begin : sk_oh_msg
         if (rstn && !sk_onehot) begin
-            $error("[hang_prot_wskid] slot state not one-hot: slot0=%b slot1=%b",
-                   r.st[0], r.st[1]);
+            for (int s = 0; s < NSLOT; s++) begin
+               if (!oh[s]) begin
+                  $error("[hang_prot_wskid] slot state not one-hot: slot%0d=%b",
+                         s, r.st[s]);
+               end
+            end
         end
     end
 `endif
@@ -313,35 +361,35 @@ module hang_prot_wskid #(
 
         if (force_clear) begin
             // QSR_REL: slots + pointers cleared (fault latch NOT cleared)
-            v.st        = {SK_FREE, SK_FREE};
-            v.alloc_p   = 1'b0;
-            v.fill_p    = 1'b0;
-            v.issue_p   = 1'b0;
-            v.alloc_p_n = 1'b1;
-            v.fill_p_n  = 1'b1;
-            v.issue_p_n = 1'b1;
-        end else if (mode && (r.st[0] == SK_FREE) && (r.st[1] == SK_FREE)) begin
+            v.st        = {NSLOT{SK_FREE}};
+            v.alloc_p   = '0;
+            v.fill_p    = '0;
+            v.issue_p   = '0;
+            v.alloc_p_n = '1;
+            v.fill_p_n  = '1;
+            v.issue_p_n = '1;
+        end else if (mode && all_free) begin
             // quiescent in mode: hold the ring at a consistent restart point
-            v.alloc_p   = 1'b0;
-            v.fill_p    = 1'b0;
-            v.issue_p   = 1'b0;
-            v.alloc_p_n = 1'b1;
-            v.fill_p_n  = 1'b1;
-            v.issue_p_n = 1'b1;
+            v.alloc_p   = '0;
+            v.fill_p    = '0;
+            v.issue_p   = '0;
+            v.alloc_p_n = '1;
+            v.fill_p_n  = '1;
+            v.issue_p_n = '1;
         end else begin
             // 1) allocation (m_awready already gates on !mode && FREE)
             if (m_aw_hs) begin
                 v.st[r.alloc_p]        = SK_FILL;
-                v.awaddr_q[r.alloc_p]  = m_awaddr;
-                v.awlen_q [r.alloc_p]  = m_awlen;
-                v.awsize_q[r.alloc_p]  = m_awsize;
+                v.awaddr_q [r.alloc_p] = m_awaddr;
+                v.awlen_q  [r.alloc_p] = m_awlen;
+                v.awsize_q [r.alloc_p] = m_awsize;
                 v.awburst_q[r.alloc_p] = m_awburst;
                 // FuSa: AW payload parity (checked while READY is offered)
                 v.apar[r.alloc_p]        = (^m_awaddr) ^ (^m_awlen) ^ (^m_awsize) ^ (^m_awburst);
                 v.fill_cnt[r.alloc_p]    = '0;
                 v.fill_cnt_n[r.alloc_p]  = '1;
-                v.alloc_p                = ~r.alloc_p;
-                v.alloc_p_n              =  r.alloc_p;      // ~new alloc_p
+                v.alloc_p                =  nxt_ptr(r.alloc_p);
+                v.alloc_p_n              = ~nxt_ptr(r.alloc_p);
                 if (!has_fill) begin
                     v.fill_p   =  r.alloc_p;            // first fill target
                     v.fill_p_n = ~r.alloc_p;
@@ -368,8 +416,8 @@ module hang_prot_wskid #(
                     end
                     v.beats[fsl]    =   r.fill_cnt[fsl] + 1'b1;
                     v.beats_n[fsl]  = ~(r.fill_cnt[fsl] + 1'b1);
-                    v.fill_p        =  ~fsl;
-                    v.fill_p_n      =   fsl;
+                    v.fill_p        =  nxt_ptr(fsl);    // next FILL in ring order
+                    v.fill_p_n      = ~nxt_ptr(fsl);
                 end else if (r.fill_cnt[fsl] < WSKID_BEATS[FC_W-1:0]) begin
                     v.fill_cnt[fsl]   =   r.fill_cnt[fsl] + 1'b1;
                     v.fill_cnt_n[fsl] = ~(r.fill_cnt[fsl] + 1'b1);
@@ -382,14 +430,13 @@ module hang_prot_wskid #(
                 v.ridx[r.issue_p]   = '0;
                 v.ridx_n[r.issue_p] = '1;
             end
-            // any READY slot in mode never crossed -> discard (issue_p
-            // runs first above; a non-issue READY slot is discarded here)
+            // any READY slot in mode never crossed -> discard (all slots;
+            //   issue_p runs first above, the rest are discarded here)
             if (mode) begin
-                if (r.st[ r.issue_p] == SK_READY) begin
-                    v.st[ r.issue_p] = SK_FREE;
-                end
-                if (r.st[~r.issue_p] == SK_READY) begin
-                    v.st[~r.issue_p] = SK_FREE;
+                for (int s = 0; s < NSLOT; s++) begin
+                    if (r.st[s] == SK_READY) begin
+                        v.st[s] = SK_FREE;
+                    end
                 end
             end
 
@@ -397,8 +444,8 @@ module hang_prot_wskid #(
             if ((r.st[r.issue_p] == SK_REPLAY) && s_wready) begin
                 if (r.ridx[r.issue_p] == r.beats[r.issue_p] - 1'b1) begin
                     v.st[r.issue_p] =  SK_FREE;
-                    v.issue_p       = ~r.issue_p;
-                    v.issue_p_n     =  r.issue_p;      // ~new issue_p
+                    v.issue_p       =  nxt_ptr(r.issue_p);
+                    v.issue_p_n     = ~nxt_ptr(r.issue_p);
                 end else begin
                     v.ridx[r.issue_p]   =   r.ridx[r.issue_p] + 1'b1;
                     v.ridx_n[r.issue_p] = ~(r.ridx[r.issue_p] + 1'b1);
@@ -438,7 +485,7 @@ module hang_prot_wskid #(
     //   s_w      : replayed from the issue slot's buffer with REAL data
     //--------------------------------------------------------------------------
     assign m_awready = !mode && (r.st[r.alloc_p] == SK_FREE) && aw_allow;
-    assign m_wready  =  has_fill && (mode || (r.fill_cnt[fsl] < WSKID_BEATS[FC_W-1:0]));
+    assign m_wready  = has_fill && (mode || (r.fill_cnt[fsl] < WSKID_BEATS[FC_W-1:0]));
 
     assign s_awvalid = !mode && (r.st[r.issue_p] == SK_READY);
     assign s_awaddr  =  r.awaddr_q [r.issue_p];
@@ -459,12 +506,20 @@ module hang_prot_wskid #(
     //   force-clearing then would wedge the island-side write channel
     //   mid-burst (v2.2 lesson, kept in v2.3).
     //--------------------------------------------------------------------------
-    assign all_free   = (r.st[0] == SK_FREE) && (r.st[1] == SK_FREE);
-    assign any_replay = (r.st[0] == SK_REPLAY) || (r.st[1] == SK_REPLAY);
-    assign quiesce_ok = ((r.st[0] == SK_FREE) || (r.st[0] == SK_FILL)
-                            || (r.st[0] == SK_READY))
-                     && ((r.st[1] == SK_FREE) || (r.st[1] == SK_FILL)
-                            || (r.st[1] == SK_READY));
-    assign slot_st    = {r.st[1], r.st[0]};
+    always_comb begin : st_dec
+        all_free   = 1'b1;
+        any_replay = 1'b0;
+        quiesce_ok = 1'b1;
+        for (int s = 0; s < NSLOT; s++) begin
+            all_free   = all_free   && (r.st[s] == SK_FREE);
+            any_replay = any_replay || (r.st[s] == SK_REPLAY);
+            quiesce_ok = quiesce_ok && 
+                       ((r.st[s] == SK_FREE ) || 
+                        (r.st[s] == SK_FILL ) || 
+                        (r.st[s] == SK_READY)
+                        );
+        end
+    end
+    assign slot_st    = r.st;    // packed flat: slot 0 at LSB
 
 endmodule

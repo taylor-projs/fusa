@@ -86,8 +86,9 @@
 //      11  err_st sticky (mod)                   12  fault_st sticky (mod)
 //      13  在途写锁存奇偶 (mbus 域锁存通道, 检查在 mbus 侧)
 //      14  命令在途奇偶 (APB->mbus, 本域 ce 拍检查; bit16)
-//   PAR_FAULT (bit0) = 所有 PERR 之源或 + 自测锁存, 双轨输出
-//   reg_par_fault/_n -> ESM (独立事件, 与 esm_err/esm_fault 分开).
+//   PAR_FAULT (bit0) = 寄存器面 PERR 源或 + 自测锁存 (2026-11-16
+//   三轨统一: 组 13/14 的在途**事件**本体不在此电平, 聚合走 esm_fault;
+//   诊断位 bit15/bit16 保留), 双轨输出 reg_par_fault/_n -> ESM.
 //
 //   0xAC STA_PAR (RW1C/R):
 //     [0]    PAR_FAULT  电平; 写 1 只清自测锁存 (源仍置时保持)
@@ -776,9 +777,8 @@ module edc_regfile #(
    assign perr[12] = pf_s2[4];    // fault_st sticky (mod)
    assign perr[13] = r.perr13_q;  // 在途写锁存奇偶 (mbus 锁存通道)
    assign perr[14] = r.perr14_q;  // 命令在途奇偶 (APB->mbus, 本域检查)
-
-   assign reg_par_fault   = |perr | r.par_lq;
-   assign reg_par_fault_n = ~reg_par_fault;
+   // (perr[13]/[14] 仅供 STA_PAR bit15/bit16 诊断读出/W1C; 其事件本体
+   //  聚合走 esm_fault, 见文件尾三轨注释)
 
    // ---------------- 读出 (组合, 零等待) ----------------
    logic [31:0] rdata_mux;
@@ -829,10 +829,16 @@ module edc_regfile #(
    // 坏命令读回 0 -> rpar=0, OR 网合并不需要额外使能
    assign rpar = ^rdata;
 
+   // reg_par_fault: 只含寄存器面 (组 13/14 在途事件本体出列, 三轨统一)
+   assign reg_par_fault   = |perr[12:0] | r.par_lq;
+   assign reg_par_fault_n = ~reg_par_fault;
+
    assign esm_err      =  |err_s2;
    assign esm_err_n    = ~|err_s2;
-   assign esm_fault    =  |fault_s2;
-   assign esm_fault_n  = ~|fault_s2;
+   // esm_fault (监视器自身故障): 站点 organic fault | 在途奇偶事件
+   // (2026-11-16 三轨统一: PERR13 锁存通道 + PERR14 命令奇偶粘滞)
+   assign esm_fault    =  |fault_s2 | r.perr13_q | r.perr14_q;
+   assign esm_fault_n  = ~esm_fault;
    assign irq          =   irq_s2;
 
 endmodule

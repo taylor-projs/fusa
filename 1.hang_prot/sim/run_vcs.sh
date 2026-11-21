@@ -28,7 +28,6 @@ $ROOT/rtl/hang_prot_core.sv
 $ROOT/rtl/hang_prot_wskid.sv
 $ROOT/rtl/hang_prot_bdry_in.sv
 $ROOT/rtl/hang_prot_recover.sv
-$ROOT/rtl/hang_prot_top.sv
 $ROOT/rtl/hang_prot_mcu2main_top.sv
 $ROOT/rtl/hang_prot_main2mcu_top.sv
 EOF

@@ -5,7 +5,7 @@
 //   main (can die; ESM-resettable) on the m side via the ADB400
 //     -> island NIC SI port (ALIVE; to SRAM / island slaves) on the s side
 //
-// Full assembly, structure mirrors hang_prot_top with hang_prot_bdry_in
+// Full assembly, structure mirrors hang_prot_mcu2main_top with hang_prot_bdry_in
 // in place of the recover shim:
 //   mbus_clk : hang_prot_regfile (SCM register model incl. QSR_REL)
 //   aclk     : hang_prot_core (timeout monitor, taps on the m_* side)
@@ -47,7 +47,8 @@ module hang_prot_main2mcu_top #(
     parameter logic [AXI_ID_W-1:0] AW_ID_REMAP = '0, // all AWs -> this id
     parameter int          AXI_ADDR_W     = 32,
     parameter int          AXI_DATA_W     = 32,
-    parameter int          WSKID_BEATS    = 16       // max W burst beats
+    parameter int          WSKID_BEATS    = 16,      // max W burst beats
+    parameter int          NSLOT          = 2       // W skid ring depth (v2.4)
 )(
     // ---- mbus leaf (mbus_clk domain) ---------------------------------------
     input  logic                 mbus_clk,
@@ -142,7 +143,7 @@ module hang_prot_main2mcu_top #(
     // ---- quarantine status (aclk domain, block level dual rail v3.1) -------
     output logic                 block_active,   // level: quarantine held
     output logic                 block_active_n, // inverted rail (blk_r_n)
-    output logic [7:0]           wskid_st        // {slot1,slot0} one-hot
+    output logic [4*NSLOT-1:0]  wskid_st        // {slotN-1..slot0} one-hot
 );
 
     localparam int NUM_M  = 1;    // single (main) master stream by design
@@ -156,6 +157,11 @@ module hang_prot_main2mcu_top #(
     logic [NUM_IA-1:0]        r2a_w1c, r2r_w1c;
     logic                     fu_w1c;
     logic                     qsr_rel;
+    logic                     qsr_exit;   // v3.6: bdry_in quiesce_exit pulse
+                                          // -> regfile STA_RCV[1] DONE
+    logic                     iflt_lvl;   // v3.6 三轨统一: regfile 在途命令
+                                          // 奇偶事件 (mbus 粘滞) -> 2FF ->
+                                          // esm_fault 轨
 
     logic [NUM_IA-1:0]        r2a_err_status, r2r_err_status, ia_active;
     logic [NUM_IA*OTD_W-1:0]  otd;
@@ -221,8 +227,14 @@ module hang_prot_main2mcu_top #(
         .esm_fault_n    (esm_fault_n_i  ),
         .fu_src        (fu_src        ),
 
+        // v3.6: 隔离状态寄存器化 (出入向统一契约, 同 mcu2main):
+        //   ACTIVE 跟随 blk_r, DONE 粘滞 quiesce_exit 脉冲
+        .recover_active    (block_active    ),
+        .recover_done      (qsr_exit        ),
+
         .reg_par_fault  (reg_par_fault  ),
-        .reg_par_fault_n(reg_par_fault_n)
+        .reg_par_fault_n(reg_par_fault_n),
+        .iflt_lvl       (iflt_lvl       )
     );
 
     //--------------------------------------------------------------------------
@@ -306,7 +318,8 @@ module hang_prot_main2mcu_top #(
         .AXI_ADDR_W (AXI_ADDR_W  ),
         .AXI_DATA_W (AXI_DATA_W  ),
         .STRB_W     (AXI_DATA_W/8),
-        .WSKID_BEATS(WSKID_BEATS )
+        .WSKID_BEATS(WSKID_BEATS ),
+        .NSLOT      (NSLOT      )
     ) u_hang_prot_bdry_in (
         .clk(ia_bus_aclk),
         .rstn(rstn       ),
@@ -368,6 +381,7 @@ module hang_prot_main2mcu_top #(
 
         .block_active  (block_active  ),
         .block_active_n(block_active_n),
+        .quiesce_exit  (qsr_exit      ),
         .wskid_st      (wskid_st      ),
         .sk_fault      (sk_fault_i    ),
         .sk_fault_n    (sk_fault_n_i  )
@@ -458,7 +472,19 @@ module hang_prot_main2mcu_top #(
     // ESM dual-rail outputs (aclk domain)
     assign esm_err   = esm_err_i;
     assign esm_err_n = esm_err_n_i;
-    assign esm_fault    = esm_fault_i;
-    assign esm_fault_n  = esm_fault_n_i;
+    // ESM fault rail (aclk): 监视器完整性 | 在途命令奇偶事件 (三轨统一
+    // 2026-11-16: regfile iflt_lvl mbus 粘滞电平经 2FF 折入, cmm 先例)
+    logic iflt_s2;
+    sync_2dff #(
+       .WIDTH(1)
+    ) u_iflt_sync (
+       .clk (ia_bus_aclk),
+       .rstn(rstn       ),
+       .d   (iflt_lvl   ),
+       .q   (iflt_s2    )
+    );
+
+    assign esm_fault    = esm_fault_i | iflt_s2;
+    assign esm_fault_n  = ~esm_fault;
 
 endmodule

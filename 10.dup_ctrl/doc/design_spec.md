@@ -174,4 +174,8 @@ esm_err / esm_fault / reg_par_fault 三对双轨为 mbus 域输出 (2026-11-13 �
 
 运行: VM rocky-eda `~/work`, `bash sim/run_vcs.sh`(自检 grep TB PASS/FAIL,
 SVA/$display 不进退出码)。当前状态: **T1–T18 全绿, 125 checks**
-(2026-11-13 三轨统一改版后复绿; TOGGLE 原始值未做结构常量排除, 排除战役另行)。
+(2026-11-13 三轨统一改版后复绿)。**2026-11-18 排除战役收官**: 结构常量
+TOGGLE 排除建成 (`sim/gen_dc_excl.py` + `tgl_struct_excl.el`, 7 家族全部
+按 cmm/ia/hang_prot 判例), **TOGGLE 100.00 / 残洞 0** (LINE 93.70 /
+BRANCH 90.65 为剩余提升项); dec4 `fix` 输出按"使用点解码不消费"设计注释
+归档为死输出排除。

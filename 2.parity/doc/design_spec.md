@@ -657,8 +657,14 @@ VCS 截断，分数无意义）。`run_vcs.sh` 默认把两个 TB 的 vdb 合并
 `tgl_struct_excl.el`。
 注意 SIDE 装配 + regfile 双域化后实例路径两次变动（chk 引擎进
 generate 域 `g_req_chk`/`g_rsp_chk`；影子/sticky 自 edc_core 移入
-`u_edc_regfile`，PERR10 组退役），**排除表需按脚本头注释重建**。
-当前基线数字见 VM `obj_vcs/urg_report_excl/`。
+`u_edc_regfile`，PERR10 组退役）。**2026-11-21 全仓覆盖率战役:
+排除表已重建**——`sim/gen_parity_excl.py`（11 结构常量家族, 含
+inj_pos_e 参数宽常量/user 域常 0/wsel[4] 地图常量等），**TOGGLE
+100.00 / 实例+模块定义域残洞 0**（`-flex_merge modules` 口径；
+LINE 94.98 / BRANCH 93.53 为剩余项）。同轮 tb_edc_top 完成
+apb2mbus v3 粘滞轨契约迁移（hang/rpar_evt → hang/rpar_flt +
+0xFF04 STA_EVT W1C）与 11-16 PERR13/14 期望对齐（在途事件走
+esm_fault, STA_PAR[0] 不含, 静息 FAULT_N=0x2 计入期望值）。
 
 SIL2/SIL3 视角的覆盖率目标与定向用例缺口（36 站点全集、非法
 nibble 全遍历、MBU/亚稳/双轨破坏注入等）见 `doc/sil_analysis.md`

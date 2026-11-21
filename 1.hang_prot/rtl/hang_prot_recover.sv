@@ -6,7 +6,7 @@
 //   burst to the s side, slot k+1 can already be FILLing from the master,
 //   write duty cycle ~100% (v2.1's single slot serialized fill/replay,
 //   ~50% at full rate - the 4-channel-interleaved DDR target made dual-slot
-//   mandatory). wopen <= 2 (NSLOT) replaces the v2.1 wopen <= 1 bound; the
+//   mandatory). wopen <= NSLOT (v2.4 parameterizable) replaces the v2.1 wopen <= 1 bound; the
 //   §5.7 case-analysis arguments (bounded, self-resolving, no underflow)
 //   carry over unchanged with "1" -> "2".
 //   (2) MULTI-CLASS READ REMAP (v3.2, mcore-aware): AR requests are
@@ -76,7 +76,8 @@
 //
 //   aw_bp : advances on m-side B      (entry retired on the m side)
 //   bdum_owed : up/down ledger of m-side WLASTs done but B not retired
-//   wopen == (m AW accepted, W incomplete) <= NSLOT(=2) at all times:
+//   wopen == (m AW accepted, W incomplete) <= NSLOT at all times
+//   (NSLOT = W skid ring depth, v2.4 parameterizable, 2..OTD_MAX):
 //   the skid admits
 //   an AW only into a FREE ring slot, so at most TWO entries can be
 //   W-incomplete. Same self-resolving properties as v2.1 (doc §5.7).
@@ -93,7 +94,7 @@
 //
 // ======================= RECOVER MODE (dummy engines) ====================
 // Entered on the recover_req pulse (rising edge of sticky esm_err), a
-// skid one-hot fault, OR s_in_rst / its rail mismatch (see "S_IN_RST").
+// skid one-hot fault, OR sl_sw_rst_on / its rail mismatch (see "SL_SW_RST_ON").
 // Exit condition - all ledgers empty:
 //   rd_otd  (m AR  - m RLAST)  -> dummy R engine: LEN-exact burst per
 //                                 entry (len+1 beats minus delivered),
@@ -107,13 +108,13 @@
 //                                 always drains
 //   s-side W                   -> skid: REPLAY completes / never-crossed
 //                                 slots discard -> all slots FREE
-//   exit = mode_r && !s_in_rst && rd_otd==0 && wr_otd==0 && all_free
+//   exit = mode_r && !sl_sw_rst_on && rd_otd==0 && wr_otd==0 && all_free
 //
-// ============================ S_IN_RST ====================================
+// ============================ SL_SW_RST_ON ====================================
 // LEVEL input (aclk domain), driven by the ESM reset sequencer: "the
 // s-side (main) domain is held in reset". The 5-channel-idle contract for
 // a REVIVED main - no stale VALID from this unit - is enforced as:
-//   - s_in_rst forces recover ENTRY: the boundary drains first (NIC's
+//   - sl_sw_rst_on forces recover ENTRY: the boundary drains first (NIC's
 //     in-flight retired with SLVERR dummies), so nothing of the pre-reset
 //     era survives on either side;
 //   - a REPLAY slot stuck on the dead main (main accepted the AW, died
@@ -123,30 +124,26 @@
 //     them into a revived main would be UNEXPECTED data (it has no AW
 //     context anymore). The entry's ledger is already retired via the
 //     dummy B; SLVERR = "outcome unknown", the NIC retry covers it;
-//   - recover EXIT is gated on !s_in_rst: through the whole reset window
+//   - recover EXIT is gated on !sl_sw_rst_on: through the whole reset window
 //     mode holds (m_awready/m_arready=0, s_arvalid/s_awvalid=0), so no
 //     new request is offered to a main still in reset; the ESM releases
-//     main's reset FIRST, then drops s_in_rst -> exit -> path reopens.
+//     main's reset FIRST, then drops sl_sw_rst_on -> exit -> path reopens.
 //   ESM sequence (contract): trigger/observe recovery -> assert main rst
-//   + s_in_rst -> wait recover_done (polled via the regfile) -> release
-//   main rst -> drop s_in_rst. The withdrawn s_wvalid is an R1-class
+//   + sl_sw_rst_on -> wait recover_done (polled via the regfile) -> release
+//   main rst -> drop sl_sw_rst_on. The withdrawn s_wvalid is an R1-class
 //   residual (safe: the counterparty is in reset, the transaction is
 //   system-dead). sk_fault stays sticky across the supervised heal.
-// DUAL RAIL (v3.2 FuSa): s_in_rst is carried as a complementary pair
-//   {s_in_rst, s_in_rst_n} - a single stuck-at on either wire of the ESM
-//   pair is otherwise a DANGEROUS failure: stuck-0 on the true rail
-//   silently drops the 5-channel-idle protection (REPLAY beats would be
-//   pumped into a main that forgot its AWs); stuck-1 wedges the boundary
-//   closed forever (fail-visible but undetected). Any pair mismatch
-//   (sir_dis) is treated like every other internal integrity fault:
-//   recover ENTRY is forced (fail toward containment - with an untrusted
-//   reset status the path must stay CLOSED), exit is BLOCKED while the
-//   mismatch is live, and the sticky iflt latch reports it via the
-//   aggregated sk_fault rails.
-//   ESM contract: drive the pair complementarily (both from the same
-//   reset-held flip-flop or from duplicated sequencer outputs); the
-//   common-mode (both stuck) residual is covered by the periodic
-//   SELFTEST + the ESM's own end-to-end supervision, as everywhere else.
+// v3.3: sl_sw_rst_on is sourced from the regfile (SCMSWRST 0x2C,
+//   key + d=4 coded shadow + SEC 1-bit fix-writeback; ambiguous -> ON,
+//   containment-fail-visible) - the v3.2 dual-rail input pair retired
+//   (rationale kept: an untrusted "main in reset?" status is DANGEROUS -
+//   stuck-off silently drops the 5-channel-idle protection, stuck-on
+//   wedges the boundary closed; the coded shadow fails toward ON =
+//   containment, and an unexpected containment is itself observable via
+//   STA_RCV.ACTIVE).
+//   SW 契约 (v3.3, 经 mbus): 0x2C=0x0000_00AF 开窗 (先于/随 main 复位)
+//   -> 观察 STA_RCV -> 释放 main 复位 -> 0x2C=0x0000_00A0 关窗; 关窗
+//   后下一拍 recover_exit (STA_RCV.DONE 置位 = 边界重开回执).
 //============================================================================
 //
 // LATE/PHANTOM RESPONSE ABSORPTION: on the s side, R is absorbed and
@@ -220,7 +217,9 @@ module hang_prot_recover #(
     parameter int                  AXI_ADDR_W  = 32,
     parameter int                  AXI_DATA_W  = 32,
     parameter int                  STRB_W      = AXI_DATA_W/8,
-    parameter int                  WSKID_BEATS = 16             // max W burst beats
+    parameter int                  WSKID_BEATS = 16,            // max W burst beats
+    parameter int                  NSLOT       = 2              // W skid ring depth
+                                                                 // (v2.4; <= OTD_MAX)
 )(
     input  logic clk,                     // = ia_bus_aclk
     input  logic rstn,                    // async active-low (monitor rst)
@@ -229,16 +228,14 @@ module hang_prot_recover #(
     input  logic          recover_req,    // 1-cycle pulse: arm recovery
     input  logic [OTD_W-1:0] rd_otd_mon,  // outstanding reads  (m-side view)
     input  logic [OTD_W-1:0] wr_otd_mon,  // outstanding writes (m-side view)
-    input  logic          s_in_rst,       // LEVEL, aclk domain: ESM holds the
-                                          // s-side (main) domain in reset.
-                                          // Contract: assert BEFORE/with the
-                                          // main reset, drop AFTER releasing
-                                          // it. See header "S_IN_RST".
-    input  logic          s_in_rst_n,     // inverted rail of s_in_rst (v3.2
-                                          // FuSa): ESM drives the pair
-                                          // complementarily; mismatch =>
-                                          // containment (entry forced, exit
-                                          // blocked) + sticky sk_fault.
+    input  logic          sl_sw_rst_on,       // LEVEL, aclk domain (v3.3: 由
+                                          // regfile 0x2C SCMSWRST 编码影子
+                                          // 译码供给 - key+d=4 码+SEC 单 bit
+                                          // 纠正, 平局向遏制侧; 原双轨输入
+                                          // 引脚退役, 完整性由码字承载).
+                                          // SW 契约: 开窗先于/随 main 复位,
+                                          // main 复位释放后才关窗.
+                                          // See header "SL_SW_RST_ON".
 
     // ---- master side (island NIC; this unit is the "slave") ----------------
     input  logic                  m_arvalid,
@@ -319,6 +316,10 @@ module hang_prot_recover #(
     initial begin : param_chk
         if (N_MCORE < 1) begin
             $error("[hang_prot_recover] N_MCORE must be >= 1 (got %0d)", N_MCORE);
+        end
+        if ((NSLOT < 2) || (NSLOT > OTD_MAX)) begin
+            $error("[hang_prot_recover] NSLOT must be 2..OTD_MAX (got %0d, OTD_MAX=%0d)",
+                   NSLOT, OTD_MAX);
         end
         if (CLSW > AXI_ID_W) begin
             $error("[hang_prot_recover] class field (%0d bits) wider than AXI_ID_W (%0d)",
@@ -441,44 +442,42 @@ module hang_prot_recover #(
     // (computed below, at the FIFO checkers - single assign)
     logic fifo_int_dis;
 
-    // FuSa v3.2: s_in_rst input rail mismatch (a stuck-at on either wire of
-    // the ESM pair). Live check every cycle - see header "S_IN_RST".
-    logic sir_dis;
-    assign sir_dis = (s_in_rst_n != ~s_in_rst);
+    // v3.3: sl_sw_rst_on 完整性由 regfile 侧 d=4 码字+SEC 承载 (原双轨
+    // 输入对检查退役 - swr_dis 项从 int_dis 撤出)
 
     // aggregated live internal integrity fault of THIS unit (excludes the
     // skid - that is sk_integrity). A live mismatch fails toward the
-    // CONTAINED state: entry forced, exit blocked. The s_in_rst rail pair
+    // CONTAINED state: entry forced, exit blocked. The sl_sw_rst_on rail pair
     // is included: with an untrusted "main in reset?" status the only safe
     // direction is path CLOSED (a stuck-0 true rail would otherwise
     // silently drop the revived-main channel-clean protection).
     logic int_dis;
-    assign int_dis = mode_dis || fifo_int_dis || sir_dis;
+    assign int_dis = mode_dis || fifo_int_dis;
 
     // fault forces recover entry: fail toward the CONTAINED state.
-    // s_in_rst ALSO forces entry: every main-domain reset must pass through
+    // sl_sw_rst_on ALSO forces entry: every main-domain reset must pass through
     //   a drained, cleaned boundary, not only a detected hang - the ESM
-    //   resets main -> asserts s_in_rst -> in-flight NIC transactions are
+    //   resets main -> asserts sl_sw_rst_on -> in-flight NIC transactions are
     //   retired with SLVERR dummies (main forgot them; "outcome unknown"
     //   is the standard SLVERR write semantics) -> exit is DEFERRED until
-    //   s_in_rst drops, so nothing is re-offered to a main still in reset.
+    //   sl_sw_rst_on drops, so nothing is re-offered to a main still in reset.
     logic recover_enter;
-    assign recover_enter = (recover_req || !sk_integrity || s_in_rst
+    assign recover_enter = (recover_req || !sk_integrity || sl_sw_rst_on
                                                 || int_dis) && !r.mode_r;
 
     // exit: every ledger empty. rd/wr otd from the monitor; wopen == the
     // skid FILL slots (the only way a write can hold AW-accepted-but-W-
     // incomplete); s-side W ledger == no replay left -> all slots FREE.
-    // The !s_in_rst term keeps mode (m-side stall + s-side silence)
+    // The !sl_sw_rst_on term keeps mode (m-side stall + s-side silence)
     // through the whole main-reset window: a REVIVED main must find all
     // five s-side channels idle; the path reopens the cycle after the ESM
-    // drops s_in_rst (which it does after releasing main's reset).
+    // drops sl_sw_rst_on (which it does after releasing main's reset).
     // !int_dis (FuSa): a live mode/FIFO integrity mismatch holds the
     //   contained state until the fault is serviced (a self-healed
     //   transient is still reported by the sticky latch but no longer
     //   blocks the exit).
     logic recover_exit;
-    assign recover_exit = r.mode_r && !s_in_rst && !int_dis
+    assign recover_exit = r.mode_r && !sl_sw_rst_on && !int_dis
                           && (rd_otd_mon == '0) && (wr_otd_mon == '0)
                           && wsk_all_free;
 
@@ -493,7 +492,7 @@ module hang_prot_recover #(
     // ALIVE NIC, pit 1). The sticky sk_fault is NOT cleared - the SEU
     // event survives the supervised heal.
     logic s_force;
-    assign s_force = s_in_rst && r.mode_r && (wr_otd_mon == '0);
+    assign s_force = sl_sw_rst_on && r.mode_r && (wr_otd_mon == '0);
 
     //--------------------------------------------------------------------------
     // Per-class AR FIFOs: {id, len}, push at m AR handshake (class =
@@ -540,10 +539,26 @@ module hang_prot_recover #(
     //   as the monitor's rd_otd) - the ledgers cannot drift. Sum over
     //   classes == rd_otd (the global backpressure keeps it <= OTD_MAX).
     logic [CLSW-1:0] dum_cls;
+    // v3.7 two-tier pick: a class whose head burst is CUT (beats delivered,
+    //   RLAST pending - ar_occ != 0 && rbeat_cnt != 0) is finished FIRST.
+    //   The m-side R stream may GAP between beats (m_rready stalls) but
+    //   must never INTERLEAVE another transaction (AXI4 no-interleave) -
+    //   the m side here is the LIVE island NIC. At most one class can hold
+    //   a cut burst (normal: single passthrough stream; recover: tier-2
+    //   finishes it before any other class starts). No AR is accepted in
+    //   recover mode (m_arready = 0), so a lower class cannot appear
+    //   mid-burst - the pick is stable until the cut burst pops.
+    //   N_CLS = 1 degenerates (both tiers pick 0).
     always_comb begin : dum_cls_sel
         dum_cls = '0;
         for (int c = N_CLS-1; c >= 0; c--) begin
             if (r.ar_occ[c] != '0) begin
+                dum_cls = c[CLSW-1:0];
+            end
+        end
+        // tier 2 overrides: finish the CUT burst first
+        for (int c = N_CLS-1; c >= 0; c--) begin
+            if ((r.ar_occ[c] != '0) && (r.rbeat_cnt[c] != '0)) begin
                 dum_cls = c[CLSW-1:0];
             end
         end
@@ -581,10 +596,10 @@ module hang_prot_recover #(
             v.ar_wr_n[m_arcls]                  = ~(ptr_inc(r.ar_wr[m_arcls]));
         end
         if (m_rl_hs) begin
-            v.ar_rp    [cur_cls]   =   ptr_inc(r.ar_rp[cur_cls]);
-            v.ar_rp_n  [cur_cls]   = ~(ptr_inc(r.ar_rp[cur_cls]));
             v.rbeat_cnt  [cur_cls] = '0;
             v.rbeat_cnt_n[cur_cls] = '1;
+            v.ar_rp      [cur_cls] =   ptr_inc(r.ar_rp[cur_cls]);
+            v.ar_rp_n    [cur_cls] = ~(ptr_inc(r.ar_rp[cur_cls]));
         end else if (m_r_hs) begin
             v.rbeat_cnt  [cur_cls] =   r.rbeat_cnt[cur_cls] + 1'b1;
             v.rbeat_cnt_n[cur_cls] = ~(r.rbeat_cnt[cur_cls] + 1'b1);
@@ -596,7 +611,7 @@ module hang_prot_recover #(
             v.ar_occ_n = r.ar_occ_n;
         end else begin
             if (m_ar_hs) begin
-                v.ar_occ [m_arcls]  =   r.ar_occ[m_arcls] + 1'b1;
+                v.ar_occ  [m_arcls] =   r.ar_occ[m_arcls] + 1'b1;
                 v.ar_occ_n[m_arcls] = ~(r.ar_occ[m_arcls] + 1'b1);
             end
             if (m_rl_hs) begin
@@ -607,7 +622,7 @@ module hang_prot_recover #(
 
         // ---- AW FIFO + B-owed ledger --------------------------------------
         if (m_aw_hs) begin
-            v.aw_id[r.aw_wr]  = m_awid;
+            v.aw_id [r.aw_wr] = m_awid;
             // FuSa: entry parity (checked at the head, aw_bp)
             v.aw_par[r.aw_wr] = (^m_awid);
             v.aw_wr           =   ptr_inc(r.aw_wr);
@@ -666,13 +681,13 @@ module hang_prot_recover #(
         ar_dup_err = 1'b0;
         for (int c = 0; c < N_CLS; c++) begin
             if (r.ar_occ[c] != '0) begin
-                if (((^r.ar_id [c][r.ar_rp[c]]) ^ (^r.ar_len[c][r.ar_rp[c]]))
+                if (((^r.ar_id[c][r.ar_rp[c]]) ^ (^r.ar_len[c][r.ar_rp[c]]))
                         != r.ar_par[c][r.ar_rp[c]]) begin
                     ar_ent_err = 1'b1;
                 end
             end
             if ((r.ar_wr[c] != ~r.ar_wr_n[c]) || (r.ar_rp[c] != ~r.ar_rp_n[c])
-                    || (r.ar_occ[c] != ~r.ar_occ_n[c])
+                    || (r.ar_occ[c]    != ~r.ar_occ_n[c]   )
                     || (r.rbeat_cnt[c] != ~r.rbeat_cnt_n[c])) begin
                 ar_dup_err = 1'b1;
             end
@@ -682,9 +697,9 @@ module hang_prot_recover #(
     // occupancy gate on the COUNTER (wr_otd_mon), not pointer equality:
     // aw_bp == aw_wr is ambiguous at a FULL ring (v3.4)
     logic aw_ent_err;
+    logic aw_dup_err;
     assign aw_ent_err = (wr_otd_mon != '0)
                         && (((^r.aw_id[r.aw_bp])) != r.aw_par[r.aw_bp]);
-    logic aw_dup_err;
     assign aw_dup_err = (r.aw_wr != ~r.aw_wr_n) || (r.aw_bp != ~r.aw_bp_n)
                         || (r.bdum_owed != ~r.bdum_owed_n);
 
@@ -699,15 +714,16 @@ module hang_prot_recover #(
     //   R        : normal = s_rvalid AND returning-class occupancy != 0
     //              (phantoms absorbed at the s side), rid = FIFO head of
     //              the RETURNING class; recover = LEN-exact dummy,
-    //              class = dum_cls (lowest pending), rid = that class's
+    //              class = dum_cls (two-tier: cut burst first, else
+    //              lowest pending), rid = that class's
     //              FIFO head
     //   B        : same gating; recover = SLVERR per entry whose m-side
     //              WLAST is done (bp != wm), bid = FIFO head
     //--------------------------------------------------------------------------
     logic ar_room;
-    assign ar_room = (rd_otd_mon < OTD_MAX);
     logic aw_room;
-    assign aw_room = (wr_otd_mon < OTD_MAX);
+    assign ar_room   = (rd_otd_mon < OTD_MAX);
+    assign aw_room   = (wr_otd_mon < OTD_MAX);
 
     assign m_arready = !r.mode_r && s_arready && ar_room;
 
@@ -715,23 +731,23 @@ module hang_prot_recover #(
     // handed over is the (len+1)-th (rbeat_cnt == len) - or later, which
     // force-terminates an over-delivering slave.
     logic [BEAT_W-1:0] rlen_ext;
+    logic  rdum_last;
+    logic  rdum_en;
     assign rlen_ext  = {1'b0, r.ar_len[cur_cls][r.ar_rp[cur_cls]]};
-    logic rdum_last;
     assign rdum_last = (r.rbeat_cnt[cur_cls] >= rlen_ext);
-    logic rdum_en;
-    assign rdum_en   = r.mode_r && (rd_otd_mon != '0);
+    assign rdum_en   =  r.mode_r && (rd_otd_mon != '0);
 
-    assign m_rvalid = r.mode_r ? rdum_en : (s_rvalid && (r.ar_occ[s_rcls] != '0));
-    assign m_rresp  = r.mode_r ? 2'b10   : s_rresp;
-    assign m_rlast  = r.mode_r ? rdum_last : s_rlast;
-    assign m_rid    = r.ar_id[cur_cls][r.ar_rp[cur_cls]];   // id restoration, BOTH modes
+    assign m_rvalid  = r.mode_r ? rdum_en   : (s_rvalid && (r.ar_occ[s_rcls] != '0));
+    assign m_rresp   = r.mode_r ? 2'b10     : s_rresp;
+    assign m_rlast   = r.mode_r ? rdum_last : s_rlast;
+    assign m_rid     = r.ar_id[cur_cls][r.ar_rp[cur_cls]];   // id restoration, BOTH modes
 
     // dummy B engine: gated on the entry's WLAST having crossed the m side
     // (bdum_owed is an exact up/down ledger - v3.4, no wrap ambiguity)
-    logic bdum_en;
-    assign bdum_en = r.mode_r && (wr_otd_mon != '0) && (r.bdum_owed != '0);
+    logic  bdum_en;
+    assign bdum_en  = r.mode_r && (wr_otd_mon != '0) && (r.bdum_owed != '0);
 
-    assign m_bvalid = r.mode_r ? bdum_en : (s_bvalid && (wr_otd_mon != '0));
+    assign m_bvalid = r.mode_r ? bdum_en : (s_bvalid && (wr_otd_mon  != '0));
     assign m_bresp  = r.mode_r ? 2'b10   : s_bresp;
     assign m_bid    = r.aw_id[r.aw_bp];   // id restoration, BOTH modes
 
@@ -768,7 +784,7 @@ module hang_prot_recover #(
     //   traffic degenerates to the v2 total-otd gate. B stays on the total
     //   aw ledger (single class).
     assign s_rready  = (r.mode_r || (r.ar_occ[s_rcls] == '0)) ? 1'b1 : m_rready;
-    assign s_bready  = (r.mode_r || (wr_otd_mon == '0)) ? 1'b1 : m_bready;
+    assign s_bready  = (r.mode_r || (wr_otd_mon       == '0)) ? 1'b1 : m_bready;
 
     assign s_awid = AW_ID_REMAP;
 
@@ -786,7 +802,8 @@ module hang_prot_recover #(
         .AXI_ADDR_W (AXI_ADDR_W ),
         .AXI_DATA_W (AXI_DATA_W ),
         .STRB_W     (STRB_W     ),
-        .WSKID_BEATS(WSKID_BEATS)
+        .WSKID_BEATS(WSKID_BEATS),
+        .NSLOT      (NSLOT      )
     ) u_hang_prot_wskid (
         .clk        (clk     ),
         .rstn       (rstn    ),
@@ -837,7 +854,7 @@ module hang_prot_recover #(
     //   consistent; a broken rail pair of either contributor makes the
     //   aggregate pair (1,1)/(0,0), itself detectable by the ESM.
     //--------------------------------------------------------------------------
-    assign sk_fault   = wsk_fault | r.iflt_q;
+    assign sk_fault   = wsk_fault   | r.iflt_q;
     assign sk_fault_n = wsk_fault_n & r.iflt_q_n;
 
     assign recover_active   = r.mode_r;

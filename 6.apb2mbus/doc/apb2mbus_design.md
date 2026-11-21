@@ -221,8 +221,9 @@ dup_ctrl 才需要规则 23 全套跨域握手, 这里结构上不需要)。
 ## 4. 验证
 
 `sim/tb_apb2mbus.sv` (VCS 与 iverilog 双过), hang 看门狗专项 +
-常时检查, 98 checks 全过 (VCS 2026-11-10 实测; LINE / BRANCH 100%,
-TOGGLE 排除结构性死位后 100%, 见 `sim/tgl_struct_excl.el`) (TB 对
+常时检查, 98 checks 全过 (VCS 2026-11-21 全仓覆盖率战役复测仍全绿;
+LINE / BRANCH 100%, TOGGLE 排除结构性死位后 **100.00 (SCORE 100.00
+四项全百)**, 见 `sim/tgl_struct_excl.el`) (TB 对
 CDC 实现透明, MCP 直采化后原样全过):
 
 | 组 | 内容 |

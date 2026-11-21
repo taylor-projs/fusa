@@ -33,7 +33,7 @@
 //       config shadows restored by rewrite, W1C clears, quiescent 0x2
 //   P13 normal 4-beat write burst: wskid multi-beat fill (fill_cnt++) +
 //       multi-beat replay (ridx++)
-//   P14 recover with slots READY+mid-FILL; s_in_rst held THROUGH the dummy-B
+//   P14 recover with slots READY+mid-FILL; sl_sw_rst_on held THROUGH the dummy-B
 //       drain -> s_force fires the wskid force_clear arm (wr_otd==0 gate)
 //   P15 same recipe, opposite slot roles (alloc ring flipped)
 //   P16 multi-beat read hung -> recover -> LEN-exact dummy R burst
@@ -73,7 +73,7 @@
 //   P30 long-AW wedge x2 (len=255 latches awlen_q[7:3]; 8-beat W cap stalls
 //       -> r2a timeout -> mode sink drains -> dummy B); inter-wedge short
 //       write walks alloc_p so wedge 2 lands slot1
-//   P31 sir_dis FI (s_in_rst rail pair mismatch -> int_dis -> forced entry,
+//   P31 swr_dis FI (sl_sw_rst_on rail pair mismatch -> int_dis -> forced entry,
 //       exit blocked while live) + mode_dis FI (mode_r_n rail deposit)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
@@ -166,17 +166,18 @@ module tb_hang_prot_gen_wrap;
     logic esm_err, esm_err_n, esm_fault, esm_fault_n;
     logic reg_par_fault, reg_par_fault_n;
     logic skid_fault, skid_fault_n;
-    logic recover_active, recover_done, recover_active_n, recover_done_n;
+    wire recover_active = u_dut.u_hang_prot_recover.r.mode_r;
+    wire recover_done   = u_dut.u_hang_prot_recover.recover_exit;
     // s-domain reset-hold rail pair (ESM level, v3.2): contract says DRIVE
     // the pair complementarily; left floating the inputs are Z and the
     // rail-mismatch logic inside u_hang_prot_recover evaluates X
-    logic s_in_rst, s_in_rst_n;
+    wire sl_sw_rst_on = u_dut.u_hang_prot_regfile.swr_on;
     logic [31:0] rd_val;
 
     //------------------------------------------------------------------------
     // DUT
     //------------------------------------------------------------------------
-    hang_prot_top #(
+    hang_prot_mcu2main_top #(
         .OTD_MAX       (OTD_MAX),
         .REQ2ACCEPT_RST(16'd15 ),
         .REQ2RESP_RST  (16'd255),
@@ -206,8 +207,6 @@ module tb_hang_prot_gen_wrap;
         .ia_bus_aclk(aclk      ),
         .rstn       (rstn      ),
         .scan_mode  (scan_mode ),
-        .s_in_rst   (s_in_rst  ),
-        .s_in_rst_n (s_in_rst_n),
 
         .m_arvalid(m_arvalid),
         .m_arready(m_arready),
@@ -279,11 +278,7 @@ module tb_hang_prot_gen_wrap;
         .reg_par_fault   (reg_par_fault   ),
         .reg_par_fault_n (reg_par_fault_n ),
         .skid_fault      (skid_fault      ),
-        .skid_fault_n    (skid_fault_n    ),
-        .recover_active  (recover_active  ),
-        .recover_done    (recover_done    ),
-        .recover_active_n(recover_active_n),
-        .recover_done_n  (recover_done_n  )
+        .skid_fault_n    (skid_fault_n    )
     );
 
     //------------------------------------------------------------------------
@@ -310,6 +305,22 @@ module tb_hang_prot_gen_wrap;
     // at 0x00..0x28 + ID 0xFC); P18 also drives wrong-instance / misaligned / OOR
     // addresses through the same tasks.
     //------------------------------------------------------------------------
+    // v3.3: sl_sw_rst_on 窗驱动 (0x2C)
+    task automatic swr_win_on;
+        begin
+            mb_wr(16'h002C, 32'h0000_00AF);
+            wait (sl_sw_rst_on === 1'b1);
+            repeat (2) @(posedge aclk);
+        end
+    endtask
+    task automatic swr_win_off;
+        begin
+            mb_wr(16'h002C, 32'h0000_00A0);
+            wait (sl_sw_rst_on === 1'b0);
+            repeat (2) @(posedge aclk);
+        end
+    endtask
+
     task automatic mb_wr(input [15:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
@@ -1158,7 +1169,7 @@ module tb_hang_prot_gen_wrap;
         // ---- reset --------------------------------------------------------
         m_arvalid = 0; m_rready = 0; m_awvalid = 0; m_wvalid = 0; m_bready = 0;
         mbus_ce = 0; mbus_wr = 0; mbus_par = 0; mbus_addr = '0; mbus_wdata = '0;
-        s_in_rst = 0; s_in_rst_n = 1;           // ESM rails: main NOT in reset
+        // v3.3: sl_sw_rst_on 寄存器复位值即 0 (窗关), 无需初始化
         rstn = 0; mbus_rstn = 0;
         repeat (5) @(negedge aclk);
         @(negedge mbus_clk); mbus_rstn = 1; rstn = 1;
@@ -1442,13 +1453,13 @@ module tb_hang_prot_gen_wrap;
         if (resp !== 2'b00) begin $display("ERR: P13 multi-beat write resp %b (exp OKAY)", resp); errors++; end
         else $display("P13: 4-beat write burst OK");
 
-        // ---- P14: recover with slots READY+mid-FILL, ESM s_in_rst window -----
+        // ---- P14: recover with slots READY+mid-FILL, ESM sl_sw_rst_on window -----
         // one slot: full 4-beat burst, downstream AW stalled -> sits READY
         // other slot: burst parked mid-fill (1 beat sent) -> sits FILL
         // read hang -> recover. In mode the READY slot self-discards
         // (wskid L350) and the FILL slot drains on wlast (L330); the dummy-B
         // engine retires both writes. s_force (force_clear arm, wskid
-        // L279-288) is gated on wr_otd==0, so s_in_rst is held THROUGH the
+        // L279-288) is gated on wr_otd==0, so sl_sw_rst_on is held THROUGH the
         // drain: it defers recover exit until the dummy Bs have handshaken,
         // then s_force fires with the slots already FREE (a FILL/READY slot
         // can never reach the s_force window - it still carries wr_otd).
@@ -1510,14 +1521,14 @@ module tb_hang_prot_gen_wrap;
                 end
                 @(negedge aclk); m_wvalid = 0;   // parked: 1 beat of 4 sent
                 // wait for recover, then ESM holds main in reset THROUGH the
-                // drain: s_in_rst defers recover exit while the dummy engine
-                // retires both writes; when wr_otd hits 0 with s_in_rst still
+                // drain: sl_sw_rst_on defers recover exit while the dummy engine
+                // retires both writes; when wr_otd hits 0 with sl_sw_rst_on still
                 // held, s_force fires the wskid force_clear arm (L279-288).
                 wdt2 = 0;
                 while (!recover_active && wdt2 < WDT_LIMIT) begin @(negedge aclk); wdt2++; end
                 if (!recover_active) begin $display("ERR: P14 no recover entry"); errors++; end
                 repeat (4) @(negedge aclk);
-                s_in_rst = 1; s_in_rst_n = 0;   // main in reset: exit deferred
+                swr_win_on();                         // main in reset: exit deferred
 `ifndef IVERILOG
                 sforce_snap = cov_sforce;
 `endif
@@ -1548,9 +1559,9 @@ module tb_hang_prot_gen_wrap;
                 end
                 @(negedge aclk); m_bready = 0;
                 if (n12 !== 2) begin $display("ERR: P14 got %0d dummy B (exp 2)", n12); errors++; end
-                // wr_otd==0 now: s_force fires every cycle s_in_rst is held
+                // wr_otd==0 now: s_force fires every cycle sl_sw_rst_on is held
                 repeat (6) @(negedge aclk);
-                s_in_rst = 0; s_in_rst_n = 1;
+                swr_win_off();
                 repeat (4) @(negedge aclk);
 `ifndef IVERILOG
                 if (cov_sforce <= sforce_snap) begin $display("ERR: P14 s_force never fired"); errors++; end
@@ -1573,7 +1584,7 @@ module tb_hang_prot_gen_wrap;
 
         // ---- P15: same recipe, opposite slot roles ---------------------------
         // one leading write flips the alloc ring so burst A lands on slot1:
-        // slot1 READY + slot0 FILL at the s_in_rst window -> the two
+        // slot1 READY + slot0 FILL at the sl_sw_rst_on window -> the two
         // complementary FSM arcs (READY->FREE slot1, FILL->FREE slot0).
         $display("\n--- P15: force_clear with slots FILL+READY ---");
         m_write(resp);                          // ring advance, normal write
@@ -1634,7 +1645,7 @@ module tb_hang_prot_gen_wrap;
                 while (!recover_active && wdt2 < WDT_LIMIT) begin @(negedge aclk); wdt2++; end
                 if (!recover_active) begin $display("ERR: P15 no recover entry"); errors++; end
                 repeat (4) @(negedge aclk);
-                s_in_rst = 1; s_in_rst_n = 0;   // held through the drain
+                swr_win_on();                         // held through the drain
 `ifndef IVERILOG
                 sforce_snap = cov_sforce;
 `endif
@@ -1662,7 +1673,7 @@ module tb_hang_prot_gen_wrap;
                 @(negedge aclk); m_bready = 0;
                 if (n12 !== 2) begin $display("ERR: P15 got %0d dummy B (exp 2)", n12); errors++; end
                 repeat (6) @(negedge aclk);      // s_force window (wr_otd==0)
-                s_in_rst = 0; s_in_rst_n = 1;
+                swr_win_off();
                 repeat (4) @(negedge aclk);
 `ifndef IVERILOG
                 if (cov_sforce <= sforce_snap) begin $display("ERR: P15 s_force never fired"); errors++; end
@@ -2112,7 +2123,26 @@ module tb_hang_prot_gen_wrap;
         end
         mb_wr(16'h0100, 32'hDEAD_BEEF);         // ignored (wrong instance)
         mb_wr(16'h0002, 32'hDEAD_BEEF);         // ignored (misaligned)
-        mb_wr(16'h0028, 32'hDEAD_BEEF);         // ignored (out of range)
+        mb_wr(16'h0028, 32'hDEAD_BEEF);         // ignored (keyed reg, no key -
+                                                //   0x28 has been IN range since v3.4)
+        mb_wr(16'h0034, 32'hDEAD_BEEF);         // ignored (REAL OOR: wsel 13,
+                                                //   range_ok=0 - first true
+                                                //   range-gate write, v3.7)
+        mb_rd (16'h0038, rd_val);               // wsel 14: range gate -> 0
+        if (rd_val !== 32'h0) begin
+            $display("[%0t] ERR: P18 real OOR read %h != 0", $time, rd_val);
+            errors++;
+        end
+        // v3.7 cov: STA_RCV[1] DONE W1C (outbound half of the v3.6 contract;
+        //   the decode toggles regardless of the DONE state)
+        mb_wr_wait(8'h30, 32'h0000_0002);
+        repeat (4) @(negedge mbus_clk);
+        mb_rd(8'h30, rd_val);
+        if (rd_val[1] !== 1'b0) begin
+            $display("[%0t] ERR: P18 STA_RCV DONE W1C left %b",
+                     $time, rd_val[1]);
+            errors++;
+        end
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[5] !== 1'b0) begin
@@ -3330,34 +3360,36 @@ module tb_hang_prot_gen_wrap;
         $display("P30: long-AW wedges clean");
 
         // ====================================================================
-        // P31: ESM rail FI
-        //   (a) sir_dis: break the s_in_rst rail pair (the ESM drives a
-        //       consistent level) -> 1-cycle detect -> int_dis forces the
-        //       recover ENTRY (fail toward containment); exit BLOCKED while
-        //       the mismatch is live (idle ledgers do NOT reopen the path);
-        //       heal -> AUTO exit; the iflt latch keeps skid_fault sticky.
+        // P31: sl_sw_rst_on coded-shadow FI (v3.3, 轨对 FI 退役)
+        //   (a1) SEC 单 bit 纠正写回 (d=4 码), 不触发遏制
+        //   (a2) 平局码不可纠 -> 译码向遏制侧 (ON) -> 强制进恢复 +
+        //        堵退出; SW 重写合法码字 (0x2C=0xA0) = 解药 -> AUTO 退出
         //   (b) mode_dis: mode_r_n rail deposit (mode_r=0) -> forced entry;
         //       mode_ff rewrites both rails at entry -> self-heal -> exit.
         // ====================================================================
-        $display("\n--- P31: ESM rail FI ---");
-        s_in_rst_n = 0;                        // pair (0,0): rail mismatch
+        $display("--- P31: sl_sw_rst_on coded-shadow FI (v3.3) ---");
+        // (a1) SEC: 单 bit 翻转自愈, 不进恢复
+        @(negedge aclk);
+        force u_dut.u_hang_prot_regfile.r_a.swr_q = 4'b0010;
+        @(posedge aclk); @(negedge aclk);
+        release u_dut.u_hang_prot_regfile.r_a.swr_q;
+        repeat (4) @(posedge aclk);
+        if (recover_active) begin
+            $display("[%0t] ERR: P31 SEC flip caused containment", $time);
+            errors++;
+        end
+        // (a2) 平局码 -> 译码 ON -> 强制遏制 + 堵退出; SW 重写码字治愈
+        @(negedge aclk);
+        force u_dut.u_hang_prot_regfile.r_a.swr_q = 4'b0011;
         wait_recover_entry();
-        if (!skid_fault) begin
-            $display("[%0t] ERR: P31 skid_fault not raised (sir)", $time);
-            errors++;
-        end
-        repeat (50) @(posedge aclk);
+        repeat (30) @(posedge aclk);
         if (!recover_active) begin
-            $display("[%0t] ERR: P31 exit despite live s_in_rst mismatch",
-                     $time);
+            $display("[%0t] ERR: P31 exit despite ambiguous code", $time);
             errors++;
         end
-        s_in_rst_n = 1;                        // heal the pair
+        release u_dut.u_hang_prot_regfile.r_a.swr_q;
+        mb_wr(16'h002C, 32'h0000_00A0);
         wait_auto_exit();
-        if (!skid_fault) begin
-            $display("[%0t] ERR: P31 skid_fault not sticky (sir)", $time);
-            errors++;
-        end
         w1c_all();
 `ifdef IVERILOG
         u_dut.u_hang_prot_recover.r.mode_r_n = 1'b0;     // rail flip (mode_r=0)

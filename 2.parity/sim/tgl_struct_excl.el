@@ -1,67 +1,67 @@
-// ==================================================================
-// tgl_struct_excl.el -- 2.parity 结构常量 toggle 排除 (urg -elfile)
-// 由 gen_tgl_excl.py 依据 urg full-exclusion 模板生成; 排除项全部为
-// 结构上恒 0/恒 1 的位 (零扩展填充 / 未用注入向量位 / GEN 模式屏蔽
-// 输出与其下游 err/fault 半侧向量 / 跟随 wrap 常量半侧与 wr 绑定 /
-// mbus addr[15:9] inst_bad 门控), 与激励无关, 任何测试都翻不动.
-// 2026-11-05 重生成 (rebuild_parity_el.py): 本地 edc_reg_wrap.sv 删除,
-// edc_regfile/edc_core 改例化 common_modules/reg_wrap.sv; CHECKSUM 与
-// 信号签名全部按新 vdb 重新拷贝; 3 行 apb2mbus addr[15:9] (实例域)
-// 已覆盖退役. 双域 TOGGLE 100.00 复验通过 (0 INVMQV).
-// ==================================================================
+// parity(edc) tgl structural exclusions - gen_parity_excl.py 2026-11-21
 CHECKSUM: "1455056602 1694263347"
 MODULE: edc_site ( parameter DW=11,MODE,EDCW=4 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:114] "logic inj_force_v[127:0]"
 Toggle inj_force_v [112:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 2762021082"
 MODULE: edc_site ( parameter DW=4,MODE,EDCW=3 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:122] "logic inj_force_v[127:0]"
 Toggle inj_force_v [120:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 1284107946"
 MODULE: edc_site ( parameter DW=2,MODE,EDCW=3 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:124] "logic inj_force_v[127:0]"
 Toggle inj_force_v [122:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 3501548514"
 MODULE: edc_site ( parameter DW=3,MODE,EDCW=3 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:123] "logic inj_force_v[127:0]"
 Toggle inj_force_v [121:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 2924855791"
 MODULE: edc_site ( parameter DW=20,MODE,EDCW=5 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:104] "logic inj_force_v[127:0]"
 Toggle inj_force_v [102:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 198081538"
 MODULE: edc_site ( parameter DW=1,MODE,EDCW=1 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127] "logic inj_force_v[127:0]"
 Toggle inj_force_v [125:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 4173391227"
 MODULE: edc_site ( parameter DW=10,MODE,EDCW=4 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:115] "logic inj_force_v[127:0]"
 Toggle inj_force_v [113:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 1517805883"
 MODULE: edc_site ( parameter DW=64,MODE,EDCW=7 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:58] "logic inj_force_v[127:0]"
 Toggle inj_force_v [56:0] "logic inj_force_v[127:0]"
+Toggle gen_msk "logic gen_msk[6:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1455056602 1771576645"
 MODULE: edc_site ( parameter DW=8,MODE,EDCW=4 ) 
 Toggle inj_pos_g [127:64] "logic inj_pos_g[127:0]"
 Toggle inj_force_v [127:117] "logic inj_force_v[127:0]"
 Toggle inj_force_v [115:0] "logic inj_force_v[127:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
 
 CHECKSUM: "1865285799 1988249396"
 MODULE: nuclei300_edc_chk ( parameter DW=1,EDCW=1 ) 
@@ -208,10 +208,26 @@ Toggle t_edc [6:3] "logic t_edc[6:0]"
 CHECKSUM: "988813327 2965328250"
 MODULE: edc_top
 Toggle mb_addr [15:9] "logic mb_addr[15:0]"
+Toggle addr "logic addr[15:0]"
+Toggle addr "logic addr[15:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle sta_err_r "logic sta_err_r[31:0]"
+Toggle sta_fault_r "logic sta_fault_r[31:0]"
+Toggle sta_par_rb "logic sta_par_rb[31:0]"
+Toggle sta_parc_r "logic sta_parc_r[31:0]"
+Toggle sta_rail_r "logic sta_rail_r[31:0]"
 
 CHECKSUM: "191758858 4072875782"
 MODULE: edc_regfile
 Toggle addr [15:9] "logic addr[15:0]"
+Toggle addr "logic addr[15:0]"
+Toggle perr "logic perr[14:0]"
+Toggle perr "logic perr[14:0]"
+Toggle r.wsel_q "logic r.wsel_q[5:0]"
+Toggle rin.wsel_q "logic rin.wsel_q[5:0]"
 
 CHECKSUM: "322145331 3359139601"
 MODULE: apb2mbus
@@ -222,6 +238,12 @@ Toggle rin_apb.paddr_q [15:9] "logic rin_apb.paddr_q[15:0]"
 CHECKSUM: "1197730098 3686757157"
 MODULE: edc_core
 Toggle addr [15:9] "logic addr[15:0]"
+Toggle addr "logic addr[15:0]"
+Toggle aruser_o "logic aruser_o[20:0]"
+Toggle awuser_o "logic awuser_o[20:0]"
+Toggle buser_o "logic buser_o[5:0]"
+Toggle ruser_o "logic ruser_o[12:0]"
+Toggle wuser_o "logic wuser_o[11:0]"
 
 CHECKSUM: "1455056602 2924855791"
 INSTANCE: tb_edc_top.dut.g_mport[0].u_ip.u_edc_gen.u_aw_addr_hi
@@ -432,3 +454,297 @@ Toggle ar_a0_err "logic ar_a0_err"
 Toggle ar_a1_err "logic ar_a1_err"
 Toggle ar_id_err "logic ar_id_err"
 Toggle o_site_err [12:0] "logic o_site_err[12:0]"
+
+CHECKSUM: "1619891121 1725825140"
+INSTANCE: tb_edc_top.dut0
+Toggle addr "logic addr[15:0]"
+Toggle aruser_o "logic aruser_o[20:0]"
+Toggle awuser_o "logic awuser_o[20:0]"
+Toggle buser_o "logic buser_o[5:0]"
+Toggle ruser_o "logic ruser_o[12:0]"
+Toggle wuser_o "logic wuser_o[11:0]"
+
+CHECKSUM: "4197821135 2973028708"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_ar_attri0
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4280283725"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_ar_attri1
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_ar_hi
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_ar_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_ar_lo
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 2973028708"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_aw_attri0
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4280283725"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_aw_attri1
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_aw_hi
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_aw_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_aw_lo
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 1446524507"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_w_data
+Toggle gen_msk "logic gen_msk[6:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 2935140528"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_w_last
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3074449040"
+INSTANCE: tb_edc_top.dut0.g_req_chk.u_edc_chk_req.u_w_mask
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3187507676"
+INSTANCE: tb_edc_top.dut0.g_rsp_chk.u_edc_chk_rsp.u_b_attri
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut0.g_rsp_chk.u_edc_chk_rsp.u_b_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4090929909"
+INSTANCE: tb_edc_top.dut0.g_rsp_chk.u_edc_chk_rsp.u_r_attri
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 1446524507"
+INSTANCE: tb_edc_top.dut0.g_rsp_chk.u_edc_chk_rsp.u_r_data
+Toggle gen_msk "logic gen_msk[6:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut0.g_rsp_chk.u_edc_chk_rsp.u_r_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "796929618 3272185557"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile
+Toggle addr "logic addr[15:0]"
+Toggle perr "logic perr[14:0]"
+Toggle perr "logic perr[14:0]"
+Toggle r.wsel_q "logic r.wsel_q[5:0]"
+Toggle rin.wsel_q "logic rin.wsel_q[5:0]"
+
+CHECKSUM: "1754090427 3719400277"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_cfg_en
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_cfg_force
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_cfg_irqen
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_err2
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_err_st
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_fault2
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_fault_st
+Toggle wr "logic wr"
+
+CHECKSUM: "3763488821 2720923057"
+INSTANCE: tb_edc_top.dut0.u_edc_regfile.u_rst_sync
+Toggle scan_mode "logic scan_mode"
+
+CHECKSUM: "1619891121 1725825140"
+INSTANCE: tb_edc_top.dut1
+Toggle addr "logic addr[15:0]"
+Toggle aruser_o "logic aruser_o[20:0]"
+Toggle awuser_o "logic awuser_o[20:0]"
+Toggle buser_o "logic buser_o[5:0]"
+Toggle ruser_o "logic ruser_o[12:0]"
+Toggle wuser_o "logic wuser_o[11:0]"
+
+CHECKSUM: "4197821135 2973028708"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_ar_attri0
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4280283725"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_ar_attri1
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_ar_hi
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_ar_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_ar_lo
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 2973028708"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_aw_attri0
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4280283725"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_aw_attri1
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_aw_hi
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_aw_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 505873446"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_aw_lo
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 1446524507"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_w_data
+Toggle gen_msk "logic gen_msk[6:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 2935140528"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_w_last
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3074449040"
+INSTANCE: tb_edc_top.dut1.g_req_chk.u_edc_chk_req.u_w_mask
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3187507676"
+INSTANCE: tb_edc_top.dut1.g_rsp_chk.u_edc_chk_rsp.u_b_attri
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut1.g_rsp_chk.u_edc_chk_rsp.u_b_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 4090929909"
+INSTANCE: tb_edc_top.dut1.g_rsp_chk.u_edc_chk_rsp.u_r_attri
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 1446524507"
+INSTANCE: tb_edc_top.dut1.g_rsp_chk.u_edc_chk_rsp.u_r_data
+Toggle gen_msk "logic gen_msk[6:0]"
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "4197821135 3385834514"
+INSTANCE: tb_edc_top.dut1.g_rsp_chk.u_edc_chk_rsp.u_r_id
+Toggle inj_pos_e "logic inj_pos_e[127:0]"
+
+CHECKSUM: "796929618 3272185557"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile
+Toggle addr "logic addr[15:0]"
+Toggle perr "logic perr[14:0]"
+Toggle perr "logic perr[14:0]"
+Toggle r.wsel_q "logic r.wsel_q[5:0]"
+Toggle rin.wsel_q "logic rin.wsel_q[5:0]"
+
+CHECKSUM: "1754090427 3719400277"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_cfg_en
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_cfg_force
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_cfg_irqen
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_err2
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_err_st
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_fault2
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 3616330469"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_fault_st
+Toggle wr "logic wr"
+
+CHECKSUM: "3763488821 2720923057"
+INSTANCE: tb_edc_top.dut1.u_edc_regfile.u_rst_sync
+Toggle scan_mode "logic scan_mode"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_edc_top.u_agg.u_w_esmtst
+Toggle dup_err "logic dup_err"
+
+CHECKSUM: "1754090427 2384332712"
+INSTANCE: tb_edc_top.u_agg.u_w_sta_err
+Toggle r.data_q "logic r.data_q[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rin.data_q "logic rin.data_q[31:0]"
+Toggle wdata "logic wdata[31:0]"
+
+CHECKSUM: "1754090427 2384332712"
+INSTANCE: tb_edc_top.u_agg.u_w_sta_fault
+Toggle r.data_q "logic r.data_q[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rin.data_q "logic rin.data_q[31:0]"
+Toggle wdata "logic wdata[31:0]"
+
+CHECKSUM: "1754090427 2384332712"
+INSTANCE: tb_edc_top.u_agg.u_w_sta_parc
+Toggle r.data_q "logic r.data_q[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rin.data_q "logic rin.data_q[31:0]"
+Toggle wdata "logic wdata[31:0]"
+
+CHECKSUM: "1754090427 2384332712"
+INSTANCE: tb_edc_top.u_agg.u_w_sta_rail
+Toggle r.data_q "logic r.data_q[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rin.data_q "logic rin.data_q[31:0]"
+Toggle wdata "logic wdata[31:0]"
+
+CHECKSUM: "1754090427 2384332712"
+MODULE: reg_wrap ( parameter W=32,RESET=0 )
+Toggle r.data_q "logic r.data_q[31:0]"
+Toggle rdata "logic rdata[31:0]"
+Toggle rin.data_q "logic rin.data_q[31:0]"
+Toggle wdata "logic wdata[31:0]"
+
+CHECKSUM: "1754090427 1027321138"
+MODULE: reg_wrap ( parameter W=4,RESET=0 )
+Toggle dup_err "logic dup_err"
+
+CHECKSUM: "3763488821 2720923057"
+MODULE: rst_sync
+Toggle scan_mode "logic scan_mode"
+

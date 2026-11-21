@@ -148,7 +148,7 @@ module axi2sram_ctrl_core #(
    output logic [USERW-1:0] axi_ruser,
 
    // ---------------- SRAM 侧 (标准口 → mcu_sram_wrapper, ECC 在封装内) --
-   output logic            m_cen,
+   output logic            m_cen,        // 片选, 低有效 (CEB/宏 csn 极性, 2026-11-21): 0=本拍访问
    output logic            m_wen,
    output logic [LAW-1:0]  m_addr,
    output logic [255:0]    m_wdata,       // 数据行 (编码在 wrapper)
@@ -1062,12 +1062,12 @@ module axi2sram_ctrl_core #(
    assign axi_rlast  = rskip_q[258+SIDW];
    assign axi_ruser  = rskip_q[259+SIDW+:USERW];
 
-   assign m_cen   = m_cen_c && !(r.dp_fault || dp_set);   // 冻结强迫宏口关
-   assign m_wen   = m_wen_c;
-   assign m_addr  = m_addr_c;
-   assign m_wdata = m_wdata_c;
-   assign m_bw    = m_bw_c;
-   assign m_byp   = r.byp_swp;
+   assign m_cen      = ~(m_cen_c && !(r.dp_fault || dp_set)); // 低有效 (csn 极性): 0=访问, 冻结=1 (宏口关)
+   assign m_wen      =   m_wen_c   ;
+   assign m_addr     =   m_addr_c  ;
+   assign m_wdata    =   m_wdata_c ;
+   assign m_bw       =   m_bw_c    ;
+   assign m_byp      =   r.byp_swp ;
 
    assign init_busy = busy_l;
    assign init_done = r.init_done_st;

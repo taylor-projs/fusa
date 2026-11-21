@@ -6,9 +6,9 @@
 // mcu_sram_wrapper: ECC-SRAM 封装 (单文件三件: ecc_math 包 + ecc_enc /
 // ecc_dec 独立编译码模块 + 封装本体例化 axi2sram_ctrl_macro)
 //
-//   对 core 呈**标准 SRAM 接口** (cen/wen/addr/wdata[255:0]/bw[31:0]/rdata):
-//     * 读 (cen&!wen): 宏 1 拍出数, 译码纠正后 256bit 数据同拍组合交付;
-//     * 写 (cen&wen) : 256bit 数据下行, 编码 (FuSa) / 裸直写 (bypass) 由
+//   对 core 呈**标准 SRAM 接口** (csn 低有效/wen/addr/wdata[255:0]/bw[31:0]/rdata):
+//     * 读 (!csn&!wen): 宏 1 拍出数, 译码纠正后 256bit 数据同拍组合交付;
+//     * 写 (!csn&wen) : 256bit 数据下行, 编码 (FuSa) / 裸直写 (bypass) 由
 //       封装内完成 —— 部分写 RMW 的状态切换与字节合并在 core, 封装不再
 //       占口两拍 (任何访问对调用方恒 1 拍, 无 busy 状态)。
 //   (266,256) SECDET 单码字编/译码、注错 (enc 通道)、CERR/DERR 事件与快照
@@ -179,7 +179,7 @@ module mcu_sram_wrapper #(
    input  logic            rstn,          // 异步低有效 (axi 域)
 
    // ---------------- 标准 SRAM 口 (core 侧) ----------------
-   input  logic            cen,
+   input  logic            csn,          // 片选, 低有效 (与 core m_cen 同极性)
    input  logic            wen,           // 1=写 0=读
    input  logic [LAW-1:0]  addr,
    input  logic [255:0]    wdata,
@@ -260,7 +260,7 @@ module mcu_sram_wrapper #(
       v = r;
 
       // ---- 宏口驱动 (编码/裸写在封装内分流; 读直通) ----
-      ma_cen    = cen;
+      ma_cen    = !csn;   // 内部高有效访问标志 (TB 计数挂此口); csn 全链低有效
       ma_wen    = wen;
       ma_addr   = addr;
       ma_wdata  = byp ? {10'h0, wdata} : wdata_enc;
@@ -274,8 +274,8 @@ module mcu_sram_wrapper #(
       lat_line =  r.evt_line;
 
       // ---- 次态: 读请求延一拍 (直写拍宏 q 保持旧值, 不置) ----
-      v.rd_pend = cen && !wen;
-      if (cen && !wen) begin
+      v.rd_pend = !csn && !wen;
+      if (!csn && !wen) begin
          v.evt_line = addr;
       end
 
@@ -296,14 +296,14 @@ module mcu_sram_wrapper #(
    end
 
    //--------------------------------------------------------------------------
-   // 行宏例化 (片选极性适配: cen 高有效 -> csn 低有效)
+   // 行宏例化 (csn 直连 —— core 侧已统一低有效; ma_cen 保留为内部标志)
    //--------------------------------------------------------------------------
    axi2sram_ctrl_macro #(
       .DEPTH    (DEPTH    ),
       .RAND_INIT(RAND_INIT)
    ) u_axi2sram_ctrl_macro (
       .clk   (clk     ),
-      .csn   (!ma_cen ),
+      .csn   (csn    ),
       .wen   (ma_wen  ),
       .addr  (ma_addr ),
       .wdata (ma_wdata),

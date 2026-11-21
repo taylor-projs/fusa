@@ -212,8 +212,12 @@ VM VCS（V-2023.12-SP2）+ 覆盖率，`sim/run_vcs.sh`，**T1–T17 全绿**
 
 原始覆盖率（未做结构常量排除）：line ~92 / branch ~88 / toggle ~39
 ——toggle 低位主要来自结构常量（未实例化通道位、常量掩码路径、
-保留位），后续按 urg 排除流程出 `tgl_struct_excl.el`（同五设计
-toggle 战役模式）。
+保留位）。**2026-11-21 全仓覆盖率战役: 排除流首建收官**——
+`sim/gen_ip_excl.py` 生成 `tgl_struct_excl.el` (11 结构常量家族, 全部按
+cmm/ia/hang_prot 判例: 注错/错误脉冲/SPI 通道 lane 激励空间、去抖计数
+值域、镜像 wr、地址常量、保留位、32b 拼装、W1C 位图、双轨臂、复位策略
+常量、sync 单元未用 lane), **排除后 TOGGLE 100.00 / 真域残洞 0**
+(LINE 95.77 / BRANCH 93.14 为剩余提升项)。
 
 ## 9. 集成约束与残余风险
 

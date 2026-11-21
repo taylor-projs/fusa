@@ -1,5 +1,11 @@
 # CMM — FuSa Coverage Analysis and SIL Assessment
 
+> **2026-11-21 全仓覆盖率战役复测**: 360 checks 全绿; 排除表重建
+> (`rebuild_tgl_el.py` 旧项刷新/退役 + 残洞并域补齐, `sim/excl_new_*.tgl/el`)。
+> 排除后 **TOGGLE 100.00 (实例+模块定义域双零残洞)** / LINE 99.01 /
+> COND 97.14 / BRANCH 98.98; **FSM 20.00 raw —— 排除清单因规则 24
+> enum 化 (状态名变更) 全部失配, 需按新状态名重建 (遗留项)**。
+
 Scope: the CMM as a safety element out of context (SEooC) — its job is to
 detect DUT clock faults (frequency drift / death) and its own internal
 faults, and to report them fail-visibly on `nerr_n` / ESM dual rails.

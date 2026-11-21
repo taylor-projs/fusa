@@ -280,7 +280,7 @@ module axi2sram_ctrl_top #(
    ) u_mcu_sram_wrapper (
       .clk     (axi_clk  ),
       .rstn    (axi_rstn ),
-      .cen     (m_cen    ),
+      .csn     (m_cen    ),
       .wen     (m_wen    ),
       .addr    (m_addr   ),
       .wdata   (m_wdata  ),

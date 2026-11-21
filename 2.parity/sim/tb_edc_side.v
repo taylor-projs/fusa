@@ -866,7 +866,7 @@ module tb_edc_side;
       repeat (3) @(posedge mbus_clk);         // 覆盖整个在途窗口再释放
       release u_ms.u_edc_regfile.r.wdata_q[1];
       settle();
-      rd_check(16'h00AC, 32'h0000_8001, "S9c: latch parity -> PERR13");
+      rd_check(16'h00AC, 32'h0000_8002, "S9c: latch parity -> PERR13 (在途事件走 esm_fault)");
       mb_wr16(16'h00AC, 32'h0000_8000);       // W1C PERR13 (锁存随之重载)
       repeat (2) @(negedge mbus_clk);
       rd_check(16'h00AC, 32'h0000_0002, "S9c: PERR13 W1C clean");
@@ -879,11 +879,17 @@ module tb_edc_side;
       @(negedge mbus_clk);
       mb_ce = 0; mb_wr = 0; mb_par = 0;
       repeat (2) @(negedge mbus_clk);
-      rd_check(16'h00AC, 32'h0001_0001, "S9d: bad cmd par -> PERR14");
+      rd_check(16'h00AC, 32'h0001_0002, "S9d: bad cmd par -> PERR14 (在途事件走 esm_fault)");
       rd_check(16'h0000, 32'h0, "S9d: bad-par write landed nowhere");
       mb_wr16(16'h00AC, 32'h0001_0000);       // W1C PERR14 (好奇偶)
       repeat (2) @(negedge mbus_clk);
       rd_check(16'h00AC, 32'h0000_0002, "S9d: PERR14 W1C clean");
+      // 三轨统一 (2026-11-16): 在途事件现在点亮 core esm_fault ——
+      // S9c/S9d 瞬态 (u_ms) + S9d 坏 par 广播在 u_sl 也锁了 PERR14 (源
+      // 在线挡 agg W1C, 须先撤源) -> 聚合器 STA_FAULT 粘滞, 两级扫清
+      mb_wr16(16'h01AC, 32'h0001_0000);       // 撤源: u_sl PERR14 (广播遗留)
+      repeat (2) @(negedge mbus_clk);
+      mb_wr16(16'h0204, 32'h0000_0003);       // W1C agg STA_FAULT[ms|sl]
 
       // -------- S10: agg 联动 (源在线 W1C 清不掉) --------
       $display("S10: agg linkage, clear blocked while source online");
@@ -1186,7 +1192,7 @@ module tb_edc_side;
       repeat (3) @(posedge mbus_clk);          // 覆盖整个在途窗口再释放
       release u_sl.u_edc_regfile.r.wdata_q[1];
       settle();
-      rd_check(16'h01AC, 32'h0000_8001, "S14f: u_sl latch par -> PERR13");
+      rd_check(16'h01AC, 32'h0000_8002, "S14f: u_sl latch par -> PERR13");
       mb_wr16(16'h01AC, 32'h0000_8000);
       repeat (2) @(negedge mbus_clk);
       rd_check(16'h01AC, 32'h0000_0002, "S14f: u_sl PERR13 W1C clean");
@@ -1196,7 +1202,7 @@ module tb_edc_side;
       @(negedge mbus_clk);
       mb_ce = 0; mb_wr = 0; mb_par = 0;
       repeat (2) @(negedge mbus_clk);
-      rd_check(16'h01AC, 32'h0001_0001, "S14f: u_sl bad par -> PERR14");
+      rd_check(16'h01AC, 32'h0001_0002, "S14f: u_sl bad par -> PERR14");
       rd_check(16'h0100, 32'h0, "S14f: bad-par write landed nowhere");
       mb_wr16(16'h01AC, 32'h0001_0000);
       repeat (2) @(negedge mbus_clk);
@@ -1207,6 +1213,9 @@ module tb_edc_side;
       repeat (2) @(negedge mbus_clk);
       mb_wr16(16'h0218, 32'h0000_0010);
       mb_wr16(16'h0210, 32'h0000_0003);
+      mb_wr16(16'h0204, 32'h0000_0003);       // 三轨统一: u_sl 在途事件瞬态
+                                              // 点亮过 core fault 轨 -> 扫
+                                              // 聚合器 STA_FAULT 粘滞
       repeat (2) @(negedge mbus_clk);
       rd_check(16'h00AC, 32'h0000_0002, "S14f: u_ms PERR14 scrubbed");
       rd_check(16'h0210, 32'h0000_0000, "S14f: agg PARCORE scrubbed");

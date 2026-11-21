@@ -231,7 +231,7 @@ module tb_axi2sram_ctrl;
    // debug: 宏访问 + R 通道交付轨迹 (定位用; 数据字布局 [255:0])
 `ifdef DBG
    always @(posedge axi_clk) begin
-      if (dut.m_cen) begin
+      if (!dut.m_cen) begin   // m_cen 低有效
          $display("[%0t] DBG-MAC %s line=%0d w0=%h w1=%h w2=%h w3=%h w7=%h",
                   $time, dut.m_wen ? "WR" : "RD", dut.m_addr,
                   dut.m_wdata[31:0], dut.m_wdata[63:32],
@@ -258,7 +258,7 @@ module tb_axi2sram_ctrl;
    integer mac_wr_cnt = 0;
    integer mac_rd_cnt = 0;
    always @(posedge axi_clk) begin
-      if (dut.m_cen) begin
+      if (!dut.m_cen) begin   // 低有效: 0=访问
          if (dut.m_wen) begin
             mac_wr_cnt = mac_wr_cnt + 1;
          end else begin
@@ -1992,7 +1992,7 @@ module tb_axi2sram_ctrl;
       repeat (2) begin
          @(posedge axi_clk);
          chk1("T19a no sram read during stall",
-              dut.u_axi2sram_ctrl_core.m_cen, 1'b0);
+              dut.u_axi2sram_ctrl_core.m_cen, 1'b1);   // 低有效: 1=关
       end
       @(negedge axi_clk);
       axi_rready = 1'b1;
@@ -2013,7 +2013,7 @@ module tb_axi2sram_ctrl;
       rd1(8'h28 << 5);
 
       // b) rskip 满: rready 压低 + len=15 (16 行) -> 4 行灌满 rskip 后
-      //    引擎停发 SRAM 读 (m_cen=0, bidx 续命在影子), 恢复无损续流
+      //    引擎停发 SRAM 读 (m_cen=1 低有效关, bidx 续命在影子), 恢复无损续流
       wr_burst(8'h30 << 5, 8'd15, 3'd5, 2'b01);
       @(negedge axi_clk);
       axi_rready = 1'b0;
@@ -2026,7 +2026,7 @@ module tb_axi2sram_ctrl;
       repeat (4) begin
          @(posedge axi_clk);
          chk1("T19b no sram read during stall",
-              dut.u_axi2sram_ctrl_core.m_cen, 1'b0);
+              dut.u_axi2sram_ctrl_core.m_cen, 1'b1);   // 低有效: 1=关
       end
       @(negedge axi_clk);
       axi_rready = 1'b1;
@@ -2151,7 +2151,7 @@ module tb_axi2sram_ctrl;
          chk1("T22 5th write parked in shadow",
               dut.u_axi2sram_ctrl_core.r.cur_v, 1'b1);
          chk1("T22 macro quiet while parked",
-              dut.u_axi2sram_ctrl_core.m_cen, 1'b0);
+              dut.u_axi2sram_ctrl_core.m_cen, 1'b1);   // 低有效: 1=关
       end
       // c) 释放 bready: 5 B 按序 drain (buser 0..4 证顺序)
       @(negedge axi_clk);
@@ -2192,7 +2192,7 @@ module tb_axi2sram_ctrl;
       chk1("T23a frozen awready=0", axi_awready, 1'b0);
       chk1("T23a frozen arready=0", axi_arready, 1'b0);
       chk1("T23a esm_fault rail", dut.esm_fault, 1'b1);
-      chk1("T23a macro gated", dut.u_axi2sram_ctrl_core.m_cen, 1'b0);
+      chk1("T23a macro gated", dut.u_axi2sram_ctrl_core.m_cen, 1'b1);   // 低有效: 1=关
 
       // (b) cmdq 载荷奇偶 (v4.0 毒化完成): AR len=15 开路后 AW 在队头,
       //     force u_cmdq.q[0] 翻位并**持到分派消费** → 毒写排空 W 拍

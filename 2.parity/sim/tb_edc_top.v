@@ -80,6 +80,7 @@ module tb_edc_top;
    reg     hang_evt_seen;
    reg     rpar_evt_seen;
    integer rpar_evt_cnt;
+   reg     rpar_flt_prev;               // sticky-rail rising-edge detect
    reg     or_bad, rail_bad;
    reg     rail_chk_en;                          // T26 注错窗口旁路轨监视器
    integer mbus_ce_cnt;
@@ -164,7 +165,7 @@ module tb_edc_top;
    wire agg_esm_err, agg_esm_err_n, agg_esm_fault, agg_esm_fault_n;
    wire agg_reg_par_fault, agg_reg_par_fault_n;
    wire agg_rail_fault, agg_rail_fault_n;
-   wire br_hang_evt, br_hang_evt_n, br_rpar_evt, br_rpar_evt_n;
+   wire br_hang_flt, br_hang_flt_n, br_rpar_flt, br_rpar_flt_n;
 
    // ---------------- 监视器 ----------------
    always @(posedge mbus_clk) begin
@@ -193,13 +194,17 @@ module tb_edc_top;
 
    always @(posedge apb_clk) begin
       if (apb_rstn) begin
-         if (br_hang_evt !== ~br_hang_evt_n) rail_bad = 1'b1;
-         if (br_rpar_evt !== ~br_rpar_evt_n) rail_bad = 1'b1;
-         if (br_hang_evt) hang_evt_seen = 1'b1;
-         if (br_rpar_evt) begin
+         // apb2mbus v3+ contract: sticky level dual rails (hang_flt/
+         // rpar_flt, local-plane 0xFF04 STA_EVT W1C clear) - rail
+         // complement checks unchanged; count rising edges (= old pulse)
+         if (br_hang_flt !== ~br_hang_flt_n) rail_bad = 1'b1;
+         if (br_rpar_flt !== ~br_rpar_flt_n) rail_bad = 1'b1;
+         if (br_hang_flt) hang_evt_seen = 1'b1;
+         if (br_rpar_flt && !rpar_flt_prev) begin
             rpar_evt_seen = 1'b1;
             rpar_evt_cnt  = rpar_evt_cnt + 1;
          end
+         rpar_flt_prev = br_rpar_flt;
       end
    end
 
@@ -950,10 +955,10 @@ module tb_edc_top;
       .par       (mb_par    ),
       .rdata     (mb_rdata  ),
       .rpar      (mb_rpar   ),
-      .hang_evt  (br_hang_evt  ),
-      .hang_evt_n(br_hang_evt_n),
-      .rpar_evt  (br_rpar_evt  ),
-      .rpar_evt_n(br_rpar_evt_n)
+      .hang_flt  (br_hang_flt  ),
+      .hang_flt_n(br_hang_flt_n),
+      .rpar_flt  (br_rpar_flt  ),
+      .rpar_flt_n(br_rpar_flt_n)
    );
 
    // ---------------- 驱动默认值 ----------------
@@ -1396,8 +1401,8 @@ module tb_edc_top;
       release dut1.u_edc_regfile.r.wdata_q[1];
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
-      check(rdata === 32'h0000_8001, "T12: in-flight parity -> PERR13");
-      check(dut1_reg_par_fault === 1'b1, "T12: reg_par_fault asserted");
+      check(rdata === 32'h0000_8002, "T12: in-flight parity -> PERR13");
+      check(dut1_esm_fault === 1'b1, "T12: esm_fault asserted (在途事件 11-16 契约)");
       apb_wr(16'h01AC, 32'h0000_8000);   // W1C bit15 = PERR13 (mbus 本域)
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
@@ -1451,14 +1456,14 @@ module tb_edc_top;
       release u_bridge.r_apb.paddr_q;
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h01AC, rdata);
-      check(rdata[16] === 1'b1 && rdata[0] === 1'b1,
-            "T13: addr in-flight -> dut1 PERR14 + PAR_FAULT");
+      check(rdata[16] === 1'b1,
+            "T13: addr in-flight -> dut1 PERR14 (FAULT 走 esm_fault)");
       apb_rd(16'h00AC, rdata);
       check(rdata[16] === 1'b1, "T13: broadcast -> dut0 PERR14 too");
       apb_rd(16'h0218, rdata);
-      check(rdata === 32'h0000_0011, "T13: agg cmd-par sticky (PERR2)");
-      check(dut1_reg_par_fault === 1'b1 && dut1_reg_par_fault_n === 1'b0,
-            "T13: reg_par_fault dual rail");
+      check(rdata === 32'h0000_0011, "T13: agg cmd-par sticky (PERR2+FAULT, 在途事件走 esm_fault)");
+      check(dut1_esm_fault === 1'b1 && dut1_esm_fault_n === 1'b0,
+            "T13: esm_fault dual rail");
       apb_rd(16'h01A8, rdata);
       check(rdata === 32'h0, "T13: corrupted write gated (IRQEN intact)");
       apb_rd(16'h0188, rdata);
@@ -1477,9 +1482,10 @@ module tb_edc_top;
       apb_rd(16'h01AC, rdata);
       check(rdata === 32'h0000_0002, "T13: dut1 PERR14 W1C");
       // 广播级命令损坏同时打进聚合器 per-core 寄存器奇偶粘滞: 查到 + 撤源后清
-      // (不清则 PAR_FAULT 折入的 sticky 拉着 bit0, 下面 0x0218 读不回 0x2)
+      // (不清则 PERR2 sticky 本体 (bit4) 拉着, 下面 0x0218 读不回 0x2)
       apb_rd(16'h0210, rdata);
-      check(rdata === 32'h0000_0003, "T13: per-core par sticky captured");
+      // 11-16: 在途命令奇偶不再进 per-core 寄存器面 (纯寄存器面语义), 静息 0x2
+      check(rdata === 32'h0000_0002, "T13: per-core face quiet for in-flight event");
       apb_wr(16'h0210, 32'h0000_0003);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h0218, rdata);
@@ -1640,7 +1646,7 @@ module tb_edc_top;
          repeat (12) @(negedge m_clk);
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h0204, rdata);
-         check(rdata === 32'h0, "T16: agg cleaned");
+         check(rdata === 32'h0000_0002, "T16: agg cleaned (静息 FAULT_N)");
       end
 
       // -------- T17: 真实连线损坏 (XOR 掩码, 不经注错硬件) --------
@@ -2059,7 +2065,7 @@ module tb_edc_top;
          release dut1.u_edc_regfile.r.perr14_q_n;
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h01AC, rdata);
-         check(rdata === 32'h0001_0001, "T22: perr14 dup -> PERR14");
+         check(rdata === 32'h0001_0002, "T22: perr14 dup -> PERR14");
          apb_wr(16'h01AC, 32'h0001_0000);
          repeat (2) @(negedge mbus_clk);
          force dut1.u_edc_regfile.r.par_lq_n = 1'b0;
@@ -2078,7 +2084,7 @@ module tb_edc_top;
          release dut0.u_edc_regfile.r.perr13_q_n;
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
-         check(rdata === 32'h0000_8001, "T22: perr13 dup -> PERR13");
+         check(rdata === 32'h0000_8002, "T22: perr13 dup -> PERR13");
          apb_wr(16'h00AC, 32'h0000_8000);
          repeat (2) @(negedge mbus_clk);
          repeat (2) @(negedge mbus_clk);
@@ -2133,20 +2139,24 @@ module tb_edc_top;
          hang_evt_seen = 0;
          apb_wr(16'h00FC, 32'h0);            // 写挂起 -> ~64 apb 拍超时
          check(slverr_seen === 1'b1, "T23: hung write -> pslverr");
-         repeat (2) @(negedge apb_clk);      // evt 寄存拍在 pready 之后
-         check(hang_evt_seen === 1'b1, "T23: hang_evt pulsed (write)");
+         repeat (2) @(negedge apb_clk);      // flt 寄存拍在 pready 之后
+         check(hang_evt_seen === 1'b1, "T23: hang_flt set (write)");
+         apb_wr(16'hFF04, 32'h0000_0004);    // W1C hang 粘滞 (STA_EVT 本地面)
+         repeat (2) @(negedge apb_clk);
          hang_evt_seen = 0;
-         apb_rd(16'h02FC, rdata);            // 读同样超时 (drain 捷径)
+         apb_rd(16'h02FC, rdata);            // 读走 drain 捷径 (不再超时)
          check(slverr_seen === 1'b1, "T23: hung read -> pslverr");
          check(rdata === 32'h0, "T23: hung read prdata 0");
          // drain 期间 req_fire 被门控 -> 捷径读不再发新请求, 不再超时
          repeat (20) @(negedge apb_clk);
-         check(hang_evt_seen === 1'b0, "T23: drain shortcut no extra evt");
+         check(hang_evt_seen === 1'b0, "T23: drain shortcut no extra flt");
          mbus_run = 1;                       // 恢复时钟 -> drain 排空
          repeat (20) @(negedge mbus_clk);
          apb_rd(16'h02FC, rdata);
          check(slverr_seen === 1'b0 && rdata === 32'hEDC0_2002,
                "T23: recovered after drain");
+         apb_wr(16'hFF04, 32'h0000_000C);    // 清干净粘滞给后续场景
+         repeat (2) @(negedge apb_clk);
       end
 
       // -------- T24: 桥 hang 计数器双轨注错 (h_dup) --------
@@ -2157,17 +2167,21 @@ module tb_edc_top;
          release u_bridge.r_apb.hang_cnt_n[5];
          check(slverr_seen === 1'b1, "T24: h_dup -> pslverr");
          repeat (2) @(negedge apb_clk);      // evt 寄存拍在 pready 之后
-         check(hang_evt_seen === 1'b1, "T24: h_dup -> hang_evt");
+         check(hang_evt_seen === 1'b1, "T24: h_dup -> hang_flt");
          repeat (4) @(negedge apb_clk);      // 副本自愈 + drain 排空
          repeat (4) @(negedge mbus_clk);
          apb_rd(16'h00FC, rdata);
          check(slverr_seen === 1'b0 && rdata === 32'hEDC0_1000,
                "T24: recovered after heal");
+         apb_wr(16'hFF04, 32'h0000_000C);    // 清粘滞给后续场景
+         repeat (2) @(negedge apb_clk);
       end
 
       // -------- T25: rpar 读回程保护 (桥级 fail-safe) --------
       begin
          rpar_evt_cnt = 0;
+         apb_wr(16'hFF04, 32'h0000_0008);    // W1C rpar 粘滞: 窗口内上升沿可观测
+         repeat (2) @(negedge apb_clk);
          rpar_cor_en = 1;                    // 翻转 OR 网合并后的 rpar
          apb_rd(16'h00FC, rdata);
          check(slverr_seen === 1'b1, "T25: rpar-bad read -> pslverr");
@@ -2679,7 +2693,7 @@ module tb_edc_top;
          release dut0.u_edc_regfile.r.perr14_q_n;
          repeat (2) @(negedge mbus_clk);
          apb_rd(16'h00AC, rdata);
-         check(rdata === 32'h0001_0001, "T28: perr14 dup -> PERR14");
+         check(rdata === 32'h0001_0002, "T28: perr14 dup -> PERR14");
          apb_wr(16'h00AC, 32'h0001_0000);
          repeat (2) @(negedge mbus_clk);
          force dut0.u_edc_regfile.r.par_lq_n = 1'b0;
@@ -2702,8 +2716,8 @@ module tb_edc_top;
       release dut0.u_edc_regfile.r.wdata_q[1];
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h00AC, rdata);
-      check(rdata === 32'h0000_8001, "T29: dut0 in-flight par -> PERR13");
-      check(dut0_reg_par_fault === 1'b1, "T29: dut0 reg_par_fault asserted");
+      check(rdata === 32'h0000_8002, "T29: dut0 in-flight par -> PERR13");
+      check(dut0_esm_fault === 1'b1, "T29: dut0 esm_fault asserted");
       apb_wr(16'h00AC, 32'h0000_8000);
       repeat (2) @(negedge mbus_clk);
       apb_rd(16'h00AC, rdata);

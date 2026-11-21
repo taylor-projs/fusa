@@ -376,11 +376,13 @@ module ia_bus_timeo_top #(
 
    //--------------------------------------------------------------------------
    // 聚合: PAR_FAULT 电平 + 双轨 (含各 core 寄存器奇偶 sticky)
+   //   2026-11-16 三轨统一: 组 2 命令在途事件粘滞 cmd_r 出列 (flt_cmd =
+   //   该 wrap 存储奇偶, 寄存器面, 保留), cmd_r 聚合走 esm_fault
    //--------------------------------------------------------------------------
    logic par_fault_level;
    assign par_fault_level = flt_err | flt_flt | flt_cmd | flt_parc | flt_rail
                           | flt_esmtst
-                          | cmd_r | plr.q
+                          | plr.q
                           | (|sta_parc_r[NUM_CORE-1:0]);
 
    //--------------------------------------------------------------------------
@@ -453,7 +455,7 @@ module ia_bus_timeo_top #(
    //--------------------------------------------------------------------------
    assign esm_err         = |sta_err_r[NUM_CORE-1:0] | esmtst_r[0];
    assign esm_err_n       = ~esm_err;
-   assign esm_fault       = |sta_fault_r[NUM_CORE-1:0] | esmtst_r[1];
+   assign esm_fault       = |sta_fault_r[NUM_CORE-1:0] | esmtst_r[1] | cmd_r;
    assign esm_fault_n     = ~esm_fault;
    assign reg_par_fault   =  par_fault_level | esmtst_r[2];
    assign reg_par_fault_n = ~reg_par_fault;

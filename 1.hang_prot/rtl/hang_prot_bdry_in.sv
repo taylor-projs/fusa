@@ -84,8 +84,11 @@
 //            RETURNING CLASS occupancy is 0 (late/phantom, per-class
 //            rule - same as the outbound unit; N_AR_CLASS=1 degenerates
 //            to the total-otd rule).
-//     dummy: LEN-exact SLVERR R (per class, class = dum_cls lowest
-//            pending) / SLVERR B offered at the m side while the
+//     dummy: LEN-exact SLVERR R (per class, class = dum_cls two-tier
+//            pick: a CUT burst first - beats delivered, RLAST pending -
+//            then lowest pending; finishing the cut burst first keeps
+//            the m-side R stream free of interleaving, AXI4) / SLVERR
+//            B offered at the m side while the
 //            monitor's otd != 0 and (for B) the entry's m-side WLAST is
 //            done. A live main retires its transactions; a dead main
 //            never accepts - quarantine holds.
@@ -153,7 +156,9 @@ module hang_prot_bdry_in #(
     parameter int                  AXI_ADDR_W  = 32,
     parameter int                  AXI_DATA_W  = 32,
     parameter int                  STRB_W      = AXI_DATA_W/8,
-    parameter int                  WSKID_BEATS = 16             // max ARLEN+1 per burst
+    parameter int                  WSKID_BEATS = 16,            // max ARLEN+1 per burst
+    parameter int                  NSLOT       = 2              // W skid ring depth
+                                                                 // (v2.4; <= OTD_MAX)
 )(
     input  logic clk,                          // island aclk
     input  logic rstn,                         // island reset, async low
@@ -223,7 +228,12 @@ module hang_prot_bdry_in #(
                                                   // blk_r is internally
                                                   // dual-railed, mismatch =
                                                   // containment + sticky fault)
-    output logic [7:0]            wskid_st,       // {slot1,slot0} one-hot states
+    output logic                  quiesce_exit,   // v3.6: 1-cycle pulse, the
+                                                  // exit actually happened
+                                                  // (-> regfile STA_RCV[1]
+                                                  // DONE, same contract as
+                                                  // recover_done outbound)
+    output logic [4*NSLOT-1:0]    wskid_st,       // {slotN-1..slot0} one-hot states
     // ---- FuSa (island aclk domain): aggregated boundary integrity, dual rail
     output logic                  sk_fault,       // sticky: wskid OR mode/FIFO
                                                   // integrity fault (rst-only)
@@ -249,6 +259,10 @@ module hang_prot_bdry_in #(
             $error("[hang_prot_bdry_in] AR_ID_REMAP low %0d bit(s) must be 0 (class field)",
                    CLSW);
         end
+        if ((NSLOT < 2) || (NSLOT > OTD_MAX)) begin
+            $error("[hang_prot_bdry_in] NSLOT must be 2..OTD_MAX (got %0d, OTD_MAX=%0d)",
+                   NSLOT, OTD_MAX);
+        end
     end
 `endif
 
@@ -263,7 +277,7 @@ module hang_prot_bdry_in #(
     logic sk_integrity;   // live: one-hot && payload parity && counter dups
     logic wsk_all_free;   // both skid slots FREE (decoded)
     logic wsk_quiesce_ok; // both slots decode VALID non-REPLAY codes
-    logic [7:0] wsk_slot_st;
+    logic [4*NSLOT-1:0] wsk_slot_st;
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
@@ -406,10 +420,25 @@ module hang_prot_bdry_in #(
     //   driven by the same push/pop handshake events as the pointers (and
     //   as the monitor's rd_otd) - the ledgers cannot drift.
     logic [CLSW-1:0] dum_cls;
+    // v3.7 two-tier pick: a class whose head burst is CUT (beats delivered,
+    //   RLAST pending - ar_occ != 0 && rbeat_cnt != 0) is finished FIRST.
+    //   The m-side R stream may GAP between beats (m_rready stalls) but
+    //   must never INTERLEAVE another transaction (AXI4 no-interleave).
+    //   At most one class can hold a cut burst (normal: single passthrough
+    //   stream; quarantine: tier-2 finishes it before any other class
+    //   starts). No AR is accepted in quarantine (m_arready = 0), so a
+    //   lower class cannot appear mid-burst - the pick is stable until the
+    //   cut burst pops. N_AR_CLASS = 1 degenerates (both tiers pick 0).
     always_comb begin : dum_cls_sel
         dum_cls = '0;
         for (int c = N_AR_CLASS-1; c >= 0; c--) begin
             if (r.ar_occ[c] != '0) begin
+                dum_cls = c[CLSW-1:0];
+            end
+        end
+        // tier 2 overrides: finish the CUT burst first
+        for (int c = N_AR_CLASS-1; c >= 0; c--) begin
+            if ((r.ar_occ[c] != '0) && (r.rbeat_cnt[c] != '0)) begin
                 dum_cls = c[CLSW-1:0];
             end
         end
@@ -467,16 +496,16 @@ module hang_prot_bdry_in #(
             v.bdum_owed_n = '1;
         end else begin
             if (m_ar_hs) begin
-                v.ar_id [m_arcls][r.ar_wr[m_arcls]] = m_arid;
-                v.ar_len[m_arcls][r.ar_wr[m_arcls]] = m_arlen;
+                v.ar_id  [m_arcls][r.ar_wr[m_arcls]]= m_arid;
+                v.ar_len [m_arcls][r.ar_wr[m_arcls]]= m_arlen;
                 // FuSa: entry parity over {id,len} (checked at the head)
-                v.ar_par[m_arcls][r.ar_wr[m_arcls]] = (^m_arid) ^ (^m_arlen);
-                v.ar_wr [m_arcls]                   =   ptr_inc(r.ar_wr[m_arcls]);
+                v.ar_par [m_arcls][r.ar_wr[m_arcls]]= (^m_arid) ^ (^m_arlen);
+                v.ar_wr  [m_arcls]                  =   ptr_inc(r.ar_wr[m_arcls]);
                 v.ar_wr_n[m_arcls]                  = ~(ptr_inc(r.ar_wr[m_arcls]));
             end
             if (m_rl_hs) begin
-                v.ar_rp    [cur_cls]   =   ptr_inc(r.ar_rp[cur_cls]);
-                v.ar_rp_n  [cur_cls]   = ~(ptr_inc(r.ar_rp[cur_cls]));
+                v.ar_rp      [cur_cls] =   ptr_inc(r.ar_rp[cur_cls]);
+                v.ar_rp_n    [cur_cls] = ~(ptr_inc(r.ar_rp[cur_cls]));
                 v.rbeat_cnt  [cur_cls] = '0;
                 v.rbeat_cnt_n[cur_cls] = '1;
             end else if (m_r_hs) begin
@@ -490,11 +519,11 @@ module hang_prot_bdry_in #(
                 v.ar_occ_n = r.ar_occ_n;
             end else begin
                 if (m_ar_hs) begin
-                    v.ar_occ [m_arcls]  =   r.ar_occ[m_arcls] + 1'b1;
+                    v.ar_occ  [m_arcls] =   r.ar_occ[m_arcls] + 1'b1;
                     v.ar_occ_n[m_arcls] = ~(r.ar_occ[m_arcls] + 1'b1);
                 end
                 if (m_rl_hs) begin
-                    v.ar_occ [cur_cls]  =   r.ar_occ[cur_cls] - 1'b1;
+                    v.ar_occ  [cur_cls] =   r.ar_occ[cur_cls] - 1'b1;
                     v.ar_occ_n[cur_cls] = ~(r.ar_occ[cur_cls] - 1'b1);
                 end
             end
@@ -570,9 +599,9 @@ module hang_prot_bdry_in #(
     // occupancy gate on the COUNTER (wr_otd_mon), not pointer equality:
     // aw_bp == aw_wr is ambiguous at a FULL ring (v3.4)
     logic aw_ent_err;
+    logic aw_dup_err;
     assign aw_ent_err = (wr_otd_mon != '0)
                         && (((^r.aw_id[r.aw_bp])) != r.aw_par[r.aw_bp]);
-    logic aw_dup_err;
     assign aw_dup_err = (r.aw_wr != ~r.aw_wr_n) || (r.aw_bp != ~r.aw_bp_n)
                         || (r.bdum_owed != ~r.bdum_owed_n);
 
@@ -590,24 +619,24 @@ module hang_prot_bdry_in #(
     //--------------------------------------------------------------------------
     assign m_arready = !r.blk_r && s_arready && (rd_otd_mon < OTD_MAX);
 
-    logic [BEAT_W-1:0] rlen_ext;
+    logic  [BEAT_W-1:0] rlen_ext;
+    logic  rdum_last;
+    logic  rdum_en;
     assign rlen_ext  = {1'b0, r.ar_len[cur_cls][r.ar_rp[cur_cls]]};
-    logic rdum_last;
     assign rdum_last = (r.rbeat_cnt[cur_cls] >= rlen_ext);
-    logic rdum_en;
     assign rdum_en   = r.blk_r && (rd_otd_mon != '0);
 
-    logic bdum_en;
+    logic  bdum_en;
     assign bdum_en   = r.blk_r && (wr_otd_mon != '0) && (r.bdum_owed != '0);
 
-    assign m_rvalid = r.blk_r ? rdum_en : (s_rvalid && (r.ar_occ[s_rcls] != '0));
-    assign m_rresp  = r.blk_r ? 2'b10   : s_rresp;
-    assign m_rlast  = r.blk_r ? rdum_last : s_rlast;
-    assign m_rid    = r.ar_id[cur_cls][r.ar_rp[cur_cls]];  // id restoration, BOTH modes
+    assign m_rvalid  = r.blk_r ? rdum_en   : (s_rvalid && (r.ar_occ[s_rcls] != '0));
+    assign m_rresp   = r.blk_r ? 2'b10     : s_rresp;
+    assign m_rlast   = r.blk_r ? rdum_last : s_rlast;
+    assign m_rid     = r.ar_id[cur_cls][r.ar_rp[cur_cls]];  // id restoration, BOTH modes
 
-    assign m_bvalid = r.blk_r ? bdum_en : (s_bvalid && (wr_otd_mon != '0));
-    assign m_bresp  = r.blk_r ? 2'b10   : s_bresp;
-    assign m_bid    = r.aw_id[r.aw_bp];   // id restoration, BOTH modes
+    assign m_bvalid  = r.blk_r ? bdum_en   : (s_bvalid && (wr_otd_mon != '0));
+    assign m_bresp   = r.blk_r ? 2'b10     :  s_bresp;
+    assign m_bid     = r.aw_id[r.aw_bp]    ;   // id restoration, BOTH modes
 
     //--------------------------------------------------------------------------
     // s-side drives
@@ -631,7 +660,7 @@ module hang_prot_bdry_in #(
     //   another class still has real outstanding. N_AR_CLASS=1 degenerates
     //   to the v2 total-otd gate. B stays on the total aw ledger.
     assign s_rready  = (r.blk_r || (r.ar_occ[s_rcls] == '0)) ? 1'b1 : m_rready;
-    assign s_bready  = (r.blk_r || (wr_otd_mon == '0)) ? 1'b1 : m_bready;
+    assign s_bready  = (r.blk_r || (wr_otd_mon       == '0)) ? 1'b1 : m_bready;
 
     assign s_awid = AW_ID_REMAP;
 
@@ -645,49 +674,50 @@ module hang_prot_bdry_in #(
     logic wsk_fault_n;
 
     hang_prot_wskid #(
-        .AXI_ADDR_W (AXI_ADDR_W ),
-        .AXI_DATA_W (AXI_DATA_W ),
-        .STRB_W     (STRB_W     ),
-        .WSKID_BEATS(WSKID_BEATS)
+        .AXI_ADDR_W   (AXI_ADDR_W          ),
+        .AXI_DATA_W   (AXI_DATA_W          ),
+        .STRB_W       (STRB_W              ),
+        .WSKID_BEATS  (WSKID_BEATS         ),
+        .NSLOT        (NSLOT               )
     ) u_hang_prot_wskid (
-        .clk        (clk                 ),
-        .rstn       (rstn                ),
-        .mode       (r.blk_r             ),
-        .force_clear(quiesce_exit        ),
-        .aw_allow   (wr_otd_mon < OTD_MAX),
+        .clk          (clk                 ),
+        .rstn         (rstn                ),
+        .mode         (r.blk_r             ),
+        .force_clear  (quiesce_exit        ),
+        .aw_allow     (wr_otd_mon < OTD_MAX),
 
-        .m_awvalid(m_awvalid),
-        .m_awready(m_awready),
-        .m_awaddr (m_awaddr ),
-        .m_awlen  (m_awlen  ),
-        .m_awsize (m_awsize ),
-        .m_awburst(m_awburst),
-        .m_wvalid (m_wvalid ),
-        .m_wready (m_wready ),
-        .m_wdata  (m_wdata  ),
-        .m_wstrb  (m_wstrb  ),
-        .m_wlast  (m_wlast  ),
+        .m_awvalid    (m_awvalid           ),
+        .m_awready    (m_awready           ),
+        .m_awaddr     (m_awaddr            ),
+        .m_awlen      (m_awlen             ),
+        .m_awsize     (m_awsize            ),
+        .m_awburst    (m_awburst           ),
+        .m_wvalid     (m_wvalid            ),
+        .m_wready     (m_wready            ),
+        .m_wdata      (m_wdata             ),
+        .m_wstrb      (m_wstrb             ),
+        .m_wlast      (m_wlast             ),
 
-        .s_awvalid(s_awvalid),
-        .s_awready(s_awready),
-        .s_awaddr (s_awaddr ),
-        .s_awlen  (s_awlen  ),
-        .s_awsize (s_awsize ),
-        .s_awburst(s_awburst),
-        .s_wvalid (s_wvalid ),
-        .s_wlast  (s_wlast  ),
-        .s_wdata  (s_wdata  ),
-        .s_wstrb  (s_wstrb  ),
-        .s_wready (s_wready ),
+        .s_awvalid    (s_awvalid           ),
+        .s_awready    (s_awready           ),
+        .s_awaddr     (s_awaddr            ),
+        .s_awlen      (s_awlen             ),
+        .s_awsize     (s_awsize            ),
+        .s_awburst    (s_awburst           ),
+        .s_wvalid     (s_wvalid            ),
+        .s_wlast      (s_wlast             ),
+        .s_wdata      (s_wdata             ),
+        .s_wstrb      (s_wstrb             ),
+        .s_wready     (s_wready            ),
 
-        .all_free    (wsk_all_free  ),
-        .any_replay  (),
-        .quiesce_ok  (wsk_quiesce_ok),
-        .sk_onehot   (sk_onehot     ),
-        .sk_integrity(sk_integrity  ),  // live entry condition (FuSa v3.1)
-        .sk_fault    (wsk_fault     ),
-        .sk_fault_n  (wsk_fault_n   ),
-        .slot_st     (wsk_slot_st   )
+        .all_free     (wsk_all_free        ),
+        .any_replay   (                    ),
+        .quiesce_ok   (wsk_quiesce_ok      ),
+        .sk_onehot    (sk_onehot           ),
+        .sk_integrity (sk_integrity        ),  // live entry condition (FuSa v3.1)
+        .sk_fault     (wsk_fault           ),
+        .sk_fault_n   (wsk_fault_n         ),
+        .slot_st      (wsk_slot_st         )
     );
 
     //--------------------------------------------------------------------------
@@ -696,11 +726,11 @@ module hang_prot_bdry_in #(
     //   wskid internal faults OR this unit's mode/FIFO faults (proper
     //   rail aggregation - see hang_prot_recover)
     //--------------------------------------------------------------------------
-    assign sk_fault   = wsk_fault | r.iflt_q;
+    assign sk_fault   = wsk_fault   | r.iflt_q  ;
     assign sk_fault_n = wsk_fault_n & r.iflt_q_n;
 
-    assign block_active   = r.blk_r;
-    assign block_active_n = r.blk_r_n;   // FuSa v3.1 dual-rail status
-    assign wskid_st     = wsk_slot_st;
+    assign block_active   = r.blk_r    ;
+    assign block_active_n = r.blk_r_n  ;   // FuSa v3.1 dual-rail status
+    assign wskid_st       = wsk_slot_st;
 
 endmodule

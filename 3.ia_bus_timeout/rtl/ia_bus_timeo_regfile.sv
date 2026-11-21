@@ -72,8 +72,12 @@
 //                                            [0]    PAR_FAULT (level) ->
 //                                                   ESM dual rail
 //                                                   reg_par_fault/_n =
-//                                                   OR of all PERR bits
-//                                                   + self-test latch;
+//                                                   OR of register-plane
+//                                                   PERR bits + self-test
+//                                                   latch (2026-11-16 三轨
+//                                                   统一: PERR5 命令在途
+//                                                   事件本体不在电平, 走
+//                                                   esm_fault; 诊断位保留)
 //                                                   writing [0] clears
 //                                                   ONLY the latch
 //                                            [1]    PAR_FAULT_N (RO)
@@ -891,10 +895,13 @@ module ia_bus_timeo_regfile #(
     assign perr5 = r5_flt | flt5_s2;   // 0x14: image + THRESH0 shadow
     logic perr6;
     assign perr6 = r6_flt | flt6_s2;   // 0x18: image + THRESH1 shadow
+    // reg_par_fault: 寄存器面 (在途事件本体出列, 2026-11-16 三轨统一
+    // -> 聚合走 esm_fault: PERR10 cmd_r + PERR9 在途锁存 lane;
+    // 诊断位 bit11/bit12 保留)
     assign reg_par_fault   = r0_flt | r1_flt | r2_flt | r3_flt
                               | perr4 | perr5 | perr6
-                              | r7_flt | r8_flt | r10_flt | cmd_r
-                              | (|r_mb.par_lq);
+                              | r7_flt | r8_flt | r10_flt
+                              | r_mb.par_lq[0];
     assign reg_par_fault_n = ~reg_par_fault;
 
     //--------------------------------------------------------------------------
@@ -946,7 +953,9 @@ module ia_bus_timeo_regfile #(
     //--------------------------------------------------------------------------
     assign esm_err     = rail_s2[2];
     assign esm_err_n   = rail_s2[3];
-    assign esm_fault   = rail_s2[0];
-    assign esm_fault_n = rail_s2[1];
+    // esm_fault (监视器自身故障): FU 粘滞 | 在途命令奇偶事件 (PERR10
+    // cmd_r + PERR9 lane, 三轨统一)
+    assign esm_fault   = rail_s2[0] | cmd_r | r_mb.par_lq[1];
+    assign esm_fault_n = ~esm_fault;
 
 endmodule

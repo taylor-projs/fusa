@@ -209,7 +209,7 @@ CDC 要点: 写跨域 = 单笔 toggle 握手 (锁存 {wsel,wdata} + req_t, aclk 
 ## 8. 验证状态
 
 - TB: `sim/tb_ia_timeo_gen_wrap.sv` (core+top 双级), `sim/run_vcs.sh` 自检 (ERR: / failed at / TB PASS 三查, SVA 不进退出码的对策);
-- 覆盖率: **TOGGLE 100.00 双域** (2026-11-07 el 重建实测, `sim/tgl_struct_excl.el` + `gen_ia_excl.py`);
+- 覆盖率: **TOGGLE 100.00 双域** (2026-11-18 全仓覆盖率战役复测重建: 11-16 二轮补漏后的漂移已收敛, el 增补 2 家族 —— per-core 奇偶输入总线未用 lane / STA_PARCORE 读出镜像未用核位, `sim/tgl_struct_excl.el` + `gen_ia_excl.py`, 残洞 0);
 - 分支/条件/注错矩阵: 见 [ia_bus_timeo_cov_sil2.md](ia_bus_timeo_cov_sil2.md) §2 (ena 码字三分支 force 注入 / 副本失配 / 双比较器分歧 / 饱和丢增量 / 边界拍 ±1 等定向);
 - SIL2 残余清单与 PFH 论证: 同文档 §5-§6。
 

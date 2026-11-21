@@ -83,6 +83,10 @@
 //       rd_cnt_a_n rail deposit -> forced fire -> BLOCK -> QSR
 //   P29 long-AW (a-TB P31d port, no wedge): len=255 latches
 //       awlen_q[7:3] (s_awlen mirrors), short writes toggle back
+//   P30 v3.7 cut-burst-first: entry mid-delivery of a class-1 burst with
+//       class 0 parked behind (responder in-order) -> tier-2 finishes T1
+//       before any class-0 dummy; R no-interleave interlock in the
+//       collector guards every scenario in both modes
 //
 // Coverage: cg_slot (+cross), cg_scn, cg_ledger (otd incl. post-TO_CLR 0),
 // cg_dum (dummy R len). Run with -coverage per run_b.do / run_all.sh.
@@ -360,6 +364,20 @@ module tb_hang_prot_b_wrap;
         end
     endtask
 
+    // v3.6: STA_RCV (0x30) 隔离状态读回 (出入向统一契约):
+    //   [0] ACTIVE 跟随 blk_r, [1] DONE 粘滞 quiesce_exit (W1C)
+    task automatic rcv_chk(input [31:0] exp, input string tag);
+        begin
+            repeat (4) @(negedge mbus_clk);   // 2FF aclk->mbus 同步余量
+            mb_rd(8'h30, rd_val);
+            if (rd_val !== exp) begin
+                $display("[%0t] ERR: STA_RCV %s: got %h exp %h",
+                         $time, tag, rd_val, exp);
+                errors++;
+            end
+        end
+    endtask
+
     //------------------------------------------------------------------------
     // MASTER BFM = MAIN. main_alive=0 emulates the ADB400 isolation
     // withdrawing main's VALIDs (R1-class residual, documented) and main
@@ -370,6 +388,12 @@ module tb_hang_prot_b_wrap;
     int  reads_fired = 0, writes_fired = 0;
     int  r_bursts = 0, b_recv = 0, r_beats = 0;
     bit  id_used [16];
+    // v3.7: AXI4 R no-interleave interlock - a delivered beat whose
+    //   predecessor was non-RLAST must carry the SAME rid (gaps between
+    //   beats are legal, interleaving another transaction is not)
+    bit         r_burst_open = 0;
+    bit         r_blk_prev   = 0;
+    logic [3:0] r_burst_rid;
 
     // P19 raises this for the 16-bit counter full-range stalls (66k cycles)
     int WDT = 5000;
@@ -531,8 +555,29 @@ module tb_hang_prot_b_wrap;
     endtask
 
     // response collectors (S1: id legality + resp class)
-    always @(posedge aclk) if (rstn === 1) begin
+    always @(posedge aclk) begin
+        if (rstn !== 1'b1) begin
+            r_burst_open = 0;      // session wipe (P24 mid-sim reset)
+        end else begin
+        // session-boundary exemption: the QSR-exit force-clear legally
+        //   ABANDONS an m-side burst left open by the dead session
+        //   (P15b: dummy tail offered but never accepted) - a new
+        //   session may start with any rid. A mid-burst rid change
+        //   WITHOUT a boundary in between is still an interleave
+        //   violation (what P30 guards).
+        if (r_blk_prev && !block_active) begin
+            r_burst_open = 0;
+        end
+        r_blk_prev = block_active;
         if (m_rvalid && m_rready) begin
+            // v3.7: AXI4 R no-interleave interlock (both modes)
+            if (r_burst_open && (m_rid != r_burst_rid)) begin
+                $display("[%0t] ERR: R interleave: rid %0d inside burst of %0d",
+                         $time, m_rid, r_burst_rid);
+                errors++;
+            end
+            r_burst_rid  = m_rid;
+            r_burst_open = !m_rlast;
             if (!id_used[m_rid]) begin
                 $display("[%0t] ERR: unexpected m_rid %0d", $time, m_rid);
                 errors++;
@@ -593,6 +638,7 @@ module tb_hang_prot_b_wrap;
             end
             b_recv++;
         end
+        end   // else rstn
     end
 
     // (m_r_wait / m_b_wait live next to wait_block_entry below: VCS rejects
@@ -777,6 +823,7 @@ module tb_hang_prot_b_wrap;
     int scn = 0;
     int exit_kind = 0;      // 0 QSR normal, 1 QSR deferred (replay), 2 blocked
     int b0 = 0, r0 = 0;     // P13-P17 scorebook bases
+    int p30k = 0, p30ph = 0; // P30 cut-burst drain bookkeeping
     wire [OTD_W-1:0] rd_otd_i = u_dut.rd_otd_mon;
     wire [OTD_W-1:0] wr_otd_i = u_dut.wr_otd_mon;
 
@@ -1104,8 +1151,12 @@ module tb_hang_prot_b_wrap;
             $display("[%0t] ERR: dummy R not offered in quarantine", $time);
             errors++;
         end
+        rcv_chk(32'h1, "in quarantine");      // v3.6: ACTIVE=1, DONE=0
         qsr_rel();
         wait_block_exit(1);                   // S1: withdrawn (SVA), FIFO clear
+        rcv_chk(32'h2, "after exit");         // v3.6: ACTIVE=0, DONE=1
+        mb_wr_wait(8'h30, 32'h2);             // W1C DONE
+        rcv_chk(32'h0, "after DONE W1C");     // v3.6: clean
         check_otd_zero();                    // S3
         w1c_all();
         main_alive = 1;                      // main revived (fresh state)
@@ -1940,7 +1991,16 @@ module tb_hang_prot_b_wrap;
         end
         mb_wr(16'h0100, 32'hDEAD_BEEF);         // ignored (wrong instance)
         mb_wr(16'h0002, 32'hDEAD_BEEF);         // ignored (misaligned)
-        mb_wr(16'h0028, 32'hDEAD_BEEF);         // ignored (out of range)
+        mb_wr(16'h0028, 32'hDEAD_BEEF);         // ignored (keyed reg, no key -
+                                                //   0x28 has been IN range since v3.4)
+        mb_wr(16'h0034, 32'hDEAD_BEEF);         // ignored (REAL OOR: wsel 13,
+                                                //   range_ok=0 - first true
+                                                //   range-gate write, v3.7)
+        mb_rd (16'h0038, rd_val);               // wsel 14: range gate -> 0
+        if (rd_val !== 32'h0) begin
+            $display("[%0t] ERR: P18 real OOR read %h != 0", $time, rd_val);
+            errors++;
+        end
         repeat (8) @(negedge mbus_clk);
         mb_rd(16'h001C, rd_val);
         if (rd_val[5] !== 1'b0) begin
@@ -3006,13 +3066,84 @@ module tb_hang_prot_b_wrap;
         m_bready = 0;
         scn_sample();
 
+        // ---- P30: v3.7 cut-burst-first (dum_cls two-tier) --------------------
+        //   Entry cuts a class-1 passthrough burst MID-DELIVERY while the
+        //   LOWER class 0 is parked behind it (its AR crossed; the in-order
+        //   responder is still busy with T1, so T0 never gets answered).
+        //   The old single-tier pick served class 0 first -> T1's beats
+        //   interleaved around T0's dummy (AXI4 violation). Tier-2 finishes
+        //   T1 first: post-revive m stream must be [T1 remaining beats ..
+        //   T1 RLAST] then [T0 1-beat dummy RLAST] - no rid switch inside
+        //   a burst, T0 strictly after T1's RLAST.
+        scn = 30; $display("[%0t] --- P30 ---", $time);
+        m_rready = 1;
+        r0 = r_beats;
+        m_ar_fire(4'h1, 8'd15);            // class 1, 16-beat burst
+        p30k = 0;                          // let 4 beats deliver
+        while (r_beats < r0 + 4 && p30k < 500) begin
+            @(posedge aclk); p30k++;
+        end
+        m_ar_fire(4'h0, 8'd0);             // class 0 parks behind T1
+        main_alive = 0;                    // die mid-R: stall arms the timeout
+        m_rready   = 0;
+        wait_block_entry();
+        if (u_dut.u_hang_prot_bdry_in.r.rbeat_cnt[1] == '0
+            || u_dut.u_hang_prot_bdry_in.r.ar_occ[0] == '0) begin
+            $display("[%0t] ERR: P30 setup: cut=%0d parked=%0d",
+                     $time, u_dut.u_hang_prot_bdry_in.r.rbeat_cnt[1],
+                     u_dut.u_hang_prot_bdry_in.r.ar_occ[0]);
+            errors++;
+        end
+        main_alive = 1;                    // revive: live main takes dummies
+        m_rready   = 1;
+        p30ph = 1;                         // phase 1: inside T1's cut burst
+        p30k  = 0;
+        while (p30k < 2000 && p30ph != 3) begin
+            @(posedge aclk); p30k++;
+            if (m_rvalid && m_rready) begin
+                if (p30ph == 1) begin
+                    if (m_rid != 4'h1) begin
+                        $display("[%0t] ERR: P30: rid %0d inside cut burst of 1",
+                                 $time, m_rid);
+                        errors++;
+                    end
+                    if (m_rlast) begin
+                        p30ph = 2;         // T1 retired; only T0 may follow
+                    end
+                end else begin
+                    if (m_rid != 4'h0 || !m_rlast) begin
+                        $display("[%0t] ERR: P30: post-T1 beat not the T0 1-beat dummy",
+                                 $time);
+                        errors++;
+                    end
+                    p30ph = 3;
+                end
+            end
+        end
+        if (p30ph != 3) begin
+            $display("[%0t] ERR: P30: drain incomplete (ph=%0d)", $time, p30ph);
+            errors++;
+        end
+        repeat (4) @(posedge aclk);
+        if (u_dut.u_hang_prot_bdry_in.r.ar_occ != '0) begin
+            $display("[%0t] ERR: P30: ar FIFOs non-empty after both dummies",
+                     $time);
+            errors++;
+        end
+        qsr_rel();
+        wait_block_exit(1);
+        rcv_chk(32'h2, "P30 exit DONE");   // v3.6: ACTIVE 0 + DONE sticky
+        check_otd_zero();
+        w1c_all();
+        scn_sample();
+
         // ---- summary -----------------------------------------------------------
         if (rpar_bad != 0) begin
             $display("ERR: mbus_rpar ^= mbus_rdata violated %0d times", rpar_bad);
             errors++;
         end
         if (errors == 0)
-            $display("TB_B PASS: all scenario checks clean (P1..P29)");
+            $display("TB_B PASS: all scenario checks clean (P1..P30)");
         else
             $display("TB_B FAIL: %0d error(s)", errors);
         $display("TB_B coverage: run with -coverage and inspect cg_slot/cg_scn/cg_ledger/cg_dum");

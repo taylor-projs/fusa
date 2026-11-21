@@ -41,7 +41,7 @@ cd ~/work/rst_checker/sim
 ```
 
 覆盖率（`cov` + `tgl_struct_excl.el` 结构排除后，2026-11-04 VM 实测）：
-SCORE 96.12 / LINE 95.28 / COND 99.21 / **TOGGLE 100.00**（模块定义域同
+SCORE 95.93 / LINE 95.28 / COND 97.14 / **TOGGLE 100.00**（模块定义域同
 100.00）/ BRANCH 90.00。排除项全为结构常量：addr[1:0] 字对齐、addr[7:5]
 映射孔洞、rdata 保留 0 位、镜像 wrap `wr`≡1；BRANCH/COND 残缺同为结构
 死支（镜像 wrap 无 wr=0 路径、单总线 selftest×write 互斥、双轨 OR 单热

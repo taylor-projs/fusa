@@ -13,7 +13,8 @@
 //
 //   ASIC 集成时整体替换为存储器编译器产出的 33bit 宏, 端口时序契约
 //   (单口同步: cen 采样, 写 0 拍 / 读 1 拍, 输出寄存器在写访问期间保持)
-//   与本模型一致. **必须选 bit interleave**: 同字内两比特翻转是 parity
+//   与本模型一致; **cen 为低有效** (编译器宏 CEB 极性, 2026-11-21 对齐:
+//   0=本拍访问使能; wen 暂维持 1=写, 真宏选型时按手册核对 WEB 极性). **必须选 bit interleave**: 同字内两比特翻转是 parity
 //   的原理性盲区 (校验平衡 -> 静默), interleave 把物理相邻的多比特
 //   MBU 摊到多个逻辑字 (每字至多 1bit -> 均可检出), 见 design_spec §9.
 //
@@ -37,7 +38,7 @@ module audio_sram_macro #(
    localparam integer AW   = $clog2(DEPTH)
 )(
    input  logic              clk,
-   input  logic              cen,                       // 片选 (访问使能)
+   input  logic              cen,                       // 片选, 低有效 (CEB 极性): 0=访问
    input  logic              wen,                       // 1=写 0=读
    input  logic [AW-1:0]     addr,
    input  logic [32:0]       wdata,                     // {p, data[31:0]}
@@ -69,7 +70,7 @@ module audio_sram_macro #(
    end
 
    always @(posedge clk) begin
-      if (cen) begin
+      if (!cen) begin
          if (wen) begin
             mem[addr] <= wdata;
          end else begin

@@ -76,8 +76,13 @@
 //                                            [0]    PAR_FAULT (level) ->
 //                                                   ESM dual rail
 //                                                   reg_par_fault/_n =
-//                                                   OR of all PERR bits
-//                                                   + self-test latch;
+//                                                   OR of register-plane
+//                                                   PERR bits + self-test
+//                                                   latch (2026-11-16 三轨
+//                                                   统一: PERR9/PERR10 在
+//                                                   途事件本体不在电平,
+//                                                   走 iflt_lvl ->
+//                                                   esm_fault; 诊断位保留)
 //                                                   writing [0] clears
 //                                                   ONLY the latch
 //                                            [1]    PAR_FAULT_N (RO)
@@ -116,6 +121,32 @@
 //                                                   no target, ignored)
 //                                            [5]    PAR_SELFTEST (pulse)
 //                                            [11:8] REGSEL
+//   0x2C  SCMSWRST      W(key)/R 0x0000_0000  v3.3: s 侧软复位保持窗
+//                                            (sl_sw_rst_on, 替代原 ESM
+//                                            双轨输入引脚). [7:4] key
+//                                            = 4'b1010 (SCMCNTRL 同位);
+//                                            [3:0] 码字 1111=窗开 / 0000=
+//                                            窗关 (双门, 其余码字拒收);
+//                                            存储用 d=4 码+SEC 单 bit
+//                                            纠正写回 (纠1检2, 码即防护
+//                                            无 PERR 组), 平局(2 个 1)
+//                                            不可纠 → 译码向遏制侧 (ON,
+//                                            fail-visible) 待 SW 重写.
+//                                            R 回读 SEC 后真值 (同步).
+//                                            写 0x2C=0x0000_00AF 开窗 /
+//                                            0x0000_00A0 关窗
+//   0x30  STA_RCV       R/W1C 0x0000_0000  v3.6: 出入向统一 —— 出向
+//                                            (mcu2main) ACTIVE=mode_r 跟随 /
+//                                            DONE=recover_exit 粘滞; 入向
+//                                            (main2mcu) ACTIVE=blk_r 隔离态
+//                                            跟随 / DONE=quiesce_exit 粘滞
+//                                            (v3.3: 恢复状态, 替代原
+//                                            recover_active/done 输出
+//                                            引脚). [0] ACTIVE 跟随
+//                                            (=mode_r, RO); [1] DONE
+//                                            粘滞 (recover_exit 脉冲置
+//                                            位, set 优先于 W1C, 同拍
+//                                            事件不丢)
 //   0xFC  ID            R     0x4841_0001  "HA" v1 (殿后, house standard)
 //
 // REGISTER PARITY (FuSa): every register lives in ITS OWN clock domain
@@ -237,6 +268,9 @@ module hang_prot_regfile #(
                                                       // (hang_prot_bdry_in);
                                                       // leave unconnected when
                                                       // no inbound unit present
+    output logic                     sl_sw_rst_on,   // v3.3: s 侧软复位保持窗
+                                                      // (0x2C 编码影子译码, aclk 域,
+                                                      // -> recover 进/退/强清门)
 
     // ---- from monitor (aclk domain) ----------------------------------------
     input  logic [NUM_IA-1:0]        r2a_err_status,
@@ -251,12 +285,18 @@ module hang_prot_regfile #(
     input  logic                     esm_fault,
     input  logic                     esm_fault_n,
     input  logic [4+3*NUM_M-1:0]     fu_src,
+    input  logic                     recover_active, // v3.3: = mode_r (aclk)
+    input  logic                     recover_done,   // v3.3: = recover_exit 脉冲
 
     // ---- register parity fault to ESM (mbus_clk domain, dual rail) ----
     // own event, separate from esm_err / esm_fault: a corrupted
     // SW-visible register is a distinct failure mode
     output logic                     reg_par_fault,
-    output logic                     reg_par_fault_n
+    output logic                     reg_par_fault_n,
+
+    // ---- ESM 三轨统一 (2026-11-16): 在途命令奇偶事件电平 --------------
+    // (PERR10 cmd_r | PERR9 lane, mbus 域粘滞) -> top 经 2FF 折入 esm_fault
+    output logic                     iflt_lvl
 );
 
     localparam int OTD_BW   = NUM_IA*OTD_W;
@@ -316,6 +356,8 @@ module hang_prot_regfile #(
         logic [NUM_IA-1:0] r2a_w1c_q;
         logic [NUM_IA-1:0] r2r_w1c_q;
         logic              cfg_wr_q;       // registered cfg 加载脉冲
+        logic [3:0]        swr_q;          // sl_sw_rst_on 编码影子 (SEC, v3.3)
+        logic              rcv_done_q;     // recover_done 粘滞 (W1C, v3.3)
     } reg_a_t;
 
     localparam reg_a_t REG_A_RST = '{default: '0};
@@ -338,7 +380,7 @@ module hang_prot_regfile #(
     assign inst_ok  = (addr[15:8] == IDX[7:0]);
     assign align_ok = (addr[1:0] == 2'b00);
     assign id_sel   = (addr[7:0] == 8'hFC);   // ID (house standard: 殿后)
-    assign range_ok = (wsel <= 4'd10) || id_sel;   // 0x00..0x28 + 0xFC
+    assign range_ok = (wsel <= 4'd12) || id_sel;   // 0x00..0x30 + 0xFC
     assign ro_reg   = (wsel == 4'd2) || (wsel == 4'd3)   // IASTAT/OTD
                       || id_sel;                         // ID
     assign addr_ok  =  inst_ok && align_ok && range_ok;
@@ -448,6 +490,17 @@ module hang_prot_regfile #(
                      && ena_codeword;
     assign cfg5_wr = req_edge && (r_mb.wsel_q == 4'd5);
     assign cfg6_wr = req_edge && (r_mb.wsel_q == 4'd6);
+    // 0x2C SCMSWRST: key + 合法码字双门 (只收 1111/0000; SEU 中间态由 SEC 收)
+    logic cfg11_wr;
+    logic swr_codeword;
+    assign swr_codeword = (r_mb.wdata_q[3:0] == 4'b1111)
+                       || (r_mb.wdata_q[3:0] == 4'b0000);
+    assign cfg11_wr     = req_edge && (r_mb.wsel_q == 4'd11)
+                       && scmcntrl_key_ok && swr_codeword;
+    // 0x30 STA_RCV[1] DONE 粘滞 W1C (无 key, 家族 W1C 惯例)
+    logic rcv_done_w1c;
+    assign rcv_done_w1c = req_edge && (r_mb.wsel_q == 4'd12)
+                       && r_mb.wdata_q[1];
 
     // aclk-domain W1C / injection decodes of the SAME SW writes that
     // reach the mbus domain directly: the 0x24 W1C and the keyed
@@ -461,6 +514,17 @@ module hang_prot_regfile #(
                          && (r_mb.wdata_q[3:0] == 4'b1010);
     assign reg_st_a    = regst_wr_a && r_mb.wdata_q[4]
                          && (r_mb.wdata_q[11:8] <= 4'd10);
+
+    //--------------------------------------------------------------------------
+    // 0x2C SCMSWRST 译码 (aclk): 码字即防护 (d=4 纠1检2, 无需 PERR 组)
+    //--------------------------------------------------------------------------
+    logic [2:0] swr_ones;
+    always_comb begin : swr_dec
+        swr_ones = r_a.swr_q[0] + r_a.swr_q[1] + r_a.swr_q[2] + r_a.swr_q[3];
+    end
+    logic swr_on;                       // module-level: TB/断言可观测
+    assign swr_on        = (swr_ones >= 3'd2);   // 平局(2)向遏制侧
+    assign sl_sw_rst_on  = swr_on;
 
     //--------------------------------------------------------------------------
     // aclk 域组合进程: ack toggle + 动作脉冲 + cfg_wr 延迟 下一拍值
@@ -509,6 +573,28 @@ module hang_prot_regfile #(
         // bus then lags exactly one write behind. One write per CDC
         // handshake, so the 1-cycle delay is always collision-free.
         v_a.cfg_wr_q = cfg4_wr | cfg5_wr | cfg6_wr;
+
+        // ---- 0x2C sl_sw_rst_on 编码影子 (v3.3): d=4 码 纠1检2 + 写回自愈 ----
+        //   1111=ON / 0000=OFF; 距离1 (3/1 个1) 当拍纠正写回; 距离2 (平局,
+        //   2 个1) 不可纠 → 保持值但译码向遏制侧 (ON, fail-visible: 单元进
+        //   恢复 = 意外 containment 即告警, SW 重写码字即愈)。
+        v_a.swr_q = r_a.swr_q;
+        if (cfg11_wr) begin
+            v_a.swr_q = r_mb.wdata_q[3:0];
+        end else begin
+            if (swr_ones == 4'd3) begin
+                v_a.swr_q = 4'b1111;
+            end else if (swr_ones == 4'd1) begin
+                v_a.swr_q = 4'b0000;
+            end
+        end
+
+        // ---- 0x30 STA_RCV[1] DONE 粘滞: set 优先于 W1C (同拍事件不丢) ----
+        if (recover_done) begin
+            v_a.rcv_done_q = 1'b1;
+        end else if (rcv_done_w1c) begin
+            v_a.rcv_done_q = 1'b0;
+        end
 
         rin_a = v_a;
     end
@@ -568,6 +654,24 @@ module hang_prot_regfile #(
     assign cfg_ena            = ena_sh;
     assign cfg_req2accept_max = thr_a_sh;
     assign cfg_req2resp_max   = thr_r_sh;
+
+    //--------------------------------------------------------------------------
+    // 0x30 STA_RCV 读出同步 (诊断面): {DONE 粘滞, ACTIVE 跟随} -> mbus
+    //--------------------------------------------------------------------------
+    logic [1:0] rcv_s2;
+    logic [3:0] swr_s2;
+    sync_2dff #(.WIDTH(2)) u_rcv_sync (
+      .clk (mbus_clk                         ),
+      .rstn(mbus_rstn                        ),
+      .d   ({r_a.rcv_done_q, recover_active} ),
+      .q   (rcv_s2                           )
+    );
+    sync_2dff #(.WIDTH(4)) u_swr_sync (
+      .clk (mbus_clk   ),
+      .rstn(mbus_rstn  ),
+      .d   (r_a.swr_q ),
+      .q   (swr_s2    )
+    );
 
     //--------------------------------------------------------------------------
     // One-aclk-cycle action pulses (set on decoded request, auto-clear).
@@ -917,11 +1021,17 @@ module hang_prot_regfile #(
     assign perr4 = r4_flt | flt4_s2;   // 0x10: image + ENA shadow
     assign perr5 = r5_flt | flt5_s2;   // 0x14: image + THRESH0 shadow
     assign perr6 = r6_flt | flt6_s2;   // 0x18: image + THRESH1 shadow
+    // 三轨统一 (2026-11-16): 在途事件本体 (PERR10 cmd_r / PERR9 lane)
+    // 出列 reg_par_fault, 聚合走 iflt_lvl -> top esm_fault 轨
+    // (r10_flt = 组10 wrap 存储奇偶, 寄存器面, 保留; 诊断位 bit11/12 不变)
     assign reg_par_fault   = r0_flt | r1_flt | r2_flt | r3_flt
                               | perr4 | perr5 | perr6
-                              | r7_flt | r8_flt | r10_flt | cmd_r
-                              | (|r_mb.par_lq);
+                              | r7_flt | r8_flt | r10_flt
+                              | r_mb.par_lq[0];
     assign reg_par_fault_n = ~reg_par_fault;
+
+    // 在途命令奇偶事件电平 (粘滞, mbus 域): PERR10 本体 | PERR9 lane
+    assign iflt_lvl = cmd_r | r_mb.par_lq[1];
 
     //--------------------------------------------------------------------------
     // RDATA mux (combinational, zero-wait; all sources are stable
@@ -952,6 +1062,10 @@ module hang_prot_regfile #(
                                   reg_par_fault_n, reg_par_fault};
                 // ID (house standard: 殿后 0xFC) - wsel 4'd15 only
                 // reaches the read mux when id_sel matched (addr[7:0]==FC)
+                // 0x2C SCMSWRST: 码字回读 = SEC 后真值 (aclk 影子同步)
+                4'd11:   rdata = {28'b0, swr_s2};
+                // 0x30 STA_RCV: [0] ACTIVE 跟随 [1] DONE 粘滞 W1C
+                4'd12:   rdata = {30'b0, rcv_s2};
                 4'd15:   rdata = ID_VAL;
                 default: rdata = 32'h0;   // CFG_REGST (WO) + holes read 0
             endcase

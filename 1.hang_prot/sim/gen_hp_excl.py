@@ -30,12 +30,20 @@ FAMILY = [
      "beat/len 计数 bit8 恒 0 (AXI len[7:0] <= 255)"),
     (re.compile(r"ar_occ|ar_rp"),
      "每类占用/读指针高位恒 0 (monitor 封顶 OTD_MAX, 占用 < 2^NCLS)"),
+    (re.compile(r"swr|sw_rst|^cfg11_wr$"),
+     "TB_B (入向) 不激励 0x2C SCMSWRST/sl_sw_rst_on (出向恢复机制, "
+     "main2mcu 侧功能悬空) — 激励空间常量 (b_wrap s_arready 判例)"),
 ]
 
-def family_of(sig):
+def family_of(sig, scope=""):
     for pat, doc in FAMILY:
         if pat.search(sig):
             return doc
+    # 通用名 d/q/s1-s2-s3 仅在 u_swr_sync scope 下归属 swr 激励空间家族
+    # (裸名不进 FAMILY, 防止误吞其它模块的同名真洞)
+    if re.search(r"u_swr_sync$", scope) and re.match(r"^(d|q|s[123])\[3:0\]$", sig):
+        return ("u_swr_sync (SCMSWRST 影子回读 CDC 级, TB_B 不写 0x2C) "
+                "— 激励空间常量")
     return None
 
 def parse_dump(path):
@@ -86,7 +94,7 @@ for raw_ln in open("obj_vcs/urg_report_excl/modinfo.txt",
             mm = re.match(r"^Other bits of ([\w.]+)((?:\[[^\]]+\])+)$",
                           ln.strip())
             sig = mm.group(1) + mm.group(2) if mm else sig
-        if family_of(sig) is None:
+        if family_of(sig, hdr) is None:
             unclassified.add(sig)
         holes.setdefault(hdr, set()).add(sig)
 
@@ -129,16 +137,22 @@ for key, sigs in sorted(holes.items()):
             base, rng = m.group(1), m.group(2)
         else:
             base, rng = sig, ""
-        decl = decls.get(base)
+        # 行名必须与 dump 的对象名一致 (v3.7 实证): 有的对象整名就带位选
+        # (sync_dff 的 d[3:0]), 有的是整信号、modinfo 才按位组显示
+        # (cfg_key[3:0] → dump 对象名 cfg_key)。先按原名查, 退整名。
+        rowname, decl = sig, decls.get(sig)
+        if decl is None and rng:
+            rowname, decl = base, decls.get(base)
         if decl is None:
             for k2, v2 in decls.items():
                 if k2.split("[")[0] == base:
-                    decl = v2
+                    decl   = v2
+                    rowname = k2
                     break
         if decl is None:
             print("  !! 无声明:", key, sig)
             raise SystemExit(1)
-        rows.append('Toggle %s %s "%s"' % (base, rng, decl))
+        rows.append('Toggle %s "%s"' % (rowname, decl))
     if key in bymap:
         blk = bymap[key][-1]
         old = set(blk[2])
@@ -153,6 +167,12 @@ for key, sigs in sorted(holes.items()):
         print("  !! dump 无此 scope:", key)
         raise SystemExit(1)
 blocks.extend(new_blocks)
+
+# (v3.7 教训, 勿再加 "自清理"): ① 按 "scope 在 dump 中" 退役 → 误杀 report
+#   里无版本号模块域段的老活块 (TOGGLE 100→98.85 实证); ② CHECKSUM 刷新 →
+#   dump 解析的 checksum/scope 配对不可靠, 刷新后新块报 Unknown module;
+#   ③ 行清洗删老块行 → Nov-7 存量行被误删。结论: 老块原样保留 (死 scope
+#   只是 INVINST 噪声, 不影响覆盖率), 只做 "新行按 dump 无空格格式追加"。
 
 with open("tgl_struct_excl_v2.el", "w") as f:
     f.write("// ==================================================================\n")

@@ -250,10 +250,12 @@ A_not_late: assert property (@(posedge aclk) disable iff (!rstn_s)
 | P14 par_lq 2 lane + u_w_cmd dup | OK（heal-to-SET / W1C / dup map 0x5FF→0） |
 | 覆盖监视 bin par_bad / wr_drop | 3 / 1 |
 
-代码覆盖率（urg，v1.2 地图改造后复测，DUT Module Definition 口径）：
-SCORE 99.18 / LINE 99.13 / TOGGLE 98.41 / BRANCH 100.00
-（u_ia_bus_timeo_regfile 实例：line 93.41 / toggle 98.27 / branch 87.13，
-缺口集中在地址别名空间的死分支——结构排除 .el 需按新 RTL 重新生成，已列跟进项）。
+代码覆盖率（urg，**2026-11-18 全仓覆盖率战役重建 el 后复测**，
+`-flex_merge modules` 口径）：**TOGGLE 100.00 / 真域残洞 0**
+（`gen_ia_excl.py` 增补 2 家族: per-core 奇偶输入未用 lane / STA_PARCORE
+镜像未用核位）；SCORE 95.40 / LINE 95.17 / BRANCH 91.02 为剩余提升项。
+（历史 v1.2 地图改造后数字: SCORE 99.18 / LINE 99.13 / TOGGLE 98.41 /
+BRANCH 100.00——当时地址别名死分支的结构排除列为跟进项, 本轮已收敛。）
 
 剩余未命中均为地址别名空间/结构常量类死对象与少量新译码分支，
 属 .el 重生成 + 后续回归补齐项，非 DUT 功能缺口。

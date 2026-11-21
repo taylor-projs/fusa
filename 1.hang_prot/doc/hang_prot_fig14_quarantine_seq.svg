@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 812" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .bt    { font-size: 12.5px; font-weight: bold; fill: #0F172A; }
+      .txt   { font-size: 10.5px; fill: #334155; }
+      .sub   { font-size: 10px; fill: #64748B; }
+      .sm    { font-size: 9.5px; fill: #475569; }
+      .box   { fill: #FFFFFF; stroke: #334155; stroke-width: 1.5; }
+      .strip { fill: #F8FAFC; stroke: #94A3B8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="812" fill="#FFFFFF"/>
+  <text x="540" y="28" class="title" text-anchor="middle">main2mcu 隔离进入/退出全图: recover_enter/exit · blk_r · quiesce_rel/exit (hang_prot_bdry_in)</text>
+
+  <!-- ================= Panel A: 逻辑 ================= -->
+  <text x="40" y="56" class="bt" text-anchor="start">A. 逻辑: 置位优先于退出, 退出 SW-only 且推迟到可证明安全</text>
+
+  <rect x="40" y="70" width="320" height="144" rx="8" class="box"/>
+  <text x="200" y="90" class="bt" text-anchor="middle">置位 recover_enter (优先)</text>
+  <text x="52" y="110" class="txt" text-anchor="start">= ( recover_req (esm_err 上升沿)</text>
+  <text x="52" y="127" class="txt" text-anchor="start">   ‖ !sk_integrity (skid 活故障)</text>
+  <text x="52" y="144" class="txt" text-anchor="start">   ‖ int_dis (轨/奇偶/账本活故障) )</text>
+  <text x="52" y="161" class="txt" text-anchor="start">   &amp;&amp; !blk_r</text>
+  <text x="52" y="182" class="sub" text-anchor="start">组合成立当拍; blk_r 次拍寄存置 1</text>
+  <text x="52" y="198" class="sub" text-anchor="start">skid 活故障也强制进隔离 (安全侧)</text>
+
+  <rect x="400" y="80" width="280" height="96" rx="8" class="strip"/>
+  <text x="540" y="102" class="bt" text-anchor="middle">blk_r 寄存器 (双轨 blk_r_n)</text>
+  <text x="540" y="120" class="txt" text-anchor="middle">if (enter ‖ blk_dis) 1</text>
+  <text x="540" y="137" class="txt" text-anchor="middle">else if (quiesce_exit) 0, else 保持</text>
+  <text x="540" y="157" class="sub" text-anchor="middle">blk_dis = 轨失配 → 强制保持隔离</text>
+  <line x1="360" y1="116" x2="400" y2="116" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="380" y="108" class="sm" text-anchor="middle">置1</text>
+  <line x1="720" y1="116" x2="680" y2="116" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
+  <text x="700" y="108" class="sm" text-anchor="middle">清0</text>
+
+  <rect x="720" y="70" width="320" height="144" rx="8" class="box"/>
+  <text x="880" y="90" class="bt" text-anchor="middle">退出 quiesce_exit (次优先)</text>
+  <text x="732" y="110" class="txt" text-anchor="start">= qrel_pend &amp;&amp; blk_r &amp;&amp; !s_rvalid</text>
+  <text x="732" y="127" class="txt" text-anchor="start">   &amp;&amp; !s_bvalid &amp;&amp; wsk_quiesce_ok</text>
+  <text x="732" y="144" class="txt" text-anchor="start">   &amp;&amp; !int_dis</text>
+  <text x="732" y="165" class="sub" text-anchor="start">island 侧排干才放行 (在途 AR 兜底)</text>
+  <text x="732" y="181" class="sub" text-anchor="start">int_dis 挡退出: 不确定状态永不退出</text>
+  <text x="732" y="197" class="sub" text-anchor="start">wsk_ok = 两槽无 REPLAY (译码判定)</text>
+
+  <rect x="400" y="196" width="280" height="60" rx="8" class="strip"/>
+  <text x="540" y="216" class="bt" text-anchor="middle">qrel_pend (双轨)</text>
+  <text x="540" y="233" class="txt" text-anchor="middle">quiesce_rel &amp;&amp; blk_r 锁存, exit 清</text>
+  <text x="540" y="249" class="sub" text-anchor="middle">v2.3: 契约外写在 blk_r=0 不锁</text>
+
+  <rect x="40" y="232" width="320" height="76" rx="8" class="strip"/>
+  <text x="56" y="252" class="bt" text-anchor="start">隔离期通道角色</text>
+  <text x="56" y="269" class="sub" text-anchor="start">m 侧: arready=0 堵新 + dummy R/B 还账</text>
+  <text x="56" y="285" class="sub" text-anchor="start">      (LEN-exact SLVERR, 死 main 挂 VALID)</text>
+  <text x="56" y="301" class="sub" text-anchor="start">s 侧: rready=bready=1 吸收排干 (详 fig10)</text>
+
+  <rect x="720" y="232" width="320" height="76" rx="8" class="strip"/>
+  <text x="736" y="252" class="bt" text-anchor="start">quiesce_exit 当拍动作</text>
+  <text x="736" y="269" class="sub" text-anchor="start">撤 dummy VALID + 清全类 ID FIFO/指针</text>
+  <text x="736" y="285" class="sub" text-anchor="start">+ skid force_clear (残 FILL/READY)</text>
+  <text x="736" y="301" class="sub" text-anchor="start">SW 后续: TO_CLR (死代 otd) + W1C</text>
+
+  <!-- ================= Panel B: 时序 ================= -->
+  <text x="40" y="330" class="bt" text-anchor="start">B. 时序: main 死于半截 R + 在途 AR → 检测 → 隔离 (吸收/还账) → SW 退出序列 → 复活</text>
+
+  <rect x="140" y="346" width="110" height="380" fill="#ECFDF5" opacity="0.55"/>
+  <rect x="250" y="346" width="150" height="380" fill="#FFFBEB" opacity="0.65"/>
+  <rect x="400" y="346" width="458" height="380" fill="#FEF2F2" opacity="0.55"/>
+  <rect x="858" y="346" width="182" height="380" fill="#ECFDF5" opacity="0.55"/>
+  <text x="195" y="364" class="sm" text-anchor="middle">直通</text>
+  <text x="325" y="364" class="sm" text-anchor="middle">r2r 计数</text>
+  <text x="629" y="364" class="sm" text-anchor="middle">隔离: s 吸收 · m dummy 还账 · SW 退出序列</text>
+  <text x="949" y="364" class="sm" text-anchor="middle">复活回直通</text>
+
+  <line x1="250" y1="370" x2="250" y2="726" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="400" y1="370" x2="400" y2="726" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="660" y1="370" x2="660" y2="726" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="830" y1="370" x2="830" y2="726" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="940" y1="370" x2="940" y2="726" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <text x="132" y="401" class="txt" text-anchor="end">s_rvalid</text>
+  <polyline points="140,404 400,404 400,386 830,386 830,404 1040,404" fill="none" stroke="#059669" stroke-width="1.8"/>
+  <text x="216" y="398" class="sm" text-anchor="middle">RLAST①</text>
+  <text x="484" y="398" class="sm" text-anchor="start">半截 burst 排完 → 在途 AR 逐笔排干</text>
+  <text x="824" y="398" class="sm" text-anchor="end">末笔 RLAST</text>
+
+  <text x="132" y="429" class="txt" text-anchor="end">s_rready</text>
+  <polyline points="140,432 250,432 250,414 428,414 428,432 1040,432" fill="none" stroke="#059669" stroke-width="1.8"/>
+  <text x="340" y="445" class="sm" text-anchor="middle">main 死: 停在 m 握手</text>
+  <text x="436" y="445" class="sm" text-anchor="start">blk_r=1 → 恒 1 吸收</text>
+
+  <text x="132" y="465" class="txt" text-anchor="end">r2r 计数</text>
+  <line x1="140" y1="472" x2="400" y2="472" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3"/>
+  <polyline points="250,472 400,456 408,472 1040,472" fill="none" stroke="#D97706" stroke-width="1.8"/>
+  <text x="322" y="492" class="sm" text-anchor="middle">无 m 侧进展 → 阈值</text>
+
+  <text x="132" y="505" class="txt" text-anchor="end">esm_err</text>
+  <polyline points="140,508 400,508 400,490 940,490 940,508 1040,508" fill="none" stroke="#DC2626" stroke-width="1.8"/>
+  <text x="406" y="486" class="sm" text-anchor="start">sticky 置位, 上升沿</text>
+  <text x="934" y="486" class="sm" text-anchor="end">W1C 清</text>
+
+  <text x="132" y="533" class="txt" text-anchor="end">recover_req</text>
+  <polyline points="140,536 400,536 400,518 428,518 428,536 1040,536" fill="none" stroke="#D97706" stroke-width="1.8"/>
+  <text x="434" y="530" class="sm" text-anchor="start">1 拍脉冲 (边沿检测)</text>
+
+  <text x="132" y="561" class="txt" text-anchor="end">blk_r</text>
+  <polyline points="140,564 428,564 428,546 858,546 858,564 1040,564" fill="none" stroke="#2563EB" stroke-width="2"/>
+  <text x="640" y="541" class="sm" text-anchor="middle">自保持: 死 main 不吃 dummy → 隔离不自动退</text>
+  <text x="864" y="558" class="sm" text-anchor="start">exit 次拍落 0</text>
+
+  <text x="132" y="589" class="txt" text-anchor="end">m_arready</text>
+  <polyline points="140,592 428,592 428,574 968,574 968,592 1040,592" fill="none" stroke="#64748B" stroke-width="1.8"/>
+  <text x="698" y="588" class="sm" text-anchor="middle">blk 后堵新; TO_CLR 清死代 otd 后恢复</text>
+
+  <text x="132" y="617" class="txt" text-anchor="end">m_rvalid·dummy</text>
+  <polyline points="140,620 428,620 428,602 858,602 858,620 1040,620" fill="none" stroke="#7C3AED" stroke-width="1.8"/>
+  <text x="640" y="614" class="sm" text-anchor="middle">LEN-exact SLVERR, id 自 ar_fifo 还原</text>
+  <text x="852" y="614" class="sm" text-anchor="end">退出撤回</text>
+
+  <text x="132" y="645" class="txt" text-anchor="end">quiesce_rel</text>
+  <polyline points="140,648 660,648 660,630 688,630 688,648 1040,648" fill="none" stroke="#0D9488" stroke-width="1.8"/>
+  <text x="694" y="642" class="sm" text-anchor="start">SCMCNTRL[12] 经 CDC, 1 拍</text>
+
+  <text x="132" y="673" class="txt" text-anchor="end">qrel_pend</text>
+  <polyline points="140,676 660,676 660,658 858,658 858,676 1040,676" fill="none" stroke="#0D9488" stroke-width="1.8"/>
+  <text x="756" y="670" class="sm" text-anchor="middle">挂起等排干</text>
+
+  <text x="132" y="701" class="txt" text-anchor="end">quiesce_exit</text>
+  <polyline points="140,704 830,704 830,686 858,686 858,704 1040,704" fill="none" stroke="#0D9488" stroke-width="1.8"/>
+  <text x="824" y="682" class="sm" text-anchor="end">排干即组合成立</text>
+
+  <text x="132" y="729" class="txt" text-anchor="end">rd_otd</text>
+  <polyline points="140,732 940,732 940,714 1040,714" fill="none" stroke="#64748B" stroke-width="1.8"/>
+  <text x="620" y="726" class="sm" text-anchor="middle">只经 m 侧 dummy 握手排空 → 死 main 期恒非零</text>
+
+  <rect x="140" y="744" width="900" height="26" fill="#F8FAFC" stroke="#94A3B8" stroke-width="0.8"/>
+  <text x="560" y="761" class="sm" text-anchor="middle">SW: main_rst ↑</text>
+  <text x="712" y="761" class="sm" text-anchor="middle">SW: 写 QSR_REL (key)</text>
+  <text x="940" y="761" class="sm" text-anchor="middle">SW: TO_CLR + W1C</text>
+  <text x="1016" y="761" class="sm" text-anchor="middle">放 main</text>
+  <text x="880" y="777" class="sm" text-anchor="middle">poll STA_RCV: ACTIVE=0 ∧ DONE=1 确认退出 (v3.6)</text>
+
+  <line x1="140" y1="784" x2="1040" y2="784" stroke="#334155" stroke-width="1.2"/>
+  <line x1="250" y1="780" x2="250" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="250" y="798" class="sm" text-anchor="middle">T1</text>
+  <line x1="400" y1="780" x2="400" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="400" y="798" class="sm" text-anchor="middle">T2</text>
+  <line x1="428" y1="780" x2="428" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="428" y="798" class="sm" text-anchor="middle">T2+1</text>
+  <line x1="660" y1="780" x2="660" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="660" y="798" class="sm" text-anchor="middle">T4</text>
+  <line x1="830" y1="780" x2="830" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="830" y="798" class="sm" text-anchor="middle">T5</text>
+  <line x1="940" y1="780" x2="940" y2="788" stroke="#334155" stroke-width="1.2"/>
+  <text x="940" y="798" class="sm" text-anchor="middle">T6</text>
+
+  <text x="140" y="809" class="sub" text-anchor="start">契约 (S2): 复位 main → QSR_REL → 等 block_active 落 → TO_CLR + W1C → 放 main; T1=main 死 T2=r2r 阈值 T4=QSR_REL T5=排干 T6=TO_CLR</text>
+</svg>

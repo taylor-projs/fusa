@@ -133,6 +133,13 @@ Toggle rdata [21:17] "logic rdata[31:0]"
 Toggle rdata [26:23] "logic rdata[31:0]"
 Toggle rdata [29:28] "logic rdata[31:0]"
 Toggle rdata [31] "logic rdata[31:0]"
+Toggle cfg11_wr "logic cfg11_wr"
+Toggle r_a.swr_q[3:0] "logic r_a.swr_q[3:0]"
+Toggle rin_a.swr_q[3:0] "logic rin_a.swr_q[3:0]"
+Toggle sl_sw_rst_on "logic sl_sw_rst_on"
+Toggle swr_on "logic swr_on"
+Toggle swr_ones[2:0] "logic swr_ones[2:0]"
+Toggle swr_s2[3:0] "logic swr_s2[3:0]"
 
 CHECKSUM: "1754090427 2366923744"
 INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_r_fusrc
@@ -438,6 +445,8 @@ Toggle rlen_ext [8] "logic rlen_ext[8:0]"
 Toggle s_arid [3:2] "logic s_arid[3:0]"
 Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
 Toggle s_awid [3:0] "logic s_awid[3:0]"
+Toggle r.ar_id[2:0][7:0][3:0] "logic [2:0][7:0][3:0]r.ar_id"
+Toggle rin.ar_id[2:0][7:0][3:0] "logic [2:0][7:0][3:0]rin.ar_id"
 
 CHECKSUM: "2516521374 1729841864"
 MODULE: hang_prot_recover (version = 1)
@@ -450,6 +459,8 @@ Toggle rlen_ext [8] "logic rlen_ext[8:0]"
 Toggle s_arid [3:2] "logic s_arid[3:0]"
 Toggle s_arid_w [3:2] "logic s_arid_w[3:0]"
 Toggle s_awid [3:0] "logic s_awid[3:0]"
+Toggle r.ar_id "logic [2:0][3:0][3:0]r.ar_id"
+Toggle rin.ar_id "logic [2:0][3:0][3:0]rin.ar_id"
 
 CHECKSUM: "1773060344 2230016229"
 MODULE: hang_prot_regfile (version = 0)
@@ -503,6 +514,10 @@ Toggle r.ridx [1:0][3:0] "logic [1:0][3:0]r.ridx"
 Toggle r.ridx_n [1:0][3:0] "logic [1:0][3:0]r.ridx_n"
 Toggle rin.ridx [1:0][3:0] "logic [1:0][3:0]rin.ridx"
 Toggle rin.ridx_n [1:0][3:0] "logic [1:0][3:0]rin.ridx_n"
+Toggle r.ridx[1:0][4:0] "logic [1:0][4:0]r.ridx"
+Toggle r.ridx_n[1:0][4:0] "logic [1:0][4:0]r.ridx_n"
+Toggle rin.ridx[1:0][4:0] "logic [1:0][4:0]rin.ridx"
+Toggle rin.ridx_n[1:0][4:0] "logic [1:0][4:0]rin.ridx_n"
 
 CHECKSUM: "1195076962 2676351451"
 MODULE: hang_prot_wskid (version = 1)
@@ -510,6 +525,10 @@ Toggle r.ridx [1:0][4:0] "logic [1:0][4:0]r.ridx"
 Toggle r.ridx_n [1:0][4:0] "logic [1:0][4:0]r.ridx_n"
 Toggle rin.ridx [1:0][4:0] "logic [1:0][4:0]rin.ridx"
 Toggle rin.ridx_n [1:0][4:0] "logic [1:0][4:0]rin.ridx_n"
+Toggle r.ridx "logic [1:0][3:0]r.ridx"
+Toggle r.ridx_n "logic [1:0][3:0]r.ridx_n"
+Toggle rin.ridx "logic [1:0][3:0]rin.ridx"
+Toggle rin.ridx_n "logic [1:0][3:0]rin.ridx_n"
 
 CHECKSUM: "1754090427 599623581"
 MODULE: reg_wrap ( parameter W=2,RESET=0 ) 
@@ -535,4 +554,65 @@ CHECKSUM: "144183691 3330916786"
 MODULE: sync_dff ( parameter WIDTH=7 ) 
 Toggle d [6] "logic d[6:0]"
 Toggle q [6] "logic q[6:0]"
+
+CHECKSUM: "3282229299 3330916786"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_regfile.u_fusrc_sync
+Toggle d[6] "logic d[6:0]"
+Toggle q[6] "logic q[6:0]"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_regfile.u_r_cntrl
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 1027321138"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_regfile.u_r_fustat
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_regfile.u_r_thresh0
+Toggle wr "logic wr"
+
+CHECKSUM: "1754090427 2049921744"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_regfile.u_r_thresh1
+Toggle wr "logic wr"
+
+CHECKSUM: "3097392289 921047824"
+INSTANCE: tb_hang_prot_b_wrap.u_dut.u_hang_prot_regfile.u_swr_sync
+Toggle d[3:0] "logic d[3:0]"
+Toggle q[3:0] "logic q[3:0]"
+Toggle s1[3:0] "logic s1[3:0]"
+Toggle s2[3:0] "logic s2[3:0]"
+Toggle s3[3:0] "logic s3[3:0]"
+
+CHECKSUM: "3282229299 3330916786"
+MODULE: sync_dff ( parameter WIDTH=7,RST_VAL=0 ) 
+Toggle d[6] "logic d[6:0]"
+Toggle q[6] "logic q[6:0]"
+
+CHECKSUM: "3002552107 2002203539"
+INSTANCE: tb_hang_prot_a_wrap.u_dut
+Toggle cfg_key "logic cfg_key[3:0]"
+Toggle fu_src "logic fu_src[6:0]"
+
+CHECKSUM: "840870341 2696973816"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_recover
+Toggle r.ar_id "logic [2:0][3:0][3:0]r.ar_id"
+Toggle rin.ar_id "logic [2:0][3:0][3:0]rin.ar_id"
+
+CHECKSUM: "2367818864 527883662"
+INSTANCE: tb_hang_prot_a_wrap.u_dut.u_hang_prot_recover.u_hang_prot_wskid
+Toggle r.ridx "logic [1:0][3:0]r.ridx"
+Toggle r.ridx_n "logic [1:0][3:0]r.ridx_n"
+Toggle rin.ridx "logic [1:0][3:0]rin.ridx"
+Toggle rin.ridx_n "logic [1:0][3:0]rin.ridx_n"
+
+CHECKSUM: "3002552107 3671537185"
+MODULE: hang_prot_mcu2main_top (version = 0)
+Toggle cfg_key "logic cfg_key[3:0]"
+Toggle fu_src "logic fu_src[6:0]"
+
+CHECKSUM: "3002552107 2002203539"
+MODULE: hang_prot_mcu2main_top (version = 1)
+Toggle cfg_key "logic cfg_key[3:0]"
+Toggle fu_src "logic fu_src[6:0]"
 

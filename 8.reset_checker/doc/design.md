@@ -270,8 +270,9 @@ INJ 与 PASS 可同拍复合。
 
 运行（VM）：`cd ~/work/rst_checker/sim && ./run_vcs.sh`（`cov` 模式出覆
 盖率；Verdi 用 `./run_verdi.sh`）。覆盖率（`tgl_struct_excl.el` 结构排
-除后）：SCORE 96.12 / LINE 95.28 / COND 99.21 / **TOGGLE 100.00**（双
-域）/ BRANCH 90.00；BRANCH/COND 残缺均为结构死支（镜像 wrap wr≡1、单
+除后, 2026-11-21 全仓覆盖率战役复测）：SCORE 95.93 / LINE 95.28 /
+COND 97.14 / **TOGGLE 100.00**（双域, 11-07 的 el 对当前 RTL 依然成立）
+/ BRANCH 91.30；BRANCH/COND 残缺均为结构死支（镜像 wrap wr≡1、单
 总线 selftest×write 互斥、`filt_fire` 双轨 OR 单热死臂——cnt_dup=0 时
 sat_a≡sat_b）。
 

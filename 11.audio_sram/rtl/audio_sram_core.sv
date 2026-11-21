@@ -69,8 +69,8 @@ module audio_sram_core #(
    output logic            s_rvalid,     // 读数据有效 (命令拍后 1 拍)
 
    // ---------------- 宏侧 ----------------
-   output logic            m_cen,
-   output logic            m_wen,
+   output logic            m_cen,        // 片选, 低有效 (编译器宏 CEB 极性): 0=本拍访问
+   output logic            m_wen,        // 1=写 0=读 (真宏选型时按手册核对 WEB 极性)
    output logic [AW-1:0]   m_addr,
    output logic [32:0]     m_wdata,      // {p, data} 拼位 + 注错翻转
    input  logic [32:0]     m_rdata,      // 宏读出寄存器
@@ -103,7 +103,7 @@ module audio_sram_core #(
    assign w_cw  = {(^{s_addr, s_wdata}), s_wdata}
                  ^ (inj_on ? inj_mask(inj_pos) : 33'b0);
 
-   assign m_cen  = s_req;
+   assign m_cen  = ~s_req;   // 低有效 (CEB 极性, 2026-11-21 用户钦定): 请求拍为 0
    assign m_wen  = s_wen;
    assign m_addr = s_addr;
    assign m_wdata = w_cw;
