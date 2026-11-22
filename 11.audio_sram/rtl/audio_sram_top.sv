@@ -49,12 +49,12 @@ module audio_sram_top #(
 
    // ---------------- SRAM 前端 (音频主设备, sram_clk 域) ----------------
    input  logic            sram_clk,     // SRAM 独立时钟
-   input  logic            s_csn  ,      // 片选, low有效 (sram_clk 域)
-   input  logic            s_wen  ,      // 1=写 0=read
-   input  logic [AW-1:0]   s_addr ,
-   input  logic [31:0]     s_wdata,
-   output logic [31:0]     s_rdata,      // 读数据 (原样交付, 只检不纠)
-   output logic            s_rvalid,     // 读数据有效 (命令拍后 1 拍)
+   input  logic            si_csn  ,      // 片选, low有效 (sram_clk 域)
+   input  logic            si_wen  ,      // 1=写 0=read
+   input  logic [AW-1:0]   si_addr ,
+   input  logic [31:0]     si_wdata,
+   output logic [31:0]     si_rdata,      // 读数据 (原样交付, 只检不纠)
+   output logic            si_rvalid,     // 读数据有效 (命令拍后 1 拍)
 
    // ---------------- ESM (双轨) ----------------
    output logic            esm_err,
@@ -134,12 +134,12 @@ module audio_sram_top #(
       .mon_en  (mon_en    ),
       .inj_on  (inj_on    ),
       .inj_pos (inj_pos   ),
-      .s_csn   (s_csn     ),
-      .s_wen   (s_wen     ),
-      .s_addr  (s_addr    ),
-      .s_wdata (s_wdata   ),
-      .s_rdata (s_rdata   ),
-      .s_rvalid(s_rvalid  ),
+      .s_csn   (si_csn    ),
+      .s_wen   (si_wen    ),
+      .s_addr  (si_addr   ),
+      .s_wdata (si_wdata  ),
+      .s_rdata (si_rdata  ),
+      .s_rvalid(si_rvalid ),
       .m_cen   (m_cen     ),
       .m_wen   (m_wen     ),
       .m_addr  (m_addr    ),
