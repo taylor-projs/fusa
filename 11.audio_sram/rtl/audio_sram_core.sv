@@ -45,7 +45,7 @@
 //   合法字), 见 audio_sram_macro.
 //
 //   时序 (单时钟域, 前端零等待直通):
-//     写: s_req/s_wen/s_addr/s_wdata 一拍 -> 宏 0 拍写入;
+//     写: s_csn/s_wen/s_addr/s_wdata 一拍 -> 宏 0 拍写入;
 //     读: 命令拍 P1 -> 宏 P2 边沿出数据 -> P2 周期内 s_rvalid=1,
 //         s_rdata 为原始数据 (组合比较), perr 同拍脉冲.
 // ============================================================================
@@ -61,7 +61,7 @@ module audio_sram_core #(
    input  logic [6:0]      inj_pos,      // 存储位号+1: 1..32 数据位 / 33 校验位
 
    // ---------------- SRAM 前端 (音频主设备, 同域) ----------------
-   input  logic            s_req,
+   input  logic            s_csn,       // 片选, low有效 (sram_clk 域)
    input  logic            s_wen,        // 1=写 0=read
    input  logic [AW-1:0]   s_addr,
    input  logic [31:0]     s_wdata,
@@ -103,7 +103,7 @@ module audio_sram_core #(
    assign w_cw  = {(^{s_addr, s_wdata}), s_wdata}
                  ^ (inj_on ? inj_mask(inj_pos) : 33'b0);
 
-   assign m_cen  = ~s_req;   // 低有效 (CEB 极性, 2026-11-21 用户钦定): 请求拍为 0
+   assign m_cen  = s_csn;   // 低有效 
    assign m_wen  = s_wen;
    assign m_addr = s_addr;
    assign m_wdata = w_cw;
@@ -160,8 +160,8 @@ module audio_sram_core #(
 
       v = r;
 
-      v.rd_vld_q  = s_req && !s_wen;
-      v.rd_addr_q = (s_req && !s_wen) ? s_addr : r.rd_addr_q;
+      v.rd_vld_q  =  ~s_csn && ~s_wen;
+      v.rd_addr_q = (~s_csn && ~s_wen) ? s_addr : r.rd_addr_q;
 
       rin = v;
    end

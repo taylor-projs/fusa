@@ -49,9 +49,9 @@ module audio_sram_top #(
 
    // ---------------- SRAM 前端 (音频主设备, sram_clk 域) ----------------
    input  logic            sram_clk,     // SRAM 独立时钟
-   input  logic            s_req,
-   input  logic            s_wen,        // 1=写 0=read
-   input  logic [AW-1:0]   s_addr,
+   input  logic            s_csn  ,      // 片选, low有效 (sram_clk 域)
+   input  logic            s_wen  ,      // 1=写 0=read
+   input  logic [AW-1:0]   s_addr ,
    input  logic [31:0]     s_wdata,
    output logic [31:0]     s_rdata,      // 读数据 (原样交付, 只检不纠)
    output logic            s_rvalid,     // 读数据有效 (命令拍后 1 拍)
@@ -134,7 +134,7 @@ module audio_sram_top #(
       .mon_en  (mon_en    ),
       .inj_on  (inj_on    ),
       .inj_pos (inj_pos   ),
-      .s_req   (s_req     ),
+      .s_csn   (s_csn     ),
       .s_wen   (s_wen     ),
       .s_addr  (s_addr    ),
       .s_wdata (s_wdata   ),
