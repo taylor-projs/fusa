@@ -66,7 +66,8 @@ module tb_cmm_top;
     // clocks & resets
     //=========================================================================
     logic refclk0 = 0, refclk1 = 0, mbus_clk = 0;
-    logic rst_n = 0, mbus_rstn = 0;
+    logic mbus_rstn = 0;
+    logic scan_mode = 0;
 
     always #25 refclk0  = ~refclk0;    // 20 MHz
     always #20 refclk1  = ~refclk1;    // 25 MHz
@@ -144,7 +145,7 @@ module tb_cmm_top;
     ) dut (
         .refclk0        (refclk0        ),
         .refclk1        (refclk1        ),
-        .rst_n          (rst_n          ),
+        .scan_mode      (scan_mode      ),
         .clk_dut        (clk_dut        ),
         .mbus_clk       (mbus_clk       ),
         .mbus_rstn      (mbus_rstn      ),
@@ -182,7 +183,7 @@ module tb_cmm_top;
     ) dut2 (
         .refclk0        (refclk0 ),
         .refclk1        (refclk1 ),
-        .rst_n          (rst_n   ),
+        .scan_mode      (scan_mode),
         .clk_dut        (d0      ),
         .mbus_clk       (mbus_clk),
         .mbus_rstn      (mbus_rstn),
@@ -213,7 +214,7 @@ module tb_cmm_top;
     // check infrastructure
     //=========================================================================
     integer nchecks = 0, nerrs = 0;
-    task chk(input bit cond, input string name);
+    task automatic chk(input bit cond, input string name);
         begin
             nchecks = nchecks + 1;
             if (cond) $display("[%0t] PASS %0d: %s", $time, nchecks, name);
@@ -227,7 +228,7 @@ module tb_cmm_top;
     //=========================================================================
     // mbus master tasks (ce = single-cycle pulse, par = ^{addr,wr,wdata})
     //=========================================================================
-    task mb_wr(input [7:0] a, input [31:0] d);
+    task automatic mb_wr(input [7:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr  = {8'h00, a};
@@ -242,7 +243,7 @@ module tb_cmm_top;
     endtask
 
     // write with deliberately corrupted command parity
-    task mb_wr_badpar(input [7:0] a, input [31:0] d);
+    task automatic mb_wr_badpar(input [7:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr  = {8'h00, a};
@@ -256,7 +257,7 @@ module tb_cmm_top;
         end
     endtask
 
-    task mb_rd(input [7:0] a, output [31:0] d);
+    task automatic mb_rd(input [7:0] a, output [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr  = {8'h00, a};
@@ -271,7 +272,7 @@ module tb_cmm_top;
     endtask
 
     // instance-select variants (wrong-instance / negative decode coverage)
-    task mb_wr_i(input [7:0] inst, input [7:0] a, input [31:0] d);
+    task automatic mb_wr_i(input [7:0] inst, input [7:0] a, input [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr  = {inst, a};
@@ -285,7 +286,7 @@ module tb_cmm_top;
         end
     endtask
 
-    task mb_rd_i(input [7:0] inst, input [7:0] a, output [31:0] d);
+    task automatic mb_rd_i(input [7:0] inst, input [7:0] a, output [31:0] d);
         begin
             @(negedge mbus_clk);
             mbus_addr  = {inst, a};
@@ -301,7 +302,7 @@ module tb_cmm_top;
 
     // forwarded write: issue, then poll GSTAT[6] CFG_BUSY until the CDC
     // handshake completes (writes while busy are dropped - by design)
-    task mb_wr_sync(input [7:0] a, input [31:0] d);
+    task automatic mb_wr_sync(input [7:0] a, input [31:0] d);
         reg [31:0] g;
         integer to;
         begin
@@ -325,12 +326,35 @@ module tb_cmm_top;
     reg [7:0] gctrl_sh = 8'h00;
 
     // W1C helper + TST_CLR + settle, then verify FSM back in RUN, rails clean
-    task recover(input [31:0] rd);
+    task automatic recover(input [31:0] rd);
         begin
             mb_wr_sync(A_GCTRL, KEY | {24'h0, gctrl_sh} | 32'h2); // TST_CLR
             repeat (2*N_WIN) @(posedge refclk0);   // ARM->RUN + margin
         end
     endtask
+
+    // Disabled channels are unarmed: exercise the masked DEAD level and the
+    // per-channel armed-pair fault independently.  Each force is held across
+    // posedges, observed, released, then its sticky source is cleared.
+    `define UNARMED_DUP(k) \
+    begin \
+        force dut.u_cmm_core.r_ref.noedge_cnt_n[k] = 12'h000; \
+        repeat (2) @(posedge refclk0); \
+        repeat (6) @(posedge mbus_clk); \
+        mb_rd(A_FUSRC0, rd); \
+        chk(rd[4*k] == 1'b1, $sformatf("COVk: unarmed ch%0d ne_dup masked DEAD", k)); \
+        release dut.u_cmm_core.r_ref.noedge_cnt_n[k]; \
+        repeat (2) @(posedge refclk0); \
+        mb_wr_sync(A_FUSRC0, 32'h1 << (4*k)); \
+        force dut.u_cmm_core.r_ref.armed_n[k] = 1'b0; \
+        repeat (2) @(posedge refclk0); \
+        repeat (6) @(posedge mbus_clk); \
+        mb_rd(A_FUSRC0, rd); \
+        chk(rd[4*k] == 1'b1, $sformatf("COVk: unarmed ch%0d arm_dup", k)); \
+        release dut.u_cmm_core.r_ref.armed_n[k]; \
+        repeat (2) @(posedge refclk0); \
+        mb_wr_sync(A_FUSRC0, 32'h1 << (4*k)); \
+    end
 
     //=========================================================================
     // stimulus
@@ -455,11 +479,29 @@ module tb_cmm_top;
         // ------------------------------------------------------------------
         // POR (ch2 clock held dead from t=0 for PHASE 1a)
         // ------------------------------------------------------------------
-        rst_n = 0; mbus_rstn = 0;
+        mbus_rstn = 0;
         d2_stop = 1;
         #250;
-        rst_n = 1; mbus_rstn = 1;
+        mbus_rstn = 1;
         #1000;
+
+        // P0: rst_sync scan bypass is a real DFT function, not a tie-off.
+        // Raw reset must assert/release rstn_s immediately in scan mode;
+        // afterwards let the synchronizer refill before returning to normal.
+        scan_mode = 1;
+        mbus_rstn = 0;
+        #1;
+        chk(dut.ref_rstn_s === 1'b0 && dut2.ref_rstn_s === 1'b0,
+            "P0: scan bypass immediate reset assertion");
+        mbus_rstn = 1;
+        #1;
+        chk(dut.ref_rstn_s === 1'b1 && dut2.ref_rstn_s === 1'b1,
+            "P0: scan bypass immediate reset release");
+        repeat (3) @(posedge refclk0);
+        scan_mode = 0;
+        #1;
+        chk(dut.ref_rstn_s === 1'b1 && dut2.ref_rstn_s === 1'b1,
+            "P0: synchronized reset path restored");
 
         // ------------------------------------------------------------------
         // PHASE 1a: late-start clock - refclk live from POR, ch2 clock
@@ -1123,9 +1165,9 @@ module tb_cmm_top;
         chk(rd[5:3] == 3'b010 && rd[1] == 1'b0, "COVg: recovered to RUN");
 
         // 20h: mid-run POR (toggle return sweep) + re-boot sanity
-        rst_n = 0; mbus_rstn = 0;
+        mbus_rstn = 0;
         #250;
-        rst_n = 1; mbus_rstn = 1;
+        mbus_rstn = 1;
         #1000;
         mb_wr_sync(A_CH0_LO + 8'd48, KEY | 32'd4);     // ch4 window (boot)
         mb_wr_sync(A_CH0_LO + 8'd52, KEY | 32'd9);
@@ -1220,9 +1262,9 @@ module tb_cmm_top;
         mb_wr_sync(A_GCTRL, KEY | 32'hF1);       // dbgsel=15, refsel=1
         mb_wr_sync(A_FORCE, KEY | 32'h1C_001F);  // inj bits + all ch force
         #3000;
-        rst_n = 0; mbus_rstn = 0;
+        mbus_rstn = 0;
         #250;
-        rst_n = 1; mbus_rstn = 1;
+        mbus_rstn = 1;
         #1000;
         mb_wr_sync(A_CH0_LO + 8'd48, KEY | 32'd4);
         mb_wr_sync(A_CH0_LO + 8'd52, KEY | 32'd9);
@@ -1435,6 +1477,15 @@ module tb_cmm_top;
         chk(esm_fault == 1'b1, "COVk: fsm_ln corrupt -> heal SET");
         mb_wr_sync(A_FUSTAT, 32'h20);                       // clr_fufsm
         recover(rd);
+        // (v) NEVER_ARMED sticky duplicate corrupt: rail-mismatch term alone
+        force dut.r.never_ln = 1'b0;
+        repeat (2) @(posedge refclk0);
+        release dut.r.never_ln;
+        mb_rd(A_FUSTAT, rd);
+        chk(rd[10] == 1'b1, "COVk: never_ln corrupt -> FUSTAT[10]");
+        chk(esm_fault == 1'b1, "COVk: never_ln corrupt -> esm_fault");
+        mb_wr_sync(A_FUSTAT, 32'h400);                      // clr_neva
+        recover(rd);
 
         // 20k.6: regfile mbus-side rows
         // SRCSTAT/FUSRC1 forwarded writes + REGST variants + bad key
@@ -1641,6 +1692,18 @@ module tb_cmm_top;
         $display("DBG296 ERRSTAT=%h enlo_r=%h enhi_r=%h", rd,
                  dut.u_cmm_regfile.enlo_r, dut.u_cmm_regfile.enhi_r);
         chk(rd == 32'h0, "COVk: no alarms while all channels disabled");
+        mb_rd(A_ARMED, rd);
+        chk(rd == 32'h0, "COVk: all channels unarmed while disabled");
+        // Unarmed fault matrix: ne_dup makes the pre-mask DEAD level true
+        // while armed=0; arm_dup is then injected alone on every channel.
+        `UNARMED_DUP(0)
+        `UNARMED_DUP(1)
+        `UNARMED_DUP(2)
+        `UNARMED_DUP(3)
+        `UNARMED_DUP(4)
+        recover(rd);
+        mb_rd(A_FUSRC0, rd);
+        chk(rd == 32'h0, "COVk: unarmed fault matrix cleaned up");
         mb_wr_sync(A_ENLO, 32'h000F_FFFF);              // re-enable all 5
         repeat (4) @(posedge refclk0);
         mb_rd(A_ENLO, rd);
@@ -1682,9 +1745,9 @@ module tb_cmm_top;
         chk(rd == 32'h0, "COVk: FUSTAT clean after unmapped sweep");
 
         // final POR + sanity (leave the bench in the reset state)
-        rst_n = 0; mbus_rstn = 0;
+        mbus_rstn = 0;
         #250;
-        rst_n = 1; mbus_rstn = 1;
+        mbus_rstn = 1;
         #1000;
         mb_wr_sync(A_CH0_LO + 8'd48, KEY | 32'd4);
         mb_wr_sync(A_CH0_LO + 8'd52, KEY | 32'd9);

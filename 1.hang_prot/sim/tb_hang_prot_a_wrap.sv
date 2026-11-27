@@ -81,9 +81,18 @@ module tb_hang_prot_a_wrap;
 
     logic mbus_clk = 0, aclk = 0;
     logic mbus_rstn = 0, rstn = 0;
-    logic scan_mode = 0;               // DFT: bypass the core reset sync (P0)
+    logic scan_mode = 0;               // DFT: bypass the top aclk reset sync (P0)
     always #(T_MBUS/2)  mbus_clk = ~mbus_clk;
     always #(T_ACLK/2) aclk = ~aclk;
+    // v3.11 *USER sidebands (width 1): payload-derived (stable while valid), full-width
+    // randomised coverage in tb_hang_prot_fn
+    logic m_aruser, m_awuser, m_wuser, s_ruser, s_buser;
+    logic s_aruser, s_awuser, s_wuser, m_ruser, m_buser;
+    // v2.6 new AXI4 payload (lock/cache/qos/region): TB derives them from prot
+    logic       m_arlock,  m_awlock,  s_arlock,  s_awlock;
+    logic [3:0] m_arcache, m_awcache, s_arcache, s_awcache;
+    logic [3:0] m_arqos,   m_awqos,   s_arqos,   s_awqos;
+    logic [3:0] m_arregion,m_awregion,s_arregion,s_awregion;
 
     // ---- mbus leaf ---------------------------------------------------------
     logic        mbus_ce, mbus_wr, mbus_par;
@@ -127,6 +136,7 @@ module tb_hang_prot_a_wrap;
     logic [31:0] s_awaddr, s_wdata;
     logic [7:0]  s_awlen;
     logic [2:0]  s_awsize;
+    logic [2:0]  s_awprot;
     logic [1:0]  s_awburst, s_bresp;
     logic [3:0]  s_wstrb;
     logic        s_bvalid, s_bready;
@@ -175,18 +185,21 @@ module tb_hang_prot_a_wrap;
         .REQ2RESP_RST  (16'd24 ),
         .IDX           (0      ),
         .AXI_ID_W      (4      ),
-        // v3.2 mcore-aware classes: 4'h1 -> mcore0 (fwd 4'h9, cls 1),
-        // 4'h3 -> mcore1 (fwd 4'hA, cls 2), OTHER masters (0/2/5/...)
-        // -> shared 4'h8 (cls 0). CLSW = clog2(N_MCORE+1) = 2; the
-        // low-2-bit class field matches (fwd & 3) == cls.
-        .N_MCORE         (2           ),
-        .MCORE_MASTER_IDS({4'h3, 4'h1}),
-        .MCORE_REMAP_IDS ({4'hA, 4'h9}),
-        .AR_ID_REMAP     (4'h8        ),  // shared "others" id (low 2 bits 0)
-        .AW_ID_REMAP     (4'hC        ),
-        .AXI_ADDR_W      (32          ),
-        .AXI_DATA_W      (32          ),
-        .WSKID_BEATS     (WSKID_BEATS )
+        // v3.8 mcore-aware classes (field match on m_arid[2:0]):
+        // [2:0]=1 (4'h1/9) -> mcore0 (cls 0, fwd 4'h8),
+        // [2:0]=3 (4'h3/B) -> mcore1 (cls 1, fwd 4'h9),
+        // OTHER masters (0/2/5/8/A/F...) -> shared 4'hA (cls 2 = N_DIST_CLS).
+        // CLSW = clog2(N_DIST_CLS+1) = 2; low-2-bit class field (fwd & 3) == cls.
+        .N_DIST_CLS         (2           ),
+        .CLS_LSB            (0           ),
+        .CLS_W              (3           ),
+        .DIST_CLS_MASTER_IDS({3'd3, 3'd1}),
+        .DIST_CLS_REMAP_IDS ({4'h9, 4'h8}),
+        .AR_ID_REMAP        (4'hA        ),  // shared "others" id (low 2 bits = 2)
+        .AW_ID_REMAP        (4'hC        ),
+        .AXI_ADDR_W         (32          ),
+        .AXI_DATA_W         (32          ),
+        .WSKID_BEATS        (WSKID_BEATS )
     ) u_dut (
         .mbus_clk  (mbus_clk  ),
         .mbus_rstn (mbus_rstn ),
@@ -198,9 +211,9 @@ module tb_hang_prot_a_wrap;
         .mbus_rdata(mbus_rdata),
         .mbus_rpar (mbus_rpar ),
 
-        .ia_bus_aclk(aclk      ),
-        .rstn       (rstn      ),
-        .scan_mode  (scan_mode ),
+        .ia_bus_aclk(aclk     ),
+        .rstn       (rstn     ),
+        .scan_mode  (scan_mode),
 
         .m_arvalid(m_arvalid),
         .m_arready(m_arready),
@@ -210,12 +223,18 @@ module tb_hang_prot_a_wrap;
         .m_arsize (m_arsize ),
         .m_arburst(m_arburst),
         .m_arprot (m_arprot ),
+        .m_arlock (m_arlock),
+        .m_arcache (m_arcache),
+        .m_arqos (m_arqos),
+        .m_arregion (m_arregion),
+        .m_aruser (m_aruser),
         .m_rvalid (m_rvalid ),
         .m_rready (m_rready ),
         .m_rid    (m_rid    ),
         .m_rdata  (m_rdata  ),
         .m_rresp  (m_rresp  ),
         .m_rlast  (m_rlast  ),
+        .m_ruser (m_ruser),
         .m_awvalid(m_awvalid),
         .m_awready(m_awready),
         .m_awid   (m_awid   ),
@@ -224,15 +243,22 @@ module tb_hang_prot_a_wrap;
         .m_awsize (m_awsize ),
         .m_awburst(m_awburst),
         .m_awprot (m_awprot ),
+        .m_awlock (m_awlock),
+        .m_awcache (m_awcache),
+        .m_awqos (m_awqos),
+        .m_awregion (m_awregion),
+        .m_awuser (m_awuser),
         .m_wvalid (m_wvalid ),
         .m_wready (m_wready ),
         .m_wdata  (m_wdata  ),
         .m_wstrb  (m_wstrb  ),
         .m_wlast  (m_wlast  ),
+        .m_wuser (m_wuser),
         .m_bvalid (m_bvalid ),
         .m_bready (m_bready ),
         .m_bid    (m_bid    ),
         .m_bresp  (m_bresp  ),
+        .m_buser (m_buser),
 
         .s_arvalid(s_arvalid),
         .s_arready(s_arready),
@@ -242,12 +268,18 @@ module tb_hang_prot_a_wrap;
         .s_arsize (s_arsize ),
         .s_arburst(s_arburst),
         .s_arprot (s_arprot ),
+        .s_arlock (s_arlock),
+        .s_arcache (s_arcache),
+        .s_arqos (s_arqos),
+        .s_arregion (s_arregion),
+        .s_aruser (s_aruser),
         .s_rvalid (s_rvalid ),
         .s_rready (s_rready ),
         .s_rid    (s_rid    ),
         .s_rdata  (s_rdata  ),
         .s_rresp  (s_rresp  ),
         .s_rlast  (s_rlast  ),
+        .s_ruser (s_ruser),
         .s_awvalid(s_awvalid),
         .s_awready(s_awready),
         .s_awid   (s_awid   ),
@@ -255,20 +287,28 @@ module tb_hang_prot_a_wrap;
         .s_awlen  (s_awlen  ),
         .s_awsize (s_awsize ),
         .s_awburst(s_awburst),
+        .s_awprot (s_awprot),
+        .s_awlock (s_awlock),
+        .s_awcache (s_awcache),
+        .s_awqos (s_awqos),
+        .s_awregion (s_awregion),
+        .s_awuser (s_awuser),
         .s_wvalid (s_wvalid ),
         .s_wready (s_wready ),
         .s_wdata  (s_wdata  ),
         .s_wstrb  (s_wstrb  ),
         .s_wlast  (s_wlast  ),
+        .s_wuser (s_wuser),
         .s_bvalid (s_bvalid ),
         .s_bready (s_bready ),
         .s_bid    (s_bid    ),
         .s_bresp  (s_bresp  ),
+        .s_buser (s_buser),
 
-        .esm_err      (esm_err      ),
-        .esm_err_n    (esm_err_n    ),
-        .esm_fault       (esm_fault       ),
-        .esm_fault_n     (esm_fault_n     ),
+        .esm_err        (esm_err        ),
+        .esm_err_n      (esm_err_n      ),
+        .esm_fault      (esm_fault      ),
+        .esm_fault_n    (esm_fault_n    ),
         .reg_par_fault  (reg_par_fault  ),
         .reg_par_fault_n(reg_par_fault_n),
         .skid_fault     (skid_fault     ),
@@ -1067,17 +1107,17 @@ module tb_hang_prot_a_wrap;
         rstn = 1;
         repeat (5) @(negedge aclk);
 
-        // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
+        // ---- P0: DFT scan_mode bypass of the top reset synchronizer ------
         // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
         scan_mode = 1;
         rstn = 0;
         #1;                                   // settle, no clock edge needed
-        if (u_dut.u_hang_prot_core.rstn_s !== 1'b0) begin
+        if (u_dut.aclk_rstn !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate", $time); errors++;
         end
         rstn = 1;
         #1;
-        if (u_dut.u_hang_prot_core.rstn_s !== 1'b1) begin
+        if (u_dut.aclk_rstn !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate", $time); errors++;
         end
         scan_mode = 0;
@@ -1324,8 +1364,9 @@ module tb_hang_prot_a_wrap;
         w1c_all();
 
         // ---- P12: mcore-aware AR id remap (v3.2) --------------------------
-        // classes: 4'h1 -> mcore0 (fwd 4'h9), 4'h3 -> mcore1 (fwd 4'hA),
-        // other masters -> shared 4'h8. The responder serves s-side requests
+        // classes (v3.8): m_arid[2:0]=1 -> mcore0 (cls 0, fwd 4'h8),
+        // [2:0]=3 -> mcore1 (cls 1, fwd 4'h9), others -> shared 4'hA (cls 2).
+        // The responder serves s-side requests
         // in FIFO order and echoes the FORWARDED id; the DUT must restore
         // each master's OWN rid per class. Wrong class push / wrong restore
         // both show up as a rid or order mismatch in the per-burst
@@ -1335,12 +1376,12 @@ module tb_hang_prot_a_wrap;
         m_rready  = 1;
         rb0 = rb_rid_q.size();                // (scorebook snapshot)
 
-        // (a) normal mode: two "other" masters share class 0, two mcodes
+        // (a) normal mode: two "other" masters share class 2, two mcodes
         //     have their own classes - own-id restoration for all four
-        m_ar_fire(4'h5, 1);                   // other  (cls 0): 2 beats
-        m_ar_fire(4'h3, 0);                   // mcore1 (cls 2): 1 beat
-        m_ar_fire(4'h1, 2);                   // mcore0 (cls 1): 3 beats
-        m_ar_fire(4'h0, 0);                   // other  (cls 0): 1 beat
+        m_ar_fire(4'h5, 1);                   // other  (cls 2): 2 beats
+        m_ar_fire(4'h3, 0);                   // mcore1 (cls 1): 1 beat
+        m_ar_fire(4'h1, 2);                   // mcore0 (cls 0): 3 beats
+        m_ar_fire(4'h0, 0);                   // other  (cls 2): 1 beat
         rbw = 0;
         while (rb_rid_q.size() < rb0 + 4 && rbw < WDT) begin
             @(posedge aclk); rbw++;
@@ -1370,9 +1411,9 @@ module tb_hang_prot_a_wrap;
         //     beats = len+1 for every burst, regardless of where main
         //     died inside the burst)
         rb0 = rb_rid_q.size();
-        m_ar_fire(4'h0, 1);                   // cls 0: 2 beats
-        m_ar_fire(4'h1, 2);                   // cls 1 (mcore0): 3 beats
-        m_ar_fire(4'h3, 0);                   // cls 2 (mcore1): 1 beat
+        m_ar_fire(4'h0, 1);                   // cls 2 (others): 2 beats
+        m_ar_fire(4'h1, 2);                   // cls 0 (mcore0): 3 beats
+        m_ar_fire(4'h3, 0);                   // cls 1 (mcore1): 1 beat
         slv_alive   = 0;                      // dies mid-response -> r2r
         wait_recover_entry();
         rbw = 0;
@@ -1605,7 +1646,7 @@ module tb_hang_prot_a_wrap;
         //       deposits (P11 pattern); the flops only rewrite on an AR
         //       push, so the idle ring holds the deposited value.
         //   (b) entry parity error on an OCCUPIED ring (occupancy-gated
-        //       arm): park a class-0 read (main dead), corrupt the entry at
+        //       arm): park a class-2 (others) read (main dead), corrupt the entry at
         //       the (stable: m_rready=0 blocks pops) read pointer, heal,
         //       then let the dummy R drain -> auto exit.
         scn = 18; $display("[%0t] --- P18 ---", $time);
@@ -1648,28 +1689,28 @@ module tb_hang_prot_a_wrap;
         slv_alive = 1;
         m_rready  = 0;
         r0 = r_bursts;
-        m_ar_fire(4'h0, 0);                 // class 0, 1 beat: push -> occ=1
+        m_ar_fire(4'h0, 0);                 // others (cls 2), 1 beat: push -> occ=1
         slv_alive = 0;                      // main dies before the R
         wait_recover_entry();               // r2r timeout
-        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[0];
+        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[2];
         fi_mask  = '0;
-        fi_mask[u_dut.u_hang_prot_recover.r.ar_rp[0]] = 1'b1;
+        fi_mask[u_dut.u_hang_prot_recover.r.ar_rp[2]] = 1'b1;
 `ifdef IVERILOG
-        u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        u_dut.u_hang_prot_recover.r.ar_par[2] = fi_snap8 ^ fi_mask;
 `else
-        force   u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        force   u_dut.u_hang_prot_recover.r.ar_par[2] = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_hang_prot_recover.r.ar_par[0];
+        release u_dut.u_hang_prot_recover.r.ar_par[2];
 `endif
         repeat (5) @(posedge aclk);         // ar_ent_err live (occupied arm)
         // heal (toggle the same bit back; ring parked -> field static)
-        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[0];
+        fi_snap8 = u_dut.u_hang_prot_recover.r.ar_par[2];
 `ifdef IVERILOG
-        u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        u_dut.u_hang_prot_recover.r.ar_par[2] = fi_snap8 ^ fi_mask;
 `else
-        force   u_dut.u_hang_prot_recover.r.ar_par[0] = fi_snap8 ^ fi_mask;
+        force   u_dut.u_hang_prot_recover.r.ar_par[2] = fi_snap8 ^ fi_mask;
         @(posedge aclk);                 // FI hold: seq latches the forced value (Rule 3)
-        release u_dut.u_hang_prot_recover.r.ar_par[0];
+        release u_dut.u_hang_prot_recover.r.ar_par[2];
 `endif
         m_rready = 1;                       // let the dummy R drain
         m_r_wait(r0 + 1);
@@ -2622,7 +2663,9 @@ module tb_hang_prot_a_wrap;
         pv_awprot = 3'd1; m_aw_fire(4'h8, 8'd1); m_wburst(1, 0);
         pv_awaddr = 32'h1234_5678; pv_awsize = 3'd4; pv_awburst = 2'b01;
         pv_awprot = 3'd4; m_aw_fire(4'hF, 8'd7); m_wburst(7, 0);
-        m_b_wait(b0 + 6);
+        pv_awprot = 3'd6; m_aw_fire(4'h4, 8'd1); m_wburst(1, 0);
+        pv_awprot = 3'd3; m_aw_fire(4'h6, 8'd7); m_wburst(7, 0);
+        m_b_wait(b0 + 8);
         pv_mode = 0; slv_data_chk = 1; resp_relax = 0;
         check_closure();
         scn_sample();
@@ -2820,10 +2863,10 @@ module tb_hang_prot_a_wrap;
         m_aw_fire(4'h1, 1); m_wburst(1, 0);
         m_b_wait(b0 + 4);
         // Z rounds: 4-deep SAME-class parks - the 2-deep interleaved rounds
-        // above never reach class1/2 FIFO entries 2/3 nor ar_occ bit2
+        // above never reach class0/1 FIFO entries 2/3 nor ar_occ bit2
         // (occ=4). Complementary lens then return every stored len/par bit.
-        // Z0 (class0): entry1 bits[3:2] need a 0C store (the F0/55/AA/0F
-        // union never sets them); the all-ones round mirrors class1/2's Z1/Z4
+        // Z0 (class2(others)): entry1 bits[3:2] need a 0C store (the F0/55/AA/0F
+        // union never sets them); the all-ones round mirrors class0/1's Z1/Z4
         // long-burst walks (rbeat_cnt full-range climb included)
         m_rready = 0;
         r0 = r_bursts;
@@ -2936,7 +2979,7 @@ module tb_hang_prot_a_wrap;
         //      the window flag is up). The phantom burst(s): junk rid R at an
         //      EMPTY ledger - the recover's phantom-absorb drives s_rready=1
         //      and sinks them (m side never sees a beat); rid low bits must
-        //      avoid 2'b11 (N_CLS=3: ar_occ[3] does not exist).
+        //      avoid 2'b11 (N_DIST_CLS=2 -> 3 classes: ar_occ[3] does not exist).
         // ====================================================================
         scn = 30; $display("[%0t] --- P30 ---", $time);
         resp_any = 1;
@@ -3166,19 +3209,19 @@ module tb_hang_prot_a_wrap;
 
         // ---- P32: v3.7 cut-burst-first mirror (dum_cls two-tier, recover) ---
         //   The outbound twin of b-TB P30: main dies mid-delivery of a
-        //   CLASS-2 burst (mcore1) while the LOWER class 0 has a read
+        //   CLASS-1 burst (mcore1) while the class-2 (others) has a read
         //   parked behind it (the in-order responder is still busy with
-        //   the first burst). The old single-tier pick served class 0
-        //   first -> class-2 beats interleaved around the class-0 dummy
+        //   the first burst). The old single-tier pick served class 2
+        //   first -> class-1 beats interleaved around the class-2 dummy
         //   (AXI4 violation on the LIVE island NIC). Tier-2 finishes the
         //   cut burst first: [4'h3 remaining beats .. RLAST] then [4'h0
         //   1-beat dummy], then the AUTO exit (both reads retired).
         scn = 32; $display("[%0t] --- P32 ---", $time);
         m_rready = 1;
-        k = r_beats;                        // beat base of the class-2 burst
-        m_ar_fire(4'h3, 8'd15);             // class 2 (mcore1), 16 beats
+        k = r_beats;                        // beat base of the class-1 burst
+        m_ar_fire(4'h3, 8'd15);             // class 1 (mcore1), 16 beats
         while (r_beats < k + 2) @(posedge aclk);
-        m_ar_fire(4'h0, 8'd0);              // class 0 parks behind (shared id)
+        m_ar_fire(4'h0, 8'd0);              // class 2 (others) parks behind
         slv_alive = 0;                      // main dies mid-R (2 of 16)
         j = 1;                              // phase 1: inside the cut burst
         k = 0;
@@ -3196,7 +3239,7 @@ module tb_hang_prot_a_wrap;
                     end
                 end else begin
                     if (m_rid != 4'h0 || !m_rlast) begin
-                        $display("[%0t] ERR: P32: post-cut beat not the class-0 1-beat dummy",
+                        $display("[%0t] ERR: P32: post-cut beat not the class-2 1-beat dummy",
                                  $time);
                         errors++;
                     end
@@ -3249,6 +3292,36 @@ module tb_hang_prot_a_wrap;
         #20ms;
         $display("[%0t] ERR: global watchdog", $time); errors++;
         $finish;
+    end
+
+    //--------------------------------------------------------------------------
+    // v2.6: lock/cache/qos/region ride along with prot (derived values), and
+    // must come out at the s side consistent with the SAME txn's s_*prot
+    // (catches slot mix-ups / lost storage / parity-false-trips in the skid).
+    //--------------------------------------------------------------------------
+    assign m_aruser = ^{m_arid, m_araddr[7:0], m_arlen, m_arprot};
+    assign m_awuser = ^{m_awid, m_awaddr[7:0], m_awlen, m_awprot};
+    assign m_wuser  = m_wdata[5] ^ m_wlast;
+    assign s_ruser  = s_rdata[7] ^ s_rid[0];
+    assign s_buser  = ^s_bid;
+
+    function automatic logic       f_lock  (input logic [2:0] p); f_lock   = p[1] ^ p[2];            endfunction
+    function automatic logic [3:0] f_cache (input logic [2:0] p); f_cache  = {p, p[0]} ^ 4'h5;       endfunction
+    function automatic logic [3:0] f_qos   (input logic [2:0] p); f_qos    = {p[0], p} ^ 4'hA;       endfunction
+    function automatic logic [3:0] f_region(input logic [2:0] p); f_region = {p[1], p[2], p[0], p[1]};  endfunction
+    assign m_arlock = f_lock(m_arprot);  assign m_arcache = f_cache(m_arprot);
+    assign m_arqos  = f_qos(m_arprot);   assign m_arregion = f_region(m_arprot);
+    assign m_awlock = f_lock(m_awprot);  assign m_awcache = f_cache(m_awprot);
+    assign m_awqos  = f_qos(m_awprot);   assign m_awregion = f_region(m_awprot);
+    always @(posedge aclk) begin
+        if (s_arvalid && (s_arlock !== f_lock(s_arprot) || s_arcache !== f_cache(s_arprot) ||
+                          s_arqos !== f_qos(s_arprot) || s_arregion !== f_region(s_arprot))) begin
+            $display("[%0t] ERR: AR lock/cache/qos/region mismatch vs prot", $time); errors++;
+        end
+        if (s_awvalid && (s_awlock !== f_lock(s_awprot) || s_awcache !== f_cache(s_awprot) ||
+                          s_awqos !== f_qos(s_awprot) || s_awregion !== f_region(s_awprot))) begin
+            $display("[%0t] ERR: AW lock/cache/qos/region mismatch vs prot", $time); errors++;
+        end
     end
 
 endmodule

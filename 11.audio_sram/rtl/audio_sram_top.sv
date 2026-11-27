@@ -15,27 +15,28 @@
 //   mbus (SW 寄存器面) + sram_clk (音频主设备/宏/引擎). **全部 CDC /
 //   寄存器 / 事件粘滞捕获收编在 u_audio_sram_regfile 双域寄存器文件内**
 //   (规则 23, 方法采 ia_bus_timeo, 同构 edc_regfile/dup_ctrl v3),
-//   本模块只剩端口壳 + core/macro 例化:
-//     u_audio_sram_regfile : 双域 regfile, 输出 sram_rstn (rst_sync,
-//                            scan_mode 透传) 供整个 sram 域单一复位源
+//   本模块只剩端口壳 + sram 域复位同步 + regfile/core/macro 例化:
+//     u_audio_sram_regfile : 双域 regfile (吃 top 下发的 sram_reg_rstn)
 //     u_audio_sram_core    : 奇偶编解码引擎 (sram_clk 域)
 //     u_audio_sram_macro   : 33bit 同步 SRAM 宏行为模型 (sram_clk 域,
 //                            ASIC 换存储器编译器宏 —— bit interleave 必选)
 //
-//   复位: mbus_rstn 异步断言两域共源; sram 域释放经 regfile 内 rst_sync
-//   对齐 sram_clk (scan_mode DFT 旁路, 本顶层透传).
+//   复位: mbus_rstn (mbus 域) 裸用不做同步; sram_rstn (sram 域裸复位)
+//   经 u_sram_rst 同步到 sram_clk 给 core 引擎; mbus_rstn 另经 u_sram_reg_rst
+//   同步到 sram_clk 给 regfile sram 域 (故障保留, 规则 26; scan_mode 旁路).
 //
 //   ESM 双轨 (mbus 域): esm_err/_n (监控 = |STA_ERR), esm_fault/_n
 //   (告警 = STA_FAULT), reg_par_fault/_n. 双轨互补, ESM 侧逐拍校验.
 // ============================================================================
 module audio_sram_top #(
-   parameter integer IDX        = 0,     // mbus 实例号 (addr[15:8])
-   parameter integer DEPTH      = 1024,  // SRAM 字数 (2 的幂)
-   parameter integer SYNC_STAGE = 3,     // 跨域同步链级数: 2 | 3
-   localparam integer AW        = $clog2(DEPTH)
+   parameter  integer IDX        = 0,     // mbus 实例号 (addr[15:8])
+   parameter  integer DEPTH      = 1024,  // SRAM 字数 (2 的幂)
+   parameter  integer SYNC_STAGE = 3,     // 跨域同步链级数: 2 | 3
+   parameter integer AW          = $clog2(DEPTH)
 )(
    input  logic            mbus_clk,     // mbus 时钟 (寄存器面)
-   input  logic            mbus_rstn,    // 异步低有效 (mbus + sram 两域共源)
+   input  logic            mbus_rstn,    // 异步低有效 (mbus 域裸复位, 不做同步)
+   input  logic            sram_rstn,    // 异步低有效 (sram 域裸复位, top 同步)
    input  logic            scan_mode,    // DFT: sram 域复位同步器旁路
 
    // ---------------- mbus ----------------
@@ -68,16 +69,19 @@ module audio_sram_top #(
    //--------------------------------------------------------------------------
    // 参数约束: DEPTH 必须为 2 的幂 (AW 正好覆盖)
    //--------------------------------------------------------------------------
+   // synopsys translate_off
    initial begin
       if (2**AW != DEPTH) begin
          $fatal(1, "audio_sram_top: DEPTH=%0d must be a power of 2", DEPTH);
       end
    end
+   // synopsys translate_on
 
    //--------------------------------------------------------------------------
    // 域内连线
    //--------------------------------------------------------------------------
-   logic        sram_rstn;
+   logic        sram_rstn_s;   // sram 域同步后复位 (rst_sync 输出, 给引擎)
+   logic        sram_reg_rstn; // regfile sram 域复位 (mbus_rstn 同步, 故障保留)
    logic        mon_en;
    logic        inj_on;
    logic [6:0]  inj_pos;
@@ -91,62 +95,87 @@ module audio_sram_top #(
    logic [32:0] m_rdata;
 
    //--------------------------------------------------------------------------
-   // 双域寄存器文件 (唯一 CDC 所在, 输出 sram 域复位)
+   // sram 域复位同步 (规则 26): 复位同步收编在 top, 下层不再自行例化 rst_sync.
+   //   u_sram_rst    : sram_rstn 同步到 sram_clk -> sram_rstn_s, 给 core 引擎
+   //   u_sram_reg_rst: mbus_rstn 同步到 sram_clk -> sram_reg_rstn, 给 regfile
+   //                   sram 域 (故障保留: sram 域单独复位时 sticky/影子不清)
+   //--------------------------------------------------------------------------
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_sram_rst (
+      .clk      (sram_clk   ),
+      .rstn     (sram_rstn  ),
+      .scan_mode(scan_mode  ),
+      .rstn_s   (sram_rstn_s)
+   );
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_sram_reg_rst (
+      .clk      (sram_clk     ),
+      .rstn     (mbus_rstn    ),
+      .scan_mode(scan_mode    ),
+      .rstn_s   (sram_reg_rstn)
+   );
+
+   //--------------------------------------------------------------------------
+   // 双域寄存器文件 (唯一 CDC 所在, 吃 top 下发的 sram 域同步复位)
    //--------------------------------------------------------------------------
    audio_sram_regfile #(
       .IDX       (IDX       ),
       .AW        (AW        ),
       .SYNC_STAGE(SYNC_STAGE)
    ) u_audio_sram_regfile (
-      .clk           (mbus_clk      ),
-      .rstn          (mbus_rstn     ),
-      .scan_mode     (scan_mode     ),
-      .ce            (ce            ),
-      .wr            (wr            ),
-      .addr          (addr          ),
-      .wdata         (wdata         ),
-      .par           (par           ),
-      .rdata         (rdata         ),
-      .rpar          (rpar          ),
-      .sram_clk      (sram_clk      ),
-      .sram_rstn     (sram_rstn     ),
-      .mon_en        (mon_en        ),
-      .inj_on        (inj_on        ),
-      .inj_pos       (inj_pos       ),
-      .perr          (perr          ),
-      .lat_addr      (lat_addr      ),
-      .esm_err       (esm_err       ),
-      .esm_err_n     (esm_err_n     ),
-      .esm_fault     (esm_fault     ),
-      .esm_fault_n   (esm_fault_n   ),
-      .reg_par_fault (reg_par_fault ),
+      .clk            (mbus_clk       ),
+      .rstn           (mbus_rstn      ),
+      .ce             (ce             ),
+      .wr             (wr             ),
+      .addr           (addr           ),
+      .wdata          (wdata          ),
+      .par            (par            ),
+      .rdata          (rdata          ),
+      .rpar           (rpar           ),
+      .sram_clk       (sram_clk       ),
+      .sram_rstn      (sram_reg_rstn  ),
+      .mon_en         (mon_en         ),
+      .inj_on         (inj_on         ),
+      .inj_pos        (inj_pos        ),
+      .perr           (perr           ),
+      .lat_addr       (lat_addr       ),
+      .esm_err        (esm_err        ),
+      .esm_err_n      (esm_err_n      ),
+      .esm_fault      (esm_fault      ),
+      .esm_fault_n    (esm_fault_n    ),
+      .reg_par_fault  (reg_par_fault  ),
       .reg_par_fault_n(reg_par_fault_n)
    );
 
    //--------------------------------------------------------------------------
-   // 奇偶编解码引擎 (sram_clk 域, 复位 = regfile 输出的 sram_rstn)
+   // 奇偶编解码引擎 (sram_clk 域, 复位 = top 同步后的 sram_rstn_s)
    //--------------------------------------------------------------------------
    audio_sram_core #(
       .AW(AW )
    ) u_audio_sram_core (
-      .clk     (sram_clk  ),
-      .rstn    (sram_rstn ),
-      .mon_en  (mon_en    ),
-      .inj_on  (inj_on    ),
-      .inj_pos (inj_pos   ),
-      .s_csn   (si_csn    ),
-      .s_wen   (si_wen    ),
-      .s_addr  (si_addr   ),
-      .s_wdata (si_wdata  ),
-      .s_rdata (si_rdata  ),
-      .s_rvalid(si_rvalid ),
-      .m_cen   (m_cen     ),
-      .m_wen   (m_wen     ),
-      .m_addr  (m_addr    ),
-      .m_wdata (m_wdata   ),
-      .m_rdata (m_rdata   ),
-      .perr    (perr      ),
-      .lat_addr(lat_addr  )
+      .clk     (sram_clk   ),
+      .rstn    (sram_rstn_s),
+      .mon_en  (mon_en     ),
+      .inj_on  (inj_on     ),
+      .inj_pos (inj_pos    ),
+      .s_csn   (si_csn     ),
+      .s_wen   (si_wen     ),
+      .s_addr  (si_addr    ),
+      .s_wdata (si_wdata   ),
+      .s_rdata (si_rdata   ),
+      .s_rvalid(si_rvalid  ),
+      .m_cen   (m_cen      ),
+      .m_wen   (m_wen      ),
+      .m_addr  (m_addr     ),
+      .m_wdata (m_wdata    ),
+      .m_rdata (m_rdata    ),
+      .perr    (perr       ),
+      .lat_addr(lat_addr   )
    );
 
    //--------------------------------------------------------------------------

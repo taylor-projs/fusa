@@ -466,6 +466,64 @@ channels). When using TST_CLR together with a gate stop, quiesce the stop
 landing after the clear legitimately re-arms the channel, turning the
 scenario into DEAD instead of the intended NEVER_ARMED/silence.
 
+### 6.7 DEAD (no-edge timeout) detection — 默认不使能 → 使能 → 延迟后钟到 → 停钟全流程
+
+**Mechanism** (per channel i, `clk_ref` domain): a no-edge counter
+`noedge_cnt[i]` counts ref cycles without a DUT edge while armed; the DEAD
+verdict fires when it reaches the `NDEAD` threshold. The full condition:
+
+- `edge_det[i]` — a DUT clock edge sampled into `clk_ref` (1 pulse per edge).
+- `armed[i]` — first-edge latch (A1): set by the first `edge_det`, cleared only
+  by `disarm = ~en_v | tst_clr`; **clock death never clears it**.
+- `noedge_cnt[i]` — frozen at 0 while `!armed`; reset to 0 on every `edge_det`;
+  else +1 each ref cycle; when it equals `ndead[i]` it wraps to 0 (periodic
+  re-issue). Dual-rail copy `noedge_cnt_n` (Q/Q_n) for integrity.
+- dual compare: `dead_a = (noedge_cnt == ndead)`, `dead_b = (~noedge_cnt_n == ndead)`,
+  `ne_dup = (noedge_cnt_n != ~noedge_cnt)`.
+- verdict level: `dead_lvl = (dead_a | dead_b | ne_dup) & armed`.
+- sticky: `dead_q` sets on `dead_lvl & en_v`, clears only by W1C + TST_CLR
+  (or global reset); SRCSTAT dead bit and `esm_err` follow the sticky.
+
+![DEAD 检测全流程 — 默认不使能 → 使能 → 延迟后钟到 → 停钟](cmm_fig4_dead_detection.svg)
+
+**① 默认不使能 (EN nibble = `0`, `en_v = 0`; 复位默认 `EN_RST = 0`)** —
+
+- `disarm = 1` clears `armed` every cycle; `noedge_cnt` frozen at 0 →
+  `dead_lvl = (…) & armed = 0`.
+- DUT clock is still gated off (no edges); the channel is **silent**: no arming,
+  no DEAD, no FAIL_FREQ, no NEVER_ARMED — the "born disarmed" state. The monitor
+  is deliberately blind until SW enables it and the clock arrives.
+
+**② SW 使能 (write EN nibble = `F` → `en_v = 1`), 钟仍 gated** —
+
+- `disarm = 0`, but `armed` is still 0: **enabling does not arm**. During the
+  delay before the DUT clock arrives, the channel stays silent — `armed = 0`
+  and the frozen `noedge_cnt` both inhibit the verdict, so **no false DEAD** is
+  reported while the clock is still gated (SW contract §6.6: open the gate,
+  then enable; a late-arriving clock is also legal).
+
+**③ 延迟后钟到 → 首沿布防 + 运行** —
+
+- after the delay the DUT clock starts: the first edge sets `armed` (and resets
+  `noedge_cnt`); every subsequent edge keeps `noedge_cnt` at 0 — no DEAD while
+  the clock runs.
+
+**④ 停钟 → DEAD** —
+
+1. DUT clock stops → no `edge_det` → `noedge_cnt` increments once per ref
+   cycle: 0 → 1 → 2 → … → `ndead`.
+2. at `noedge_cnt == ndead`, `dead_a|dead_b` fires `dead_lvl`; `dead_q` latches
+   sticky; SRCSTAT dead bit and `esm_err` rise.
+3. the counter wraps to 0 and re-counts (periodic re-issue), so `dead_lvl`
+   re-pulses every `ndead+1` ref cycles while the clock stays dead — the sticky
+   `dead_q` just stays set until W1C + TST_CLR.
+
+**Integrity note**: `ne_dup` (the counter's Q/Q_n pair compare) feeds
+`fu_cnt_lvl` → `fu_cnt` sticky → `esm_fault` regardless of `armed`, so a
+stuck/SEU pair break on the counter is reported even in the disabled state.
+(A transient SEU on the frozen `0` value is not observable by construction —
+documented residual.)
+
 ---
 
 *Cross-references: architecture and CDC protocol in

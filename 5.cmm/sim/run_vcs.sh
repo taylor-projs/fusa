@@ -3,7 +3,8 @@
 # Usage (in the VCS/Verdi VM):  cd sim && ./run_vcs.sh [clean|cov]
 #   (none)  compile + run (90 self-checks) + FSDB + KDB
 #   cov     same, plus code coverage on the DUT (line+cond+fsm+tgl+branch),
-#           urg report into ./urg_report (dashboard.txt = summary)
+#           raw urg report in ./urg_report and exclusion-applied report in
+#           ./urg_report_excl (both dashboards are printed)
 #   clean   remove all build products
 #
 # Required env (example):
@@ -16,7 +17,7 @@ cd "$(dirname "$0")"
 
 if [ "${1:-}" = "clean" ]; then
     rm -rf simv simv.daidir csrc ucli.key vc_hdrs.h *.fsdb *.vcd *.log \
-           simv.vdb urg_report cm_hier.cfg
+           simv.vdb urg_report urg_report_excl cm_hier.cfg
     exit 0
 fi
 
@@ -29,18 +30,22 @@ if [ "${1:-}" = "cov" ]; then
 fi
 
 # never run a stale binary: wipe the build products before compiling
-rm -rf simv simv.daidir csrc simv.vdb urg_report
+rm -rf simv simv.daidir csrc simv.vdb urg_report urg_report_excl
 
 CMFLAGS=""
 CMRUN=""
+COVSRC=""
 if [ "$COV" = "1" ]; then
-    # coverage on the DUT subtree only (exclude the testbench itself)
+    # VCS auto-FSM extraction misses ERR arcs for an enum inside a packed
+    # struct.  The bound, output-free probe mirrors the real state and is the
+    # only FSM extracted; all other metrics still instrument the DUT itself.
     cat > cm_hier.cfg <<EOF
 -tree tb_cmm_top
 +tree tb_cmm_top.dut
 EOF
-    CMFLAGS="-cm line+cond+fsm+tgl+branch -cm_dir simv.vdb -cm_hier cm_hier.cfg"
+    CMFLAGS="-cm line+cond+fsm+tgl+branch -cm_fsmopt configonly -cm_fsmcfg cm_fsm.cfg -cm_dir simv.vdb -cm_hier cm_hier.cfg"
     CMRUN="-cm line+cond+fsm+tgl+branch -cm_dir simv.vdb -cm_name cmm_run -cm_log cm_run.log"
+    COVSRC="cmm_fsm_cov_probe.sv"
 fi
 
 # FSDB: VCS 2021+ dumps $fsdb* natively with -debug_access+all; linking the
@@ -52,12 +57,14 @@ vcs -full64 -sverilog -timescale=1ns/1ps \
     +define+DUMP_FSDB \
     $CMFLAGS \
     -top tb_cmm_top \
+    ../../common_modules/rst_sync.sv \
     ../../common_modules/sync_dff.sv \
     ../../common_modules/sync_2dff.sv \
     ../../common_modules/reg_wrap.sv \
     ../rtl/cmm_core.sv \
     ../rtl/cmm_regfile.sv \
     ../rtl/cmm_top.sv \
+    $COVSRC \
     tb_cmm_top.sv \
     -o simv -l vcs_compile.log
 
@@ -82,9 +89,21 @@ fi
 echo "RUN OK: $(grep -o 'ALL [0-9]* CHECKS PASSED' vcs_run.log)"
 
 if [ "$COV" = "1" ]; then
-    urg -dir simv.vdb -report urg_report -format both -log urg.log
-    echo "=== coverage summary (urg_report/dashboard.txt) ==="
-    cat urg_report/dashboard.txt 2>/dev/null || true
+    if ! urg -lca -dir simv.vdb -report urg_report -format both -log urg.log; then
+        echo "RAW URG FAILED"
+        exit 1
+    fi
+    echo "=== RAW coverage (urg_report/dashboard.txt) ==="
+    cat urg_report/dashboard.txt
+
+    if ! urg -lca -dir simv.vdb -report urg_report_excl \
+             -elfilelist excl/elist.txt -excl_strict -format both \
+             -log urg_excl.log; then
+        echo "EXCLUSION-APPLIED URG FAILED"
+        exit 1
+    fi
+    echo "=== EXCLUDED coverage (urg_report_excl/dashboard.txt) ==="
+    cat urg_report_excl/dashboard.txt
 fi
 
 echo "waveform: sim/tb_cmm_top.fsdb   (open with ./run_verdi.sh)"

@@ -9,19 +9,19 @@
 //   mandatory). wopen <= NSLOT (v2.4 parameterizable) replaces the v2.1 wopen <= 1 bound; the
 //   §5.7 case-analysis arguments (bounded, self-resolving, no underflow)
 //   carry over unchanged with "1" -> "2".
-//   (2) MULTI-CLASS READ REMAP (v3.2, mcore-aware): AR requests are
-//   partitioned into N_MCORE+1 classes. mcore k (identified by FULL
-//   m_arid match against MCORE_MASTER_IDS[k]) is class k+1 with its OWN
-//   forwarded id MCORE_REMAP_IDS[k]; every OTHER master is class 0 and
-//   shares the single AR_ID_REMAP id. Each class gets its own remapped
-//   id and its own ar FIFO. v2's single remap id serialized response
-//   completion ACROSS masters (cross-master HOL: a slow M85 read
-//   blocked a DMA read at the leaf even though they are independent
-//   transactions). Per-class ids restore independent completion; the
-//   per-class ordering argument is UNCHANGED (the leaf must still
-//   return same-id responses in request order - now per class id), so
-//   a FIFO per class is still a complete ID scoreboard. N_MCORE is
-//   integration-specific (2, 3, ...).
+//   (2) MULTI-CLASS READ REMAP (v3.8, mcore field-matched): AR requests are
+//   partitioned into N_DIST_CLS+1 classes (N_DIST_CLS = number of explicitly
+//   matched master classes, >= 0 (0 = only the shared "others" class, the
+//   CLS_*/DIST_CLS_* params are then unused); plus one shared "others" class). Class k
+//   (0..N_DIST_CLS-1) 由
+//   nic0_master_num 字段 (m_arid[CLS_LSB +: CLS_W]) 匹配 DIST_CLS_MASTER_IDS[k]
+//   识别, 该 master 全部 arid 统一 remap 成 DIST_CLS_REMAP_IDS[k]
+//   (同 id 保序, DDR 端天然按请求序回); 其余 master 为 class N_DIST_CLS
+//   ("others") 共享 AR_ID_REMAP. 每类一个转发 id + 一个 ar FIFO,
+//   跨类独立完成 (cross-master HOL 消除); 类内保序由 AXI 同 id 规则
+//   保证, 故 per-class FIFO 仍是完整 ID scoreboard. (v3.2 旧案 = 逐 arid
+//   全值匹配, 须配成 distinct arid 总数, 4 M85 x 13 arid = 52 条
+//   目不 scale, 已退役. v3.9: 参数 N_MCORE 改名 N_DIST_CLS (语义不变: 被匹配 class 个数, 不含 others).)
 //   Writes stay SINGLE-class (AW_ID_REMAP): they are serialized by the
 //   2-slot skid anyway, a second class id buys nothing.
 // v2.1 (kept): AW/W store-and-forward - a partial W burst never crosses;
@@ -41,32 +41,33 @@
 //   the monitor's taps sit on the m_* side: its otd drains exactly as
 //   the dummy engines retire responses on the m side.
 //
-// ============================ ID REMAP (v3.2) ==============================
-// MCORE-AWARE CLASSES: the island NIC aggregates several masters. Each
-//   MCORE master (e.g. M85) is identified by the FULL m_arid value it
-//   presents (matched against the parameter list MCORE_MASTER_IDS,
-//   N_MCORE entries - count is integration-specific, 2/3/...): mcore k
-//   gets its OWN forwarded id MCORE_REMAP_IDS[k] (class k+1), so its
-//   read completion stays independent of every other master. ALL OTHER
-//   masters share the single AR_ID_REMAP id (class 0) - they complete
-//   together in request order (same-class AXI ordering), which is the
-//   old single-id behavior for everyone except the mcodes.
+// ============================ ID REMAP (v3.8) ==============================
+// MCORE-AWARE CLASSES: the island NIC aggregates several masters; NIC 低位
+//   补 master_num -> m_arid = {arid, nic0_master_num, nic1_master_num}.
+//   分类键 = nic0_master_num 字段 m_arid[CLS_LSB +: CLS_W]
+//   (CLS_LSB = nic1_master_num 宽度, CLS_W = nic0_master_num 宽度).
+//   DIST_CLS_MASTER_IDS[k] (CLS_W 位/条目, N_DIST_CLS 条) = class k 的 nic0_master_num 值;
+//   命中 slice index k -> class k + 统一转发 id DIST_CLS_REMAP_IDS[k];
+//   未命中 -> class N_DIST_CLS ("others") 共享 AR_ID_REMAP.
 //   Class coding on the wire is unchanged: the FORWARDED id's low CLSW
-//   bits carry the class (CLSW = clog2(N_MCORE+1); class 0 = "others",
-//   class k+1 = mcore k). Constraints (elaboration-checked):
-//     - AR_ID_REMAP low CLSW bits = 0
-//     - MCORE_REMAP_IDS[k] low CLSW bits = k+1  (routing field, and the
+//   bits carry the class (CLSW = clog2(N_DIST_CLS+1); class k = matched master k,
+//   class N_DIST_CLS = "others"). Constraints (elaboration-checked):
+//     - AR_ID_REMAP low CLSW bits = N_DIST_CLS
+//     - DIST_CLS_REMAP_IDS[k] low CLSW bits = k (routing field, and the
 //       ids must stay distinct that way)
-//     - MCORE_MASTER_IDS entries unique
+//     - DIST_CLS_MASTER_IDS entries unique
+//     - CLS_W >= 1 and CLS_LSB+CLS_W <= AXI_ID_W
 //   The leaf must return same-id responses in request order (mandatory
 //   AXI rule, now per class id) and accept >= OTD_MAX outstanding per
 //   id. Writes stay SINGLE-class (AW_ID_REMAP): they are serialized by
 //   the 2-slot skid anyway, a second class id buys nothing.
 // RETURN: s_rid's low CLSW bits identify the class of the beat being
 //   returned (the leaf echoes the id we sent); the class's FIFO head
-//   restores m_rid in BOTH modes. In recover mode the dummy engine picks
-//   the class itself (lowest pending) - dummies for different classes may
-//   interleave freely (responses across classes were never ordered).
+//   restores m_rid in BOTH modes (FIFO 仍存完整 m_arid + len —— recover
+//   模式 main 域死无 s_rid 可逆排, dummy rid 只能由 FIFO 存的 id 还原).
+//   In recover mode the dummy engine picks the class itself (lowest
+//   pending) - dummies for different classes may interleave freely
+//   (responses across classes were never ordered).
 //
 //   ar_fifo[c] : {id, len}  push at m AR handshake (class c), pop at the
 //                            m RLAST of that class's head burst
@@ -205,18 +206,29 @@ module hang_prot_recover #(
     parameter int                  OTD_MAX     = 8,             // FIFO depth too
     parameter int                  OTD_W       = $clog2(OTD_MAX+1),
     parameter int                  AXI_ID_W    = 4,
-    // ---- mcore-aware AR classes (v3.2) --------------------------------------
-    // N_MCORE mcodes each get their OWN forwarded id; all OTHER masters
-    // share AR_ID_REMAP. mcore k is identified by m_arid matching the k-th
-    // AXI_ID_W slice of the packed lists (slice 0 = MCORE_MASTER_IDS[0]).
-    parameter int                            N_MCORE = 2,
-    parameter logic [N_MCORE*AXI_ID_W-1:0]   MCORE_MASTER_IDS = '0,
-    parameter logic [N_MCORE*AXI_ID_W-1:0]   MCORE_REMAP_IDS  = '0,
+    // ---- mcore-aware AR classes (v3.8, field-matched) -----------------------
+    // N_DIST_CLS = 被匹配的 class 个数 (>= 0, 不含 others; 0 = 只有 others 一类,
+    // CLS_LSB/CLS_W/DIST_CLS_* 此时不使用, 取默认即可): 每个 class k 对应
+    // 一个被匹配 master, 其余 master 共享 class N_DIST_CLS ("others"), 总类数
+    // N_CLS = N_DIST_CLS+1. DIST_CLS_MASTER_IDS / DIST_CLS_REMAP_IDS 各 N_DIST_CLS 条.
+    // NIC 低位补 master_num: m_arid = {arid, nic0_master_num, nic1_master_num},
+    // 分类键 = nic0_master_num 字段 m_arid[CLS_LSB +: CLS_W]
+    //   (CLS_LSB = nic1_master_num 宽度, CLS_W = nic0_master_num 宽度).
+    // DIST_CLS_MASTER_IDS[k] = mcore k 的 nic0_master_num 值 (CLS_W 位/条目),
+    // 选中 slice index k 索引 DIST_CLS_REMAP_IDS[k] 得该 mcore 统一转发 id
+    // (该 mcore 全部 arid 折叠成一个转发 id -> DDR 端同 id 天然保序).
+    parameter int                            N_DIST_CLS = 2,   // 0 = only "others"
+    parameter int                            CLS_LSB = 0,
+    parameter int                            CLS_W   = 2,
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*CLS_W-1:0]    DIST_CLS_MASTER_IDS = '0,
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*AXI_ID_W-1:0] DIST_CLS_REMAP_IDS  = '0,
     parameter logic [AXI_ID_W-1:0] AR_ID_REMAP = '0,            // OTHER masters -> this
     parameter logic [AXI_ID_W-1:0] AW_ID_REMAP = '0,            // all AWs -> this id
     parameter int                  AXI_ADDR_W  = 32,
     parameter int                  AXI_DATA_W  = 32,
     parameter int                  STRB_W      = AXI_DATA_W/8,
+    parameter int                  AWUSER_W    = 1,
+    parameter int                  WUSER_W     = 1,
     parameter int                  WSKID_BEATS = 16,            // max W burst beats
     parameter int                  NSLOT       = 2              // W skid ring depth
                                                                  // (v2.4; <= OTD_MAX)
@@ -254,11 +266,18 @@ module hang_prot_recover #(
     input  logic [7:0]            m_awlen,
     input  logic [2:0]            m_awsize,
     input  logic [1:0]            m_awburst,
+    input  logic [2:0]            m_awprot,
+    input  logic                 m_awlock,
+    input  logic [3:0]            m_awcache,
+    input  logic [3:0]            m_awqos,
+    input  logic [3:0]            m_awregion,
+    input  logic [AWUSER_W-1:0]   m_awuser,
     input  logic                  m_wvalid,
     output logic                  m_wready,
     input  logic [AXI_DATA_W-1:0] m_wdata,
     input  logic [STRB_W-1:0]     m_wstrb,
     input  logic                  m_wlast,
+    input  logic [WUSER_W-1:0]    m_wuser,
     output logic                  m_bvalid,
     output logic [AXI_ID_W-1:0]   m_bid,
     output logic [1:0]            m_bresp,
@@ -280,8 +299,15 @@ module hang_prot_recover #(
     output logic [7:0]            s_awlen,
     output logic [2:0]            s_awsize,
     output logic [1:0]            s_awburst,
+    output logic [2:0]            s_awprot,
+    output logic                 s_awlock,
+    output logic [3:0]            s_awcache,
+    output logic [3:0]            s_awqos,
+    output logic [3:0]            s_awregion,
+    output logic [AWUSER_W-1:0]   s_awuser,
     output logic                  s_wvalid,     // replayed W burst (real data)
     output logic                  s_wlast,
+    output logic [WUSER_W-1:0]    s_wuser,
     output logic [AXI_DATA_W-1:0] s_wdata,
     output logic [STRB_W-1:0]     s_wstrb,
     input  logic                  s_wready,
@@ -307,15 +333,16 @@ module hang_prot_recover #(
 
     localparam int PTR_W  = (OTD_MAX <= 2) ? 1 : $clog2(OTD_MAX);
     localparam int BEAT_W = 9;   // 256 (arlen max) + margin
-    // classes: 0 = "all other masters" (shared AR_ID_REMAP), k+1 = mcore k
-    //   (CLSW bits, N_CLS = N_MCORE+1; e.g. N_MCORE=2 -> 3 classes, CLSW=2)
-    localparam int N_CLS  = N_MCORE + 1;
+    // classes: k = matched master k (0..N_DIST_CLS-1), N_DIST_CLS = "all other
+    //   masters" (shared AR_ID_REMAP); N_CLS = N_DIST_CLS+1 total classes,
+    //   CLSW = clog2(N_CLS) bits, e.g. N_DIST_CLS=2 -> N_CLS=3 -> CLSW=2
+    localparam int N_CLS  = N_DIST_CLS + 1;
     localparam int CLSW   = (N_CLS <= 2) ? 1 : $clog2(N_CLS);
 
-`ifndef SYNTHESIS
+// synopsys translate_off
     initial begin : param_chk
-        if (N_MCORE < 1) begin
-            $error("[hang_prot_recover] N_MCORE must be >= 1 (got %0d)", N_MCORE);
+        if (N_DIST_CLS < 0) begin
+            $error("[hang_prot_recover] N_DIST_CLS must be >= 0 (got %0d)", N_DIST_CLS);
         end
         if ((NSLOT < 2) || (NSLOT > OTD_MAX)) begin
             $error("[hang_prot_recover] NSLOT must be 2..OTD_MAX (got %0d, OTD_MAX=%0d)",
@@ -325,25 +352,29 @@ module hang_prot_recover #(
             $error("[hang_prot_recover] class field (%0d bits) wider than AXI_ID_W (%0d)",
                    CLSW, AXI_ID_W);
         end
-        if (AR_ID_REMAP[CLSW-1:0] != '0) begin
-            $error("[hang_prot_recover] AR_ID_REMAP low %0d bit(s) must be 0 (class field of the shared others-id)",
-                   CLSW);
+        if ((N_DIST_CLS > 0) && ((CLS_W < 1) || (CLS_LSB + CLS_W > AXI_ID_W))) begin
+            $error("[hang_prot_recover] nic0 field [CLS_LSB=%0d +: CLS_W=%0d] outside m_arid (%0d bits)",
+                   CLS_LSB, CLS_W, AXI_ID_W);
         end
-        for (int k = 0; k < N_MCORE; k++) begin
-            if (MCORE_REMAP_IDS[k*AXI_ID_W +: CLSW] != (k+1)) begin
-                $error("[hang_prot_recover] MCORE_REMAP_IDS[%0d] low %0d bit(s) must equal %0d (class field; forwarded ids must stay distinct)",
-                       k, CLSW, k+1);
+        if (AR_ID_REMAP[CLSW-1:0] != N_DIST_CLS[CLSW-1:0]) begin
+            $error("[hang_prot_recover] AR_ID_REMAP low %0d bit(s) must equal N_DIST_CLS=%0d (others class field)",
+                   CLSW, N_DIST_CLS);
+        end
+        for (int k = 0; k < N_DIST_CLS; k++) begin
+            if (DIST_CLS_REMAP_IDS[k*AXI_ID_W +: CLSW] != k[CLSW-1:0]) begin
+                $error("[hang_prot_recover] DIST_CLS_REMAP_IDS[%0d] low %0d bit(s) must equal %0d (class field; forwarded ids must stay distinct)",
+                       k, CLSW, k);
             end
             for (int j = 0; j < k; j++) begin
-                if (MCORE_MASTER_IDS[k*AXI_ID_W +: AXI_ID_W]
-                            == MCORE_MASTER_IDS[j*AXI_ID_W +: AXI_ID_W]) begin
-                    $error("[hang_prot_recover] MCORE_MASTER_IDS[%0d] == [%0d] (duplicate mcore master id)",
+                if (DIST_CLS_MASTER_IDS[k*CLS_W +: CLS_W]
+                            == DIST_CLS_MASTER_IDS[j*CLS_W +: CLS_W]) begin
+                    $error("[hang_prot_recover] DIST_CLS_MASTER_IDS[%0d] == [%0d] (duplicate mcore nic0_master_num)",
                            k, j);
                 end
             end
         end
     end
-`endif
+// synopsys translate_on
 
     function automatic logic [PTR_W-1:0] ptr_inc
         (input logic [PTR_W-1:0] p);
@@ -506,23 +537,24 @@ module hang_prot_recover #(
     //   interleave at beat granularity).
     //--------------------------------------------------------------------------
 
-    // request class (v3.2, mcore-aware): FULL-id match against the
-    //   parameterizable mcore list - mcore k -> class k+1 with its own
-    //   forwarded id; every other master -> class 0 (shared AR_ID_REMAP).
-    //   (Uniqueness of MCORE_MASTER_IDS is elaboration-checked, so the
-    //   priority of the descending loop never actually arbitrates.)
+    // request class (v3.8, mcore-aware field match): 分类键 = nic0_master_num
+    //   字段 m_arid[CLS_LSB +: CLS_W] 与 DIST_CLS_MASTER_IDS[k] 比较 - mcore k
+    //   -> class k 且该 mcore 全部 arid 统一 remap 成 DIST_CLS_REMAP_IDS[k]
+    //   (同 id 保序); 未命中 -> class N_DIST_CLS ("others", 共享 AR_ID_REMAP).
+    //   (DIST_CLS_MASTER_IDS 唯一性经 elaboration 检查, 倒序循环的优先级
+    //   实际不会仲裁.)
     logic [CLSW-1:0]     m_arcls;
     logic                mcore_hit;
     logic [AXI_ID_W-1:0] mcore_fwd_id;
     always_comb begin : mcore_match
         mcore_hit    = 1'b0;
-        m_arcls      = '0;
+        m_arcls      = N_DIST_CLS[CLSW-1:0];
         mcore_fwd_id = AR_ID_REMAP;
-        for (int k = N_MCORE-1; k >= 0; k--) begin
-            if (m_arid == MCORE_MASTER_IDS[k*AXI_ID_W +: AXI_ID_W]) begin
+        for (int k = N_DIST_CLS-1; k >= 0; k--) begin
+            if (m_arid[CLS_LSB +: CLS_W] == DIST_CLS_MASTER_IDS[k*CLS_W +: CLS_W]) begin
                 mcore_hit    = 1'b1;
-                m_arcls      = k + 1;
-                mcore_fwd_id = MCORE_REMAP_IDS[k*AXI_ID_W +: AXI_ID_W];
+                m_arcls      = k[CLSW-1:0];
+                mcore_fwd_id = DIST_CLS_REMAP_IDS[k*AXI_ID_W +: AXI_ID_W];
             end
         end
     end
@@ -530,7 +562,7 @@ module hang_prot_recover #(
     // response class: normal = low bits of the returned (remapped) id;
     // recover = the dummy engine's pick (lowest pending class).
     logic [CLSW-1:0] s_rcls;
-    assign s_rcls = s_rid[0 +: CLSW];
+    assign s_rcls = (N_CLS == 1) ? '0 : s_rid[0 +: CLSW];   // N_DIST_CLS=0: single class, no routing field
 
     // per-class occupancy COUNTERS (not pointer equality!): a class may fill
     //   the whole global OTD_MAX budget -> full ring -> wr == rp, which a
@@ -548,7 +580,7 @@ module hang_prot_recover #(
     //   finishes it before any other class starts). No AR is accepted in
     //   recover mode (m_arready = 0), so a lower class cannot appear
     //   mid-burst - the pick is stable until the cut burst pops.
-    //   N_CLS = 1 degenerates (both tiers pick 0).
+    //   N_CLS = 1 (N_DIST_CLS = 0) degenerates (both tiers pick 0).
     always_comb begin : dum_cls_sel
         dum_cls = '0;
         for (int c = N_CLS-1; c >= 0; c--) begin
@@ -780,7 +812,7 @@ module hang_prot_recover #(
     // R phantom gating is PER CLASS (v2.3): ar_occ[s_rcls]==0 proves no
     //   transaction of the RETURNING class awaits -> this beat is a phantom
     //   for that class -> absorb, even if another class still has real
-    //   outstanding (total otd != 0). N_CLS=2 (one mcore) with only class-0
+    //   outstanding (total otd != 0). N_CLS=2 (one matched master) with only class-0
     //   traffic degenerates to the v2 total-otd gate. B stays on the total
     //   aw ledger (single class).
     assign s_rready  = (r.mode_r || (r.ar_occ[s_rcls] == '0)) ? 1'b1 : m_rready;
@@ -802,6 +834,8 @@ module hang_prot_recover #(
         .AXI_ADDR_W (AXI_ADDR_W ),
         .AXI_DATA_W (AXI_DATA_W ),
         .STRB_W     (STRB_W     ),
+        .AWUSER_W   (AWUSER_W   ),
+        .WUSER_W    (WUSER_W    ),
         .WSKID_BEATS(WSKID_BEATS),
         .NSLOT      (NSLOT      )
     ) u_hang_prot_wskid (
@@ -811,29 +845,43 @@ module hang_prot_recover #(
         .force_clear(s_force ),
         .aw_allow   (aw_room ),
 
-        .m_awvalid(m_awvalid),
-        .m_awready(m_awready),
-        .m_awaddr (m_awaddr ),
-        .m_awlen  (m_awlen  ),
-        .m_awsize (m_awsize ),
-        .m_awburst(m_awburst),
-        .m_wvalid (m_wvalid ),
-        .m_wready (m_wready ),
-        .m_wdata  (m_wdata  ),
-        .m_wstrb  (m_wstrb  ),
-        .m_wlast  (m_wlast  ),
+        .m_awvalid (m_awvalid ),
+        .m_awready (m_awready ),
+        .m_awaddr  (m_awaddr  ),
+        .m_awlen   (m_awlen   ),
+        .m_awsize  (m_awsize  ),
+        .m_awburst (m_awburst ),
+        .m_awprot  (m_awprot  ),
+        .m_awlock  (m_awlock  ),
+        .m_awcache (m_awcache ),
+        .m_awqos   (m_awqos   ),
+        .m_awregion(m_awregion),
+        .m_awuser  (m_awuser  ),
+        .m_wvalid  (m_wvalid  ),
+        .m_wready  (m_wready  ),
+        .m_wdata   (m_wdata   ),
+        .m_wstrb   (m_wstrb   ),
+        .m_wlast   (m_wlast   ),
+        .m_wuser   (m_wuser   ),
 
-        .s_awvalid(s_awvalid),
-        .s_awready(s_awready),
-        .s_awaddr (s_awaddr ),
-        .s_awlen  (s_awlen  ),
-        .s_awsize (s_awsize ),
-        .s_awburst(s_awburst),
-        .s_wvalid (s_wvalid ),
-        .s_wlast  (s_wlast  ),
-        .s_wdata  (s_wdata  ),
-        .s_wstrb  (s_wstrb  ),
-        .s_wready (s_wready ),
+        .s_awvalid (s_awvalid ),
+        .s_awready (s_awready ),
+        .s_awaddr  (s_awaddr  ),
+        .s_awlen   (s_awlen   ),
+        .s_awsize  (s_awsize  ),
+        .s_awburst (s_awburst ),
+        .s_awprot  (s_awprot  ),
+        .s_awlock  (s_awlock  ),
+        .s_awcache (s_awcache ),
+        .s_awqos   (s_awqos   ),
+        .s_awregion(s_awregion),
+        .s_awuser  (s_awuser  ),
+        .s_wvalid  (s_wvalid  ),
+        .s_wlast   (s_wlast   ),
+        .s_wuser   (s_wuser   ),
+        .s_wdata   (s_wdata   ),
+        .s_wstrb   (s_wstrb   ),
+        .s_wready  (s_wready  ),
 
         .all_free    (wsk_all_free),
         .any_replay  (),

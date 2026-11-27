@@ -41,12 +41,27 @@ module hang_prot_main2mcu_top #(
     parameter logic [15:0] REQ2RESP_RST   = 16'h00FF, // SCMTHRESH1 reset
     parameter int          IDX            = 0,       // mbus instance index
     parameter int          AXI_ID_W       = 4,       // AXI id width
-    parameter int          N_AR_CLASS     = 1,       // read id classes (pof2)
-    parameter int          AR_CLS_LSB     = 0,       // m_arid class-field LSB
-    parameter logic [AXI_ID_W-1:0] AR_ID_REMAP = '0, // ARs -> base|class
+    // ---- field-matched read classes (v3.9, same params as mcu2main_top;
+    //      main NIC aggregates several masters into one MI: m_arid =
+    //      {arid, nic0_master_num, nic1_master_num}. N_DIST_CLS = 被匹配
+    //      class 个数 (>= 0, 不含 others; 0 = 只有 others 一类, CLS_*/DIST_CLS_* 不使用; 总类数 = N_DIST_CLS+1); 分类键 = nic0_master_num 字段
+    //      m_arid[CLS_LSB +: CLS_W], 命中 DIST_CLS_MASTER_IDS[k] -> class k +
+    //      DIST_CLS_REMAP_IDS[k]; 未命中 -> class N_DIST_CLS "others" 共享
+    //      AR_ID_REMAP; 转发 id 低 CLSW=clog2(N_DIST_CLS+1) 位 = 类号) --------------
+    parameter int                            N_DIST_CLS = 2,   // 0 = only "others"
+    parameter int                            CLS_LSB = 0,  // = nic1_master_num 宽度
+    parameter int                            CLS_W   = 2,  // = nic0_master_num 宽度
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*CLS_W-1:0]    DIST_CLS_MASTER_IDS = '0,
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*AXI_ID_W-1:0] DIST_CLS_REMAP_IDS  = '0,
+    parameter logic [AXI_ID_W-1:0] AR_ID_REMAP = '0, // OTHER masters -> this
     parameter logic [AXI_ID_W-1:0] AW_ID_REMAP = '0, // all AWs -> this id
     parameter int          AXI_ADDR_W     = 32,
     parameter int          AXI_DATA_W     = 32,
+    parameter int          ARUSER_W       = 1,    // *USER widths (>=1; tie unused inputs to 0, leave outputs open)
+    parameter int          AWUSER_W       = 1,
+    parameter int          WUSER_W        = 1,
+    parameter int          RUSER_W        = 1,
+    parameter int          BUSER_W        = 1,
     parameter int          WSKID_BEATS    = 16,      // max W burst beats
     parameter int          NSLOT          = 2       // W skid ring depth (v2.4)
 )(
@@ -64,7 +79,7 @@ module hang_prot_main2mcu_top #(
     // ---- island clock / reset ----------------------------------------------
     input  logic                 ia_bus_aclk,
     input  logic                 rstn,             // async, active-low
-    input  logic                 scan_mode,        // DFT: bypass core reset sync
+    input  logic                 scan_mode,        // DFT: bypass top aclk reset sync
 
     // ---- AXI4 m side (main = master via ADB400; unit = slave) --------------
     input  logic                 m_arvalid,
@@ -75,11 +90,17 @@ module hang_prot_main2mcu_top #(
     input  logic [2:0]           m_arsize,
     input  logic [1:0]           m_arburst,
     input  logic [2:0]           m_arprot,
+    input  logic                m_arlock,
+    input  logic [3:0]           m_arcache,
+    input  logic [3:0]           m_arqos,
+    input  logic [3:0]           m_arregion,
+    input  logic [ARUSER_W-1:0]  m_aruser,
     output logic                 m_rvalid,
     output logic [AXI_ID_W-1:0]  m_rid,
     output logic [AXI_DATA_W-1:0] m_rdata,
     output logic [1:0]           m_rresp,
     output logic                 m_rlast,
+    output logic [RUSER_W-1:0]   m_ruser,
     input  logic                 m_rready,
     input  logic                 m_awvalid,
     output logic                 m_awready,
@@ -89,14 +110,21 @@ module hang_prot_main2mcu_top #(
     input  logic [2:0]           m_awsize,
     input  logic [1:0]           m_awburst,
     input  logic [2:0]           m_awprot,
+    input  logic                m_awlock,
+    input  logic [3:0]           m_awcache,
+    input  logic [3:0]           m_awqos,
+    input  logic [3:0]           m_awregion,
+    input  logic [AWUSER_W-1:0]  m_awuser,
     input  logic                 m_wvalid,
     output logic                 m_wready,
     input  logic [AXI_DATA_W-1:0] m_wdata,
     input  logic [AXI_DATA_W/8-1:0] m_wstrb,
     input  logic                 m_wlast,
+    input  logic [WUSER_W-1:0]   m_wuser,
     output logic                 m_bvalid,
     output logic [AXI_ID_W-1:0]  m_bid,
     output logic [1:0]           m_bresp,
+    output logic [BUSER_W-1:0]   m_buser,
     input  logic                 m_bready,
 
     // ---- AXI4 s side (island NIC SI = slave; unit = master) ----------------
@@ -108,11 +136,17 @@ module hang_prot_main2mcu_top #(
     output logic [2:0]           s_arsize,
     output logic [1:0]           s_arburst,
     output logic [2:0]           s_arprot,
+    output logic                s_arlock,
+    output logic [3:0]           s_arcache,
+    output logic [3:0]           s_arqos,
+    output logic [3:0]           s_arregion,
+    output logic [ARUSER_W-1:0]  s_aruser,
     input  logic                 s_rvalid,
     input  logic [AXI_ID_W-1:0]  s_rid,
     input  logic [AXI_DATA_W-1:0] s_rdata,
     input  logic [1:0]           s_rresp,
     input  logic                 s_rlast,
+    input  logic [RUSER_W-1:0]   s_ruser,
     output logic                 s_rready,
     output logic                 s_awvalid,
     input  logic                 s_awready,
@@ -121,14 +155,22 @@ module hang_prot_main2mcu_top #(
     output logic [7:0]           s_awlen,
     output logic [2:0]           s_awsize,
     output logic [1:0]           s_awburst,
+    output logic [2:0]           s_awprot,
+    output logic                s_awlock,
+    output logic [3:0]           s_awcache,
+    output logic [3:0]           s_awqos,
+    output logic [3:0]           s_awregion,
+    output logic [AWUSER_W-1:0]  s_awuser,
     output logic                 s_wvalid,
     output logic [AXI_DATA_W-1:0] s_wdata,
     output logic [AXI_DATA_W/8-1:0] s_wstrb,
     output logic                 s_wlast,
+    output logic [WUSER_W-1:0]   s_wuser,
     input  logic                 s_wready,
     input  logic                 s_bvalid,
     input  logic [AXI_ID_W-1:0]  s_bid,
     input  logic [1:0]           s_bresp,
+    input  logic [BUSER_W-1:0]   s_buser,
     output logic                 s_bready,
 
     // ---- ESM outputs (dual rail) --------------------------------------------
@@ -177,6 +219,34 @@ module hang_prot_main2mcu_top #(
     logic sk_fault_n_i;
 
     //--------------------------------------------------------------------------
+    // aclk 域复位同步 (规则 26): 复位同步收编在 top, 下层不再自行例化 rst_sync.
+    //   u_aclk_rst    : rstn 同步到 ia_bus_aclk -> aclk_rstn, 给 core/bdry_in/wskid
+    //   u_aclk_reg_rst: mbus_rstn 同步到 ia_bus_aclk -> aclk_reg_rstn, 给 regfile
+    //                   aclk 域 (故障保留: aclk 域单独复位时 sticky/影子不清)
+    //--------------------------------------------------------------------------
+    logic aclk_rstn;
+    logic aclk_reg_rstn;
+    rst_sync #(
+       .SYNC_LVL_NUM(3   ),
+       .DEF_VAL     (1'b0)
+    ) u_aclk_rst (
+       .clk      (ia_bus_aclk),
+       .rstn     (rstn       ),
+       .scan_mode(scan_mode  ),
+       .rstn_s   (aclk_rstn  )
+    );
+
+    rst_sync #(
+       .SYNC_LVL_NUM(3   ),
+       .DEF_VAL     (1'b0)
+    ) u_aclk_reg_rst (
+       .clk      (ia_bus_aclk  ),
+       .rstn     (mbus_rstn    ),
+       .scan_mode(scan_mode    ),
+       .rstn_s   (aclk_reg_rstn)
+    );
+
+    //--------------------------------------------------------------------------
     // Register file (mbus_clk <-> aclk CDC inside; qsr_rel -> bdry_in)
     //--------------------------------------------------------------------------
     hang_prot_regfile #(
@@ -198,8 +268,8 @@ module hang_prot_main2mcu_top #(
         .rdata    (mbus_rdata),
         .rpar     (mbus_rpar ),
 
-        .aclk(ia_bus_aclk),
-        .rstn(rstn       ),
+        .aclk(ia_bus_aclk  ),
+        .rstn(aclk_reg_rstn),
 
         .cfg_wr            (cfg_wr            ),
         .cfg_key           (cfg_key           ),
@@ -221,16 +291,16 @@ module hang_prot_main2mcu_top #(
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
         .ena_rd        (ena_rd        ),
-        .esm_err     (esm_err_i   ),
-        .esm_err_n   (esm_err_n_i ),
-        .esm_fault      (esm_fault_i    ),
-        .esm_fault_n    (esm_fault_n_i  ),
+        .esm_err       (esm_err_i     ),
+        .esm_err_n     (esm_err_n_i   ),
+        .esm_fault     (esm_fault_i   ),
+        .esm_fault_n   (esm_fault_n_i ),
         .fu_src        (fu_src        ),
 
         // v3.6: 隔离状态寄存器化 (出入向统一契约, 同 mcu2main):
         //   ACTIVE 跟随 blk_r, DONE 粘滞 quiesce_exit 脉冲
-        .recover_active    (block_active    ),
-        .recover_done      (qsr_exit        ),
+        .recover_active(block_active),
+        .recover_done  (qsr_exit    ),
 
         .reg_par_fault  (reg_par_fault  ),
         .reg_par_fault_n(reg_par_fault_n),
@@ -296,8 +366,8 @@ module hang_prot_main2mcu_top #(
     //--------------------------------------------------------------------------
     // 时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge ia_bus_aclk or negedge rstn) begin : seq
-        if (!rstn) begin
+    always_ff @(posedge ia_bus_aclk or negedge aclk_rstn) begin : seq
+        if (!aclk_rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;
@@ -308,76 +378,95 @@ module hang_prot_main2mcu_top #(
     assign wr_otd_mon  = otd[1*OTD_W +: OTD_W];   // write stream of main
 
     hang_prot_bdry_in #(
-        .OTD_MAX    (OTD_MAX     ),
-        .OTD_W      (OTD_W       ),
-        .AXI_ID_W   (AXI_ID_W    ),
-        .N_AR_CLASS (N_AR_CLASS  ),
-        .AR_CLS_LSB (AR_CLS_LSB  ),
-        .AR_ID_REMAP(AR_ID_REMAP ),
-        .AW_ID_REMAP(AW_ID_REMAP ),
-        .AXI_ADDR_W (AXI_ADDR_W  ),
-        .AXI_DATA_W (AXI_DATA_W  ),
-        .STRB_W     (AXI_DATA_W/8),
-        .WSKID_BEATS(WSKID_BEATS ),
-        .NSLOT      (NSLOT      )
+        .OTD_MAX            (OTD_MAX            ),
+        .OTD_W              (OTD_W              ),
+        .AXI_ID_W           (AXI_ID_W           ),
+        .N_DIST_CLS         (N_DIST_CLS         ),
+        .CLS_LSB            (CLS_LSB            ),
+        .CLS_W              (CLS_W              ),
+        .DIST_CLS_MASTER_IDS(DIST_CLS_MASTER_IDS),
+        .DIST_CLS_REMAP_IDS (DIST_CLS_REMAP_IDS ),
+        .AR_ID_REMAP        (AR_ID_REMAP        ),
+        .AW_ID_REMAP        (AW_ID_REMAP        ),
+        .AXI_ADDR_W         (AXI_ADDR_W         ),
+        .AXI_DATA_W         (AXI_DATA_W         ),
+        .STRB_W             (AXI_DATA_W/8       ),
+        .AWUSER_W           (AWUSER_W           ),
+        .WUSER_W            (WUSER_W            ),
+        .WSKID_BEATS        (WSKID_BEATS        ),
+        .NSLOT              (NSLOT              )
     ) u_hang_prot_bdry_in (
-        .clk(ia_bus_aclk),
-        .rstn(rstn       ),
+        .clk (ia_bus_aclk),
+        .rstn(aclk_rstn  ),
 
         .recover_req(recover_req),
         .quiesce_rel(qsr_rel    ),
         .rd_otd_mon (rd_otd_mon ),
         .wr_otd_mon (wr_otd_mon ),
 
-        .m_arvalid(m_arvalid),
-        .m_arready(m_arready),
-        .m_arid   (m_arid   ),
-        .m_arlen  (m_arlen  ),
-        .m_rvalid (m_rvalid ),
-        .m_rid    (m_rid    ),
-        .m_rresp  (m_rresp  ),
-        .m_rlast  (m_rlast  ),
-        .m_rready (m_rready ),
-        .m_awvalid(m_awvalid),
-        .m_awready(m_awready),
-        .m_awid   (m_awid   ),
-        .m_awaddr (m_awaddr ),
-        .m_awlen  (m_awlen  ),
-        .m_awsize (m_awsize ),
-        .m_awburst(m_awburst),
-        .m_wvalid (m_wvalid ),
-        .m_wready (m_wready ),
-        .m_wlast  (m_wlast  ),
-        .m_wdata  (m_wdata  ),
-        .m_wstrb  (m_wstrb  ),
-        .m_bvalid (m_bvalid ),
-        .m_bid    (m_bid    ),
-        .m_bresp  (m_bresp  ),
-        .m_bready (m_bready ),
+        .m_arvalid (m_arvalid ),
+        .m_arready (m_arready ),
+        .m_arid    (m_arid    ),
+        .m_arlen   (m_arlen   ),
+        .m_rvalid  (m_rvalid  ),
+        .m_rid     (m_rid     ),
+        .m_rresp   (m_rresp   ),
+        .m_rlast   (m_rlast   ),
+        .m_rready  (m_rready  ),
+        .m_awvalid (m_awvalid ),
+        .m_awready (m_awready ),
+        .m_awid    (m_awid    ),
+        .m_awaddr  (m_awaddr  ),
+        .m_awlen   (m_awlen   ),
+        .m_awsize  (m_awsize  ),
+        .m_awburst (m_awburst ),
+        .m_awprot  (m_awprot  ),
+        .m_awlock  (m_awlock  ),
+        .m_awcache (m_awcache ),
+        .m_awqos   (m_awqos   ),
+        .m_awregion(m_awregion),
+        .m_awuser  (m_awuser  ),
+        .m_wvalid  (m_wvalid  ),
+        .m_wready  (m_wready  ),
+        .m_wlast   (m_wlast   ),
+        .m_wuser   (m_wuser   ),
+        .m_wdata   (m_wdata   ),
+        .m_wstrb   (m_wstrb   ),
+        .m_bvalid  (m_bvalid  ),
+        .m_bid     (m_bid     ),
+        .m_bresp   (m_bresp   ),
+        .m_bready  (m_bready  ),
 
-        .s_arvalid(s_arvalid),
-        .s_arready(s_arready),
-        .s_arid   (s_arid   ),
-        .s_rvalid (s_rvalid ),
-        .s_rid    (s_rid    ),
-        .s_rready (s_rready ),
-        .s_rresp  (s_rresp  ),
-        .s_rlast  (s_rlast  ),
-        .s_awvalid(s_awvalid),
-        .s_awready(s_awready),
-        .s_awid   (s_awid   ),
-        .s_awaddr (s_awaddr ),
-        .s_awlen  (s_awlen  ),
-        .s_awsize (s_awsize ),
-        .s_awburst(s_awburst),
-        .s_wvalid (s_wvalid ),
-        .s_wlast  (s_wlast  ),
-        .s_wdata  (s_wdata  ),
-        .s_wstrb  (s_wstrb  ),
-        .s_wready (s_wready ),
-        .s_bvalid (s_bvalid ),
-        .s_bready (s_bready ),
-        .s_bresp  (s_bresp  ),
+        .s_arvalid (s_arvalid ),
+        .s_arready (s_arready ),
+        .s_arid    (s_arid    ),
+        .s_rvalid  (s_rvalid  ),
+        .s_rid     (s_rid     ),
+        .s_rready  (s_rready  ),
+        .s_rresp   (s_rresp   ),
+        .s_rlast   (s_rlast   ),
+        .s_awvalid (s_awvalid ),
+        .s_awready (s_awready ),
+        .s_awid    (s_awid    ),
+        .s_awaddr  (s_awaddr  ),
+        .s_awlen   (s_awlen   ),
+        .s_awsize  (s_awsize  ),
+        .s_awburst (s_awburst ),
+        .s_awprot  (s_awprot  ),
+        .s_awlock  (s_awlock  ),
+        .s_awcache (s_awcache ),
+        .s_awqos   (s_awqos   ),
+        .s_awregion(s_awregion),
+        .s_awuser  (s_awuser  ),
+        .s_wvalid  (s_wvalid  ),
+        .s_wlast   (s_wlast   ),
+        .s_wuser   (s_wuser   ),
+        .s_wdata   (s_wdata   ),
+        .s_wstrb   (s_wstrb   ),
+        .s_wready  (s_wready  ),
+        .s_bvalid  (s_bvalid  ),
+        .s_bready  (s_bready  ),
+        .s_bresp   (s_bresp   ),
 
         .block_active  (block_active  ),
         .block_active_n(block_active_n),
@@ -406,9 +495,8 @@ module hang_prot_main2mcu_top #(
         .REQ2ACCEPT_RST(REQ2ACCEPT_RST),
         .REQ2RESP_RST  (REQ2RESP_RST  )
     ) u_hang_prot_core (
-        .clk      (ia_bus_aclk),
-        .rstn     (rstn       ),
-        .scan_mode(scan_mode  ),
+        .clk (ia_bus_aclk),
+        .rstn(aclk_rstn  ),
 
         .axi_arvalid(m_arvalid),
         .axi_arready(m_arready),
@@ -443,11 +531,11 @@ module hang_prot_main2mcu_top #(
         .otd           (otd           ),
         .thr_rd_r2a    (thr_rd_r2a    ),
         .thr_rd_r2r    (thr_rd_r2r    ),
-        .esm_err     (esm_err_i   ),
-        .esm_err_n   (esm_err_n_i ),
+        .esm_err       (esm_err_i     ),
+        .esm_err_n     (esm_err_n_i   ),
         .ena_rd        (ena_rd        ),
-        .esm_fault      (esm_fault_i    ),
-        .esm_fault_n    (esm_fault_n_i  ),
+        .esm_fault     (esm_fault_i   ),
+        .esm_fault_n   (esm_fault_n_i ),
         .fu_src        (fu_src        )
     );
 
@@ -462,6 +550,13 @@ module hang_prot_main2mcu_top #(
     assign s_arsize  = m_arsize;
     assign s_arburst = m_arburst;
     assign s_arprot  = m_arprot;
+    assign s_arlock  = m_arlock;
+    assign s_arcache = m_arcache;
+    assign s_arqos   = m_arqos;
+    assign s_arregion= m_arregion;
+    assign s_aruser  = m_aruser;
+    assign m_ruser   = block_active ? '0 : s_ruser;   // dummy R beats carry zero user
+    assign m_buser   = block_active ? '0 : s_buser;   // dummy B carries zero user
 
     // FuSa residual (v3.1, documented): m_rdata muxed on block_active; a
     //   stuck rail passes s_rdata on dummy beats - data integrity is
@@ -479,7 +574,7 @@ module hang_prot_main2mcu_top #(
        .WIDTH(1)
     ) u_iflt_sync (
        .clk (ia_bus_aclk),
-       .rstn(rstn       ),
+       .rstn(aclk_rstn  ),
        .d   (iflt_lvl   ),
        .q   (iflt_s2    )
     );

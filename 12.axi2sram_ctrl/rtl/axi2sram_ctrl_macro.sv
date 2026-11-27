@@ -35,7 +35,7 @@
 module axi2sram_ctrl_macro #(
    parameter integer DEPTH    = 32768,                   // 行数 (2 的幂)
    parameter bit     RAND_INIT = 1'b0,                   // 上电内容: 0=全0 1=随机
-   localparam integer AW      = $clog2(DEPTH)
+   parameter integer AW       = $clog2(DEPTH)
 )(
    input  logic              clk,
    input  logic              csn,                        // 片选, 低有效 (真实宏惯例)

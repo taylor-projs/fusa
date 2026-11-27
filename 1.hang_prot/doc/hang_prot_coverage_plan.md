@@ -41,7 +41,7 @@
 | CDC toggle 握手反方向 | regfile 同步器 | 正常 mbus 读写已覆盖主向；反向（aclk 侧状态→mbus 读）由 SCMOTD/状态读回覆盖 |
 | m_wready 溢出保护分支 | wskid `fill_cnt == WSKID_BEATS` | TB 中 WSKID_BEATS=8 而最长 burst len=7：把某次写 len 设为 >WSKID-1 且不回 WLAST 的保护分支仅在参数故意调小（如 WSKID_BEATS=2, len=3）的第三套编译里可达——建议waiver（协议非法配置）或加参数变体编译 |
 | dummy R 的 `rdum_last` 长 burst 溢出 | bdry_in rbeat_cnt | TB-B P3 用 len=3；P6 用 len=7 已采到 b8 bin |
-| AXI 低位字段（prot/cache 等未接字段） | wrap 端口 | toggle 常见残留：建议按项目惯例对纯 pass-through 始终为常量的位做 toggle waiver |
+| AXI 边带字段（prot/lock/cache/qos/region/user） | wrap 端口 / wskid 槽 | v3.11 起 TB 用 prot 派生的 lock/cache/qos/region 与 payload 派生的 user 激励，wskid 槽内 awprot/awregion/wpar 各 lane 须靠 prot 取值覆盖（已补 prot=6/3 两笔 AW）；不再做 waiver，实测 TOGGLE 100.00（el 仅含历史结构常量家族） |
 
 ## 4. 收敛操作
 
@@ -62,7 +62,7 @@ WSL Ubuntu + iverilog（`sim/run_iverilog.sh a|b|both`，VCD 可用 WaveTrace
 - **TB-A（mcu2main_mon：NIC 活在 m / main 死在 s）：PASS，P1..P13 全部干净**
   （P11 = FuSa v3.1 注错：mode_r 轨失配强制进入/自愈退出；FIFO 指针副本
   失配强制进入 + 活失配期间退出阻塞。P12 = v3.2 mcore 感知类 remap：
-  正常模式下 mcore id（全匹配 MCORE_MASTER_IDS）与非 mcore id 共 4 笔
+  正常模式下被匹配 master（字段匹配 DIST_CLS_MASTER_IDS）与非匹配 id 共 4 笔
   交织，逐 burst 校验还原 rid/次序/拍数（记分板 rb_rid_q/rb_beats_q）；
   3 类同时在途 + slv 死亡 → dummy 引擎按类排空，真实+dummy 总拍数
   = len+1，各类还原各自事务的 rid。P13 = v3.2 `s_in_rst` 轨对失配

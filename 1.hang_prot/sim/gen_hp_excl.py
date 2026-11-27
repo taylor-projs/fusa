@@ -15,7 +15,7 @@ FAMILY = [
                 r"|^fusrc_s[12](\[6\])?$"),
      "otd 饱和链 bit6 恒 0 (monitor 封顶 OTD_MAX, otd_sat 永不置起) — 死链族"),
     (re.compile(r"s_a[rw]id|s_rid|mcore_fwd_id|s_arid_w"),
-     "AXI ID remap 参数空间常量位 (AR/AW_ID_REMAP/MCORE_REMAP_IDS 只用低位)"),
+     "AXI ID remap 参数空间常量位 (AR/AW_ID_REMAP/DIST_CLS_REMAP_IDS 只用低位)"),
     (re.compile(r"^rlen_ext"),
      "rlen_ext[8] = {1'b0, ar_len} 拼接常量位"),
     (re.compile(r"^mbus_rdata|^rdata(\[|$)"),

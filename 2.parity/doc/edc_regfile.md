@@ -157,6 +157,20 @@ A2: 总线空闲
 - ESM 输出（mbus 域，顶层逐实例 OR 汇聚）：`esm_err = |err_s2`、
   `esm_fault = |fault_s2`、`irq = irq_s2`。
 
+复位方案（规则 26）：
+
+- **mbus 域**寄存器直接复位于 `mbus_rstn`，不在 mbus_clk 域例化 `rst_sync`；
+- **regfile mod 域**的 `mod_rstn` 是输入端口：`edc_core` 顶层 `u_mod_rst`
+  将 `mbus_rstn` 同步到 `axi_clk`（即 mod_clk）得到 `mod_rstn_s` 后下发，
+  供同步链、cfg 影子与 err/fault sticky 使用；本模块不再自行例化 `rst_sync`；
+- **CHK 站点引擎**另由 `edc_core` 顶层 `u_axi_rst` 将 `axi_rstn` 同步到
+  `axi_clk` 得到 `axi_rstn_s` 后复位，与 regfile mod 域复位通路分开；
+- **AXI 域单独复位**时，CHK 引擎复位，但 regfile mod 域的 cfg 影子与
+  err/fault sticky **保留**（故障不丢），sticky 需 W1C 才清；
+  `mbus_rstn` 复位时 regfile 两域全清；
+- `scan_mode` 在 `edc_core` 顶层对外，同时旁路 `u_axi_rst` 与 `u_mod_rst`
+  两路复位同步器。
+
 ### 3.2 地址空间与实例译码
 
 | 项 | 说明 |
@@ -183,6 +197,9 @@ A2: 总线空闲
 | 0xB4 | STA_MISC | R/W1C | 0x0 | [0] CFG_BUSY (RO) 握手在途；[1] WR_DROPPED (W1C) 忙时写被丢 |
 | 0xFC | ID | RO | 0xEDC01000\|IDX | 实例标识 |
 | 其余 | — | — | — | 保留：读 0，写忽略（无握手副作用） |
+
+表中“复位值”指 `mbus_rstn` 复位后的值；AXI 域单独复位不会清除 regfile
+mod 域的 cfg 影子与 err/fault sticky（见 §3.1）。
 
 `[17:0]` 寄存器的 bit s 对应全局站点 s（见 §3.6）；[31:18] 保留，读 0、
 写忽略。**跨域寄存器（EN/FORCE/IRQEN/STA_ERR/STA_FAULT/STA_PAR 的

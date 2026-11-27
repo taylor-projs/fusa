@@ -128,6 +128,8 @@ module hang_prot_wskid #(
     parameter int AXI_ADDR_W  = 32,
     parameter int AXI_DATA_W  = 32,
     parameter int STRB_W      = AXI_DATA_W/8,
+    parameter int AWUSER_W    = 1,            // AWUSER width (>=1; tie off if unused)
+    parameter int WUSER_W     = 1,            // WUSER width  (>=1; tie off if unused)
     parameter int WSKID_BEATS = 16,            // max W burst beats per slot
     parameter int NSLOT       = 2              // ring depth (>=2; v2.4)
 )(
@@ -144,11 +146,18 @@ module hang_prot_wskid #(
     input  logic [7:0]            m_awlen,
     input  logic [2:0]            m_awsize,
     input  logic [1:0]            m_awburst,
+    input  logic [2:0]            m_awprot,
+    input  logic                 m_awlock,
+    input  logic [3:0]            m_awcache,
+    input  logic [3:0]            m_awqos,
+    input  logic [3:0]            m_awregion,
+    input  logic [AWUSER_W-1:0]   m_awuser,
     input  logic                  m_wvalid,
     output logic                  m_wready,
     input  logic [AXI_DATA_W-1:0] m_wdata,
     input  logic [STRB_W-1:0]     m_wstrb,
     input  logic                  m_wlast,
+    input  logic [WUSER_W-1:0]    m_wuser,
 
     // ---- s side (to the downstream) ----------------------------------------
     output logic                  s_awvalid,
@@ -157,8 +166,15 @@ module hang_prot_wskid #(
     output logic [7:0]            s_awlen,
     output logic [2:0]            s_awsize,
     output logic [1:0]            s_awburst,
+    output logic [2:0]            s_awprot,
+    output logic                 s_awlock,
+    output logic [3:0]            s_awcache,
+    output logic [3:0]            s_awqos,
+    output logic [3:0]            s_awregion,
+    output logic [AWUSER_W-1:0]   s_awuser,
     output logic                  s_wvalid,
     output logic                  s_wlast,
+    output logic [WUSER_W-1:0]    s_wuser,
     output logic [AXI_DATA_W-1:0] s_wdata,
     output logic [STRB_W-1:0]     s_wstrb,
     input  logic                  s_wready,
@@ -181,7 +197,7 @@ module hang_prot_wskid #(
     localparam int FC_W  = $clog2(WSKID_BEATS+1);
     localparam int PTR_W = $clog2(NSLOT);      // NSLOT=2 -> 1 (v2.3 shape)
 
-`ifndef SYNTHESIS
+// synopsys translate_off
     initial begin : param_chk
         if (NSLOT < 2) begin
             $error("[hang_prot_wskid] NSLOT must be >= 2 (got %0d)", NSLOT);
@@ -190,7 +206,7 @@ module hang_prot_wskid #(
             $error("[hang_prot_wskid] NSLOT=%0d not encodable in PTR_W", NSLOT);
         end
     end
-`endif
+// synopsys translate_on
 
     //--------------------------------------------------------------------------
     // Slot state (one-hot, per slot) + ring pointers
@@ -233,9 +249,16 @@ module hang_prot_wskid #(
         logic [NSLOT-1:0][7:0]                       awlen_q;
         logic [NSLOT-1:0][2:0]                       awsize_q;
         logic [NSLOT-1:0][1:0]                       awburst_q;
+        logic [NSLOT-1:0][2:0]                       awprot_q;   // AW protection attr
+        logic [NSLOT-1:0]                            awlock_q;   // AW AXI4 lock (v2.6)
+        logic [NSLOT-1:0][3:0]                       awcache_q;  // AW cache
+        logic [NSLOT-1:0][3:0]                       awqos_q;    // AW qos
+        logic [NSLOT-1:0][3:0]                       awregion_q; // AW region
+        logic [NSLOT-1:0][AWUSER_W-1:0]              awuser_q;   // AWUSER
         logic [NSLOT-1:0]                            apar;       // AW payload parity
         logic [NSLOT-1:0][WSKID_BEATS-1:0][AXI_DATA_W-1:0] wbuf; // W data buffer
         logic [NSLOT-1:0][WSKID_BEATS-1:0][STRB_W-1:0]     sbuf; // W strb buffer
+        logic [NSLOT-1:0][WSKID_BEATS-1:0][WUSER_W-1:0]    ubuf; // WUSER buffer
         logic [NSLOT-1:0][WSKID_BEATS-1:0]                 wpar; // per-beat {wdata,wstrb} parity
         logic                                        sk_fault_q; // sticky FuSa fault
     } reg_t;
@@ -310,12 +333,19 @@ module hang_prot_wskid #(
     logic  cnt_dup_err;
     assign wpar_err = (r.st[r.issue_p] == SK_REPLAY) &&
                       (((^r.wbuf[r.issue_p][r.ridx[r.issue_p]]) ^
-                        (^r.sbuf[r.issue_p][r.ridx[r.issue_p]])) != r.wpar[r.issue_p][r.ridx[r.issue_p]]);
+                        (^r.sbuf[r.issue_p][r.ridx[r.issue_p]]) ^
+                        (^r.ubuf[r.issue_p][r.ridx[r.issue_p]])) != r.wpar[r.issue_p][r.ridx[r.issue_p]]);
     assign apar_err = (r.st[r.issue_p] == SK_READY ) &&
                       (((^r.awaddr_q[r.issue_p]) ^
                         (^r.awlen_q [r.issue_p]) ^
                         (^r.awsize_q[r.issue_p]) ^
-                        (^r.awburst_q[r.issue_p])) != r.apar[r.issue_p]);
+                        (^r.awburst_q[r.issue_p]) ^
+                        (^r.awprot_q[r.issue_p]) ^
+                        (^r.awlock_q[r.issue_p]) ^
+                        (^r.awcache_q[r.issue_p]) ^
+                        (^r.awqos_q[r.issue_p]) ^
+                        (^r.awregion_q[r.issue_p]) ^
+                        (^r.awuser_q[r.issue_p])) != r.apar[r.issue_p]);
     always_comb begin : dup_chk
         cnt_dup_err = (r.alloc_p != ~r.alloc_p_n)
                    || (r.fill_p  != ~r.fill_p_n )
@@ -332,7 +362,7 @@ module hang_prot_wskid #(
     assign sk_fault   =  r.sk_fault_q;
     assign sk_fault_n = ~r.sk_fault_q;
 
-`ifndef SYNTHESIS
+// synopsys translate_off
     always @(posedge clk) begin : sk_oh_msg
         if (rstn && !sk_onehot) begin
             for (int s = 0; s < NSLOT; s++) begin
@@ -343,7 +373,7 @@ module hang_prot_wskid #(
             end
         end
     end
-`endif
+// synopsys translate_on
 
     //--------------------------------------------------------------------------
     // 组合进程: slot FSM + ring pointers + buffers 下一拍值 (默认保持)
@@ -384,8 +414,15 @@ module hang_prot_wskid #(
                 v.awlen_q  [r.alloc_p] = m_awlen;
                 v.awsize_q [r.alloc_p] = m_awsize;
                 v.awburst_q[r.alloc_p] = m_awburst;
+                v.awprot_q [r.alloc_p] = m_awprot;
+                v.awlock_q  [r.alloc_p] = m_awlock;
+                v.awcache_q [r.alloc_p] = m_awcache;
+                v.awqos_q   [r.alloc_p] = m_awqos;
+                v.awregion_q[r.alloc_p] = m_awregion;
+                v.awuser_q  [r.alloc_p] = m_awuser;
                 // FuSa: AW payload parity (checked while READY is offered)
-                v.apar[r.alloc_p]        = (^m_awaddr) ^ (^m_awlen) ^ (^m_awsize) ^ (^m_awburst);
+                v.apar[r.alloc_p]        = (^m_awaddr) ^ (^m_awlen) ^ (^m_awsize) ^ (^m_awburst) ^ (^m_awprot)
+                                       ^ (^m_awlock) ^ (^m_awcache) ^ (^m_awqos) ^ (^m_awregion) ^ (^m_awuser);
                 v.fill_cnt[r.alloc_p]    = '0;
                 v.fill_cnt_n[r.alloc_p]  = '1;
                 v.alloc_p                =  nxt_ptr(r.alloc_p);
@@ -405,8 +442,9 @@ module hang_prot_wskid #(
                 if (r.fill_cnt[fsl] < WSKID_BEATS[FC_W-1:0]) begin
                     v.wbuf[fsl][r.fill_cnt[fsl]] = m_wdata;
                     v.sbuf[fsl][r.fill_cnt[fsl]] = m_wstrb;
+                    v.ubuf[fsl][r.fill_cnt[fsl]] = m_wuser;
                     // FuSa: W-beat parity over {wdata, wstrb}
-                    v.wpar[fsl][r.fill_cnt[fsl]] = (^m_wdata) ^ (^m_wstrb);
+                    v.wpar[fsl][r.fill_cnt[fsl]] = (^m_wdata) ^ (^m_wstrb) ^ (^m_wuser);
                 end
                 if (m_wlast) begin
                     if (mode) begin
@@ -492,10 +530,17 @@ module hang_prot_wskid #(
     assign s_awlen   =  r.awlen_q  [r.issue_p];
     assign s_awsize  =  r.awsize_q [r.issue_p];
     assign s_awburst =  r.awburst_q[r.issue_p];
+    assign s_awprot  =  r.awprot_q [r.issue_p];
+    assign s_awlock  =  r.awlock_q  [r.issue_p];
+    assign s_awcache =  r.awcache_q [r.issue_p];
+    assign s_awqos   =  r.awqos_q   [r.issue_p];
+    assign s_awregion=  r.awregion_q[r.issue_p];
+    assign s_awuser  =  r.awuser_q  [r.issue_p];
 
     assign s_wvalid  = (r.st[r.issue_p] == SK_REPLAY);
     assign s_wdata   =  r.wbuf[r.issue_p][r.ridx[r.issue_p]];
     assign s_wstrb   =  r.sbuf[r.issue_p][r.ridx[r.issue_p]];
+    assign s_wuser   =  r.ubuf[r.issue_p][r.ridx[r.issue_p]];
     assign s_wlast   = (r.ridx[r.issue_p] == r.beats[r.issue_p] - 1'b1);
 
     //--------------------------------------------------------------------------

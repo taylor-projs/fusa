@@ -81,10 +81,15 @@ doc/
 | config | `mbus_clk` | mbus leaf, register wraps, hang monitors |
 | dut(i) | `clk_dut[i]` | free-running prescaler only (no reset) |
 
-- `rst_n`: async POR; `rst_ref_n` (active-low) generated async-assert /
-  sync-release into `clk_ref`; all flops use negedge async reset.
-  `mbus_rstn`: mbus-domain reset. **Both must assert together**
-  (CDC toggle handshake alignment).
+- `mbus_rstn` is the single external raw async reset for the whole monitor.
+  The mbus domain uses it directly (no synchronizer). In `cmm_top`,
+  `u_ref_rst` (`rst_sync`) derives `ref_rstn_s` from `mbus_rstn` with
+  async-assert / sync-release into the selected `clk_ref` (`scan_mode` DFT
+  bypass). `ref_rstn_s` is the sole reset for the entire ref domain — core
+  FSM/state and regfile config shadows/sticky state (`cmm_regfile.rst_ref_n`)
+  — so there is no independent raw `ref_rstn` port and no reset synchronizer
+  inside `cmm_regfile` (rule 26). All resettable flops use negedge async
+  reset. The common source keeps the CDC toggle handshake aligned.
 - Verdict logic lives entirely in `clk_ref`: a dead DUT clock cannot be
   detected in its own domain.
 - FAIL_DEAD of `clk_ref` itself: covered by REF_STALE (needs `mbus_clk`

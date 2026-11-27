@@ -35,8 +35,8 @@ cat > "$OUT/cov.cfg" <<EOF
 +tree tb_apb2mbus.dut
 EOF
 
-# 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)
-CM="-cm line+fsm+tgl+branch"
+# 五指标覆盖率; cond 与 line/fsm/tgl/branch 共用同一 vdb.
+CM="-cm line+cond+fsm+tgl+branch"
 
 echo "== vcs compile (with coverage) =="
 # -P ... 链接 Verdi FSDB dumper PLI ($fsdbDumpvars 需要)
@@ -62,23 +62,42 @@ if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    exit 1
 fi
 
+# TB 自检: FAIL 行 / SVA 失败 / 缺最终 PASS 行均令脚本失败.
+if grep -q "FAIL:" sim.log; then
+   echo "ERROR: TB reported errors:"; grep "FAIL:" sim.log | head -20
+   cd "$ROOT"; exit 1
+fi
+if grep -q " failed at " sim.log; then
+   echo "ERROR: SVA failures:"; grep " failed at " sim.log | head -20
+   cd "$ROOT"; exit 1
+fi
+if ! grep -q "ALL CHECKS PASSED" sim.log; then
+   echo "ERROR: TB did not print its final PASS line"
+   cd "$ROOT"; exit 1
+fi
+grep "checks," sim.log | tail -1
+
 echo "== coverage summary (raw) =="
-urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
+urg -dir simv.vdb -report urg_report -format both > urg_raw.log 2>&1
 grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
    echo "(summary in $OUT/urg_report/)"
 
-# 结构常量 toggle 排除 (inst_bad 译码死位: NP=2 下 paddr[15:9] 永不可
-# 锁存为 1 - addr/r_apb.paddr_q/rin_apb.paddr_q 的 [15:9]).
-# -excl_strict 只排除真实未覆盖对象; RTL 变更后需重新生成:
-#   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
+# 五指标结构排除: tgl_struct_excl.el + cond_struct_excl.el.
+# toggle = NP=2 译码死位/本地面读回常量; cond = 双比较器单臂与 h_dup
+# 的逻辑依赖。多文件用 -elfilelist, 单 vdb 用 -excl_strict.
 EXCL="$SIM/tgl_struct_excl.el"
-if [ -f "$EXCL" ]; then
-   echo "== coverage summary (toggle: structural-const excluded) =="
-   urg -dir simv.vdb -elfile "$EXCL" -excl_strict \
-       -report urg_report_excl -format both > /dev/null 2>&1 || true
-   grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
-      echo "(summary in $OUT/urg_report_excl/)"
+COND_EXCL="$SIM/cond_struct_excl.el"
+EXCL_LIST="$OUT/excl_files.lst"
+if [ ! -f "$EXCL" ] || [ ! -f "$COND_EXCL" ]; then
+   echo "ERROR: missing structural exclusion file(s)"
+   cd "$ROOT"; exit 1
 fi
+printf "%s\n" "$EXCL" "$COND_EXCL" > "$EXCL_LIST"
+echo "== coverage summary (structural exclusions applied) =="
+urg -dir simv.vdb -elfilelist "$EXCL_LIST" -excl_strict \
+    -report urg_report_excl -format both > urg_excl.log 2>&1
+grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
+   echo "(summary in $OUT/urg_report_excl/)"
 
 echo "== done =="
 echo "   波形: bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

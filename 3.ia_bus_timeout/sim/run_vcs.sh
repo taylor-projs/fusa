@@ -36,8 +36,8 @@ cat > "$OUT/cov.cfg" <<EOF
 +tree tb_ia_timeo_gen_wrap.u_agg
 EOF
 
-# 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)
-CM="-cm line+fsm+tgl+branch"
+# 五指标覆盖率; cond 与 line/fsm/tgl/branch 共用同一 vdb.
+CM="-cm line+cond+fsm+tgl+branch"
 
 if [ "$1" = "verdi" ]; then
    if [ ! -f "$OUT/$TOP.fsdb" ]; then echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; fi
@@ -97,23 +97,26 @@ if ! grep -q "TB PASS" sim.log; then
 fi
 
 echo "== coverage summary (raw) =="
-urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
+urg -dir simv.vdb -report urg_report -format both > urg_raw.log 2>&1
 grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
    echo "(summary in $OUT/urg_report/, or view in GUI)"
 
-# 结构常量 toggle 排除 (cfg_key 常量 / 读回零扩展高半字 / image 寄存器
-# wr 恒 1 / 复位同步 tie-high — 任何激励都翻不动). -excl_strict 保证只
-# 排除真实未覆盖对象; RTL 变更后需重新生成:
-#   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
-#   (再从模板中摘取对应 CHECKSUM 块, 见 tgl_struct_excl.el 头注释)
+# 五指标结构排除: tgl_struct_excl.el + misc_struct_excl.el (line/cond/branch).
+# 仅包含常量/零扩展/标量化死位及 reg_wrap 端口绑定造成的不可达臂.
+# 多文件必须用 -elfilelist; 单 vdb 用 -excl_strict, 已覆盖旧项会直接报错.
 EXCL="$ROOT/tgl_struct_excl.el"
-if [ -f "$EXCL" ]; then
-   echo "== coverage summary (toggle: structural-const excluded) =="
-   urg -dir simv.vdb -elfile "$EXCL" -excl_strict \
-       -report urg_report_excl -format both > /dev/null 2>&1 || true
-   grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
-      echo "(summary in $OUT/urg_report_excl/)"
+MISC_EXCL="$ROOT/misc_struct_excl.el"
+EXCL_LIST="$OUT/excl_files.lst"
+if [ ! -f "$EXCL" ] || [ ! -f "$MISC_EXCL" ]; then
+   echo "ERROR: missing structural exclusion file(s)"
+   cd "$ROOT"; exit 1
 fi
+printf "%s\n" "$EXCL" "$MISC_EXCL" > "$EXCL_LIST"
+echo "== coverage summary (structural exclusions applied) =="
+urg -dir simv.vdb -elfilelist "$EXCL_LIST" -excl_strict \
+    -report urg_report_excl -format both > urg_excl.log 2>&1
+grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt 2>/dev/null || \
+   echo "(summary in $OUT/urg_report_excl/)"
 
 echo "== done =="
 echo "   波形:   bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

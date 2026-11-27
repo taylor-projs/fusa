@@ -3,6 +3,7 @@
 # 前提: 已 source Synopsys 环境变量 (VCS/Verdi 在 PATH 上, NOVAS_HOME 已设)
 # 用法: bash run_vcs.sh                # 双 TB 全跑 (top + side) + 合并覆盖率
 #       bash run_vcs.sh top|side       # 只跑单个 TB
+#       bash run_vcs.sh dw             # AXI 数据位宽 (AXI_DW=64/32) 参数化回归 (tb_edc_dw)
 #       bash run_vcs.sh verdi  [top|side]   # 只起 Verdi 打开已有 fsdb
 #       bash run_vcs.sh cov    [top|side]   # 起 Verdi coverage GUI 查看覆盖率
 set -e
@@ -15,9 +16,12 @@ SIM="$ROOT/sim"
 # VCS 链接会报 "ln: Operation not supported"; 那种场景用 VCS_OUT=/本地路径 覆盖
 APB2MBUS_RTL="$ROOT/../6.apb2mbus/rtl"
 
-# 不收 cond: parity XOR 树让条件覆盖向量爆到 2^30 被 VCS 截断(VCM-TRIMVEC),
-# 分数无意义且拖慢仿真. 需要时自行加回 "+cond"
-CM="-cm line+fsm+tgl+branch"
+# 显式使用 VCS basic condition 口径 (每个逻辑条件的真/假, 不展开多输入
+# 真值表)。std/full/allops 对 parity 的 XOR 树仍会把每个操作数视为恒敏感,
+# 30 输入表达式展开成 2^30 向量并被 VCM-TRIMVEC 截到 1024 行; 那些可达但
+# 未覆盖的组合不能用结构排除掩盖, 因此不采用该不可收敛的向量口径.
+CM="-cm line+cond+fsm+tgl+branch"
+CM_COND="-cm_cond basic"
 
 # 公共 RTL filelist (TB 文件按编译目标追加)
 gen_filelist() {
@@ -58,8 +62,8 @@ run_tb() {
    vcs -full64 -sverilog +v2k \
        -timescale=1ns/1ps \
        -debug_access+all -kdb -lca \
-       $CM -cm_hier "$OUTD/cov.cfg" -cm_dir "$OUTD/simv.vdb" \
-       +define+NO_DUMP +define+FSDB \
+       $CM $CM_COND -cm_hier "$OUTD/cov.cfg" -cm_dir "$OUTD/simv.vdb" \
+       +define+NO_DUMP +define+FSDB ${RUN_PV:-} \
        -f "$OUTD/filelist.f" -top "$TOPN" \
        -o "$OUTD/simv" -Mdir="$OUTD/csrc" \
        -l "$OUTD/compile.log"
@@ -117,11 +121,16 @@ case "$1" in
 esac
 
 case "${1:-all}" in
+   dw)   # AXI 数据位宽参数化回归 (64 与 32), 独立于覆盖率合并门禁
+         run_tb tb_edc_dw "$SIM/obj_vcs_dw64" tb_edc_dw.sv u_ms u_sl
+         RUN_PV="-pvalue+tb_edc_dw.AXI_DW=32" run_tb tb_edc_dw "$SIM/obj_vcs_dw32" tb_edc_dw.sv u_ms u_sl
+         echo "== dw regress done: AXI_DW=64 and 32 both TB PASS =="
+         exit 0 ;;
    top)  run_tb tb_edc_top  "$SIM/obj_vcs"      tb_edc_top.v  dut0 dut1 u_agg ;;
    side) run_tb tb_edc_side "$SIM/obj_vcs_side" tb_edc_side.v u_ms u_sl u_agg ;;
    all)  run_tb tb_edc_top  "$SIM/obj_vcs"      tb_edc_top.v  dut0 dut1 u_agg
          run_tb tb_edc_side "$SIM/obj_vcs_side" tb_edc_side.v u_ms u_sl u_agg ;;
-   *) echo "usage: bash run_vcs.sh [top|side|all|verdi [top|side]|cov [top|side]]"; exit 1 ;;
+   *) echo "usage: bash run_vcs.sh [top|side|dw|all|verdi [top|side]|cov [top|side]]"; exit 1 ;;
 esac
 
 # ---------------- 合并覆盖率 (双 TB) ----------------
@@ -133,31 +142,52 @@ echo "== coverage summary (raw, merged) =="
 # 双 TB 顶层名不同 (tb_edc_top / tb_edc_side): urg 默认以第一个 vdb 为基准
 # 设计、拒并其余实例, 必须 -lca -flex_merge code_union 做跨设计并集
 urg -lca -flex_merge code_union -dir $VDBS \
-    -report "$SIM/obj_vcs/urg_report" -format both > /dev/null 2>&1 || true
+    -report "$SIM/obj_vcs/urg_report" -format both \
+    > "$SIM/obj_vcs/urg_raw.log" 2>&1
 grep -A 20 "Total Coverage" "$SIM/obj_vcs/urg_report/dashboard.txt" 2>/dev/null || \
    echo "(summary in $SIM/obj_vcs/urg_report/, or view in GUI)"
 
-# 结构常量 toggle 排除 (nuclei300 库零扩展填充位 / 未用注入向量位 /
-# GEN 模式屏蔽输出 — 任何激励都翻不动). 由 gen_tgl_excl.py 生成;
-# RTL 变更后需重新生成:
-#   cd obj_vcs && urg -dir simv.vdb -dump full_exclusions tgl -report /tmp/x
-#   python3 ../gen_tgl_excl.py fullexclude_module.tgl fullexclude.tgl ../tgl_struct_excl.el
-# 注意: 双 vdb (-flex_merge) + -excl_strict 组合触发 urg LCA 段错误
-# (V-2023.12-SP2), 双库时退回非 strict (排除仍生效, 被拒条目见
-# urg_report_excl/attempts.log); 单库时保持 strict.
-EXCL="$SIM/tgl_struct_excl.el"
-if [ -f "$EXCL" ]; then
-   echo "== coverage summary (toggle: structural-const excluded) =="
-   NVDB=$(echo $VDBS | wc -w)
-   if [ "$NVDB" -gt 1 ]; then
-      urg -lca -flex_merge code_union -dir $VDBS -elfile "$EXCL" \
-          -report "$SIM/obj_vcs/urg_report_excl" -format both > /dev/null 2>&1 || true
-   else
-      urg -dir $VDBS -elfile "$EXCL" -excl_strict \
-          -report "$SIM/obj_vcs/urg_report_excl" -format both > /dev/null 2>&1 || true
+# 结构排除覆盖 line/cond/branch/toggle (本设计无 FSM 对象, FSM 显示 --).
+# 只排除 fresh raw 报告中仍可证明为结构死的对象; 生成器遇未归类洞即中止.
+# RTL/TB 变更后在 sim/ 下重建模板与 .el:
+#   for d in obj_vcs obj_vcs_side; do (cd $d; for m in tgl cond line branch fsm; do
+#     urg -dir simv.vdb -dump full_exclusions $m -report fx_$m; done); done
+#   python3 gen_parity_excl.py
+# 双 vdb (-flex_merge) + -excl_strict 会触发 urg LCA 段错误
+# (V-2023.12-SP2); 且 .el 同时含双 top 实例, 单库 strict 也会把另一 top
+# 视为外部 scope. 因此统一非 strict, 以 raw-hole 生成门禁 + excluded 零洞
+# 扫描代替; urg 自身诊断保留在 urg_raw.log / urg_excl.log.
+EXCL_TGL="$SIM/tgl_struct_excl.el"
+EXCL_MISC="$SIM/misc_struct_excl.el"
+EXCL_LIST="$SIM/obj_vcs/struct_excl.list"
+for f in "$EXCL_TGL" "$EXCL_MISC"; do
+   if [ ! -f "$f" ]; then
+      echo "ERROR: required structural exclusion file missing: $f"
+      exit 1
    fi
-   grep -A 20 "Total Coverage" "$SIM/obj_vcs/urg_report_excl/dashboard.txt" 2>/dev/null || \
-      echo "(summary in $SIM/obj_vcs/urg_report_excl/)"
+done
+printf '%s\n' "$EXCL_TGL" "$EXCL_MISC" > "$EXCL_LIST"
+
+echo "== coverage summary (all structural exclusions) =="
+urg -lca -flex_merge code_union -dir $VDBS -elfilelist "$EXCL_LIST" \
+    -report "$SIM/obj_vcs/urg_report_excl" -format both \
+    > "$SIM/obj_vcs/urg_excl.log" 2>&1
+grep -A 20 "Total Coverage" "$SIM/obj_vcs/urg_report_excl/dashboard.txt" 2>/dev/null || \
+   echo "(summary in $SIM/obj_vcs/urg_report_excl/)"
+
+# True 口径 = Instance + Module-definition; scan_all_holes 不识别
+# "Module self-instances" 伪节, 因而不会把该 urg 展示 artifact 算作残洞.
+python3 "$SIM/scan_all_holes.py" "$SIM/obj_vcs/urg_report" \
+   > "$SIM/obj_vcs/raw_holes.txt"
+python3 "$SIM/scan_all_holes.py" "$SIM/obj_vcs/urg_report_excl" \
+   > "$SIM/obj_vcs/excluded_holes.txt"
+echo "== true-domain hole scan =="
+tail -1 "$SIM/obj_vcs/raw_holes.txt"
+tail -1 "$SIM/obj_vcs/excluded_holes.txt"
+if ! grep -q "total holes: 0" "$SIM/obj_vcs/excluded_holes.txt"; then
+   echo "ERROR: exclusion-applied report still has true-domain holes"
+   cat "$SIM/obj_vcs/excluded_holes.txt"
+   exit 1
 fi
 
 echo "== done =="

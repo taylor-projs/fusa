@@ -9,7 +9,8 @@
 //   3.ia_bus_timeout/rtl/ia_bus_timeo_regfile.sv, 同构先例
 //   2.parity/rtl/edc_regfile.sv; 规格全文见 fusa 根
 //   .claude/skills/rtl-coding-style/SKILL.md 规则 23):
-//     * regfile 是唯一双域模块, 全部 CDC 收编在内; top 只剩端口壳.
+//     * regfile 是唯一双域模块, 全部 CDC 收编在内; top 只剩端口壳 +
+//       mod 域复位同步 (规则 26).
 //     * 每个寄存器都是所在域的 reg_wrap 实例 (存储+偶校验+自测注错+
 //       自带粘滞 flt) —— 检查与被保护存储同域:
 //         - mbus 域 image: u_w_en/u_w_ien/u_w_fi (cfg, SW 直写) +
@@ -127,17 +128,17 @@
 //   reg_par_fault/_n : 寄存器面奇偶错误 (存储型 PERR 组的 flt, 不含
 //                      在途事件)
 //
-// 复位: rstn 异步断言 (两域共源, 系统级约束: 必须同时断言以对齐握手,
-// 同 ia); mod 域释放经 u_mod_rst (rst_sync, scan_mode 拉自 top) 对齐
-// mod_clk. ERR_SYNC_STAGE = 全部跨域同步链级数 (2|3).
+// 复位: rstn (mbus 域) 裸复位不做同步; mod 域复位 mod_rstn 由设计 top 的
+// u_mod_rst 同步 mbus_rstn 到 mod_clk 后下发 (规则 26, 本模块不再自行例化
+// rst_sync) —— mod 域单独复位时 sticky/影子保留 (故障不丢).
+// ERR_SYNC_STAGE = 全部跨域同步链级数 (2|3).
 // ============================================================================
 module dup_ctrl_regfile #(
    parameter integer IDX            = 0,     // mbus 实例号 (addr[15:8])
    parameter integer ERR_SYNC_STAGE = 3      // 跨域同步链级数: 2 | 3
 )(
    input  logic        clk,        // mbus 时钟 (SW 寄存器面)
-   input  logic        rstn,       // 异步低有效 (mbus + mod 两域共源)
-   input  logic        scan_mode,  // DFT: rst_sync 旁路 (拉到设计 top)
+   input  logic        rstn,       // 异步低有效 (mbus 域裸复位, 不做同步)
 
    // ---------------- mbus ----------------
    input  logic        ce,
@@ -150,6 +151,7 @@ module dup_ctrl_regfile #(
 
    // ---------------- DCLS 侧 (mod_clk 域) ----------------
    input  logic        mod_clk,    // dup wrapper 比较时钟 (err 捕获域)
+   input  logic        mod_rstn,   // mod 域复位 (top u_mod_rst 同步 mbus_rstn 下发)
    input  logic        err_i,      // err_fusadcls_<mod> (mod_clk 域电平)
    output logic [1:0]  fi_o,       // FI 模式 (mod 域影子解码门控) ->
                                    //  直连 dcls_fault_injection
@@ -207,20 +209,8 @@ module dup_ctrl_regfile #(
       end
    endfunction
 
-   //--------------------------------------------------------------------------
-   // mod 域复位: rstn 异步断言直通, 释放经 2FF 对齐 mod_clk
-   //--------------------------------------------------------------------------
-   logic mod_rstn;
-
-   rst_sync #(
-      .SYNC_LVL_NUM(2   ),
-      .DEF_VAL     (1'b0)
-   ) u_mod_rst (
-      .clk      (mod_clk  ),
-      .rstn     (rstn     ),
-      .scan_mode(scan_mode),
-      .rstn_s   (mod_rstn )
-   );
+   // mod 域复位 mod_rstn 由设计 top 的 u_mod_rst 同步 mbus_rstn 下发 (规则
+   //   26: 复位同步收编在单设计 top, 本模块只吃同步后的复位, 不再自行例化)
 
    //--------------------------------------------------------------------------
    // mbus 叶译码 (零等待, 无 wait/error 通道; wsel = addr[5:2])

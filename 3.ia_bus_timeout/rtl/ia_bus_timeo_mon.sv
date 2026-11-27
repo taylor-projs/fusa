@@ -111,8 +111,8 @@
 //   8. NOT covered in-IP           : counter common-mode - boot test
 //
 //  Assumptions:
-//   - single clock domain, asynchronous active-low reset, internally
-//     synchronized (async assert / 3-flop sync release -> rstn_s)
+//   - single clock domain; the active-low reset is synchronized by the
+//     ia_bus_timeo_core leaf top (async assert / 3-flop sync release)
 //   - threshold == 0 disables that check (explicit SW action, keyed);
 //     reset values are non-zero
 //   - outstanding saturates at OTD_MAX (no rollback). A handshake AT the
@@ -131,8 +131,7 @@ module ia_bus_timeo_mon #(
     parameter logic [15:0] REQ2RESP_RST   = 16'h00FF  // SCMTHRESHOLD generic param
 ) (
     input  logic clk,
-    input  logic rstn,                         // async active-low; release synced inside
-    input  logic scan_mode,                    // DFT: 1 = bypass reset sync (raw rstn path)
+    input  logic rstn,                         // synchronized active-low reset from leaf top
 
     // ---- AXI4 read channel, observation only (scalar taps) ---------------
     input  logic axi_arvalid,                  // read address request
@@ -187,32 +186,9 @@ module ia_bus_timeo_mon #(
     localparam int WR = 1;      // write stream IA index (SCMIAERR0/1STAT bit1)
 
     //--------------------------------------------------------------------------
-    // Reset synchronizer (async assert / sync release): raw rstn is
-    // asynchronous to clk; rstn_s is the synchronized version used by ALL
-    // monitoring registers. Assertion propagates immediately (a hung or
-    // absent clock cannot leave stale state in the monitor); deassertion
-    // is clk-edge aligned by the 3-flop chain, so none of the duplicated
-    // counter/status registers ever sees a recovery/removal timing risk.
-    // These are the ONLY flops in the module clocked with the raw rstn.
-    // to_clear remains a purely synchronous data-path signal (cfg-bus key
-    // restart) - it must never enter an async sensitivity list.
-    // House rst_sync unit (common_modules/rst_sync.sv, FuSa-wide reset
-    // synchronizer rule): raw active-low rstn straight into .rstn; DEF_VAL
-    // = 0 makes rstn_s assert low asynchronously and release after
-    // SYNC_LVL_NUM = 3 flops (module-internal active-low polarity kept
-    // end to end). scan_mode is routed up to the top (DFT reset bypass,
-    // same convention as 8.reset_checker).
+    // Reset synchronization is done once in ia_bus_timeo_core (rule 26).
+    // rstn is the synchronized axi_clk-domain reset used by ALL monitor flops.
     //--------------------------------------------------------------------------
-    logic rstn_s;
-    rst_sync #(
-       .SYNC_LVL_NUM(3   ),
-       .DEF_VAL     (1'b0)
-    ) u_rst_sync (
-       .clk      (clk      ),
-       .rstn     (rstn     ),
-       .scan_mode(scan_mode),
-       .rstn_s   (rstn_s   )
-    );
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process: r = 现态, rin = 输入, v = 次态)
@@ -631,8 +607,8 @@ module ia_bus_timeo_mon #(
     //================================================================
     // 时序进程: 只做复位装载与 r_mon <= rin_mon
     //================================================================
-    always_ff @(posedge clk or negedge rstn_s) begin : mon_seq
-        if (!rstn_s) begin
+    always_ff @(posedge clk or negedge rstn) begin : mon_seq
+        if (!rstn) begin
             r_mon <= MON_RST;
         end else begin
             r_mon <= rin_mon;
@@ -743,8 +719,8 @@ module ia_bus_timeo_mon #(
     //--------------------------------------------------------------------------
     // 模块级时序进程: 只做复位装载与 r <= rin
     //--------------------------------------------------------------------------
-    always_ff @(posedge clk or negedge rstn_s) begin : seq
-        if (!rstn_s) begin
+    always_ff @(posedge clk or negedge rstn) begin : seq
+        if (!rstn) begin
             r <= REG_RST;
         end else begin
             r <= rin;

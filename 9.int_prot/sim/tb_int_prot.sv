@@ -37,6 +37,9 @@
 //       STA_FAULT + 通道计数器清 0 自愈 + 副本回贴; 自愈后配对流量正常
 //   T17 FLT_SELFTEST keyed 源级注入: STA_FAULT[31] + esm_fault 轨
 //       (无 key 忽略; STA_PAR 不含测试位; W1C bit31 清)
+//   T18 覆盖率闭环: 全通道上/下溢/超时 + 全宽总线/地址激励
+//   T19 reg_wrap 副本失配、写同时自测及 PAR 锁存副本 FI
+//   T20 运行中复位往返 (复位释放/断言双向 toggle)
 //   全程: ESM 三轨互补性在线监视
 // ============================================================================
 `timescale 1ns/1ps
@@ -288,6 +291,9 @@ module tb_int_prot;
    endtask
 
    logic [31:0] rd;
+   // FI force RHS 静态暂存 (禁止自引用/自动变量 RHS)
+   logic        fi_bit;
+   logic [11:0] fi_data12;
 
    //--------------------------------------------------------------------------
    // 测试主体
@@ -745,6 +751,227 @@ module tb_int_prot;
       mbus_rd(16'h001C, rd);
       chk32("STA_FAULT selftest cleared", rd, 32'h0);
       chk1("esm_fault cleared", esm_fault, 1'b0);
+
+      //---------------------------------------------------------------- T18
+      $display("--- T18: all-lane and full-width coverage closure ---");
+      // 两个全宽 RW 注入寄存器: 走通 wdata/rdata 全 32 bit (INJ_EN 关闭)
+      mbus_wr(16'h0004, 32'hA0);
+      mbus_wr(16'h0008, 32'hFFFF_FFFF);
+      mbus_rd(16'h0008, rd);
+      chk32("INJ_SPI full-width pattern", rd, 32'hFFFF_FFFF);
+      mbus_wr(16'h0008, 32'h0);
+      mbus_wr(16'h000C, 32'hFFFF_FFFF);
+      mbus_rd(16'h000C, rd);
+      chk32("INJ_CHK full-width pattern", rd, 32'hFFFF_FFFF);
+      mbus_wr(16'h000C, 32'h0);
+      mbus_wr(16'h001C, 32'hFFFF_FFFF);      // 全位 W1C 掩码输入翻转
+      mbus_wr(16'h001C, 32'h0);
+      mbus_rd(16'h001C, rd);
+      chk32("STA_FAULT full W1C mask", rd, 32'h0);
+      // 地址输入低位与全部实例选择高位均可由合法总线流量翻转
+      mbus_rd(16'h0001, rd);
+      mbus_rd(16'h0002, rd);
+      mbus_rd(16'h0003, rd);
+      for (int k = 0; k < 8; k++) begin
+         mbus_rd((16'h0100 << k), rd);
+      end
+      chk32("wrong-instance address sweep", rd, 32'h0);
+      mbus_wr(16'h0100, 32'hA5);             // sel=0, wr=1, par_ok=1
+      mbus_wr(16'h0008, 32'hAF);             // 非 IEN 地址上的 key+合法码组合
+      mbus_wr(16'h0008, 32'h0A);             // 非 REGST 地址上的 key 组合
+      mbus_wr(16'h0008, 32'h0);
+      // 每通道都走上溢、下溢; 计数器清零后进入下一项
+      for (int k = 0; k < NUM_INT; k++) begin
+         repeat (3) spi_pulse(k);
+         repeat (8) @(negedge clk);
+         mbus_rd(16'h0010, rd);
+         chk32($sformatf("lane %0d overflow", k), rd, (32'h1 << k));
+         mbus_wr(16'h0010, 32'hF);
+         repeat (2) @(negedge clk);
+         repeat (3) chk_pulse(k);
+         repeat (8) @(negedge clk);
+         mbus_rd(16'h0010, rd);
+         chk32($sformatf("lane %0d underflow", k), rd, (32'h1 << k));
+         mbus_wr(16'h0010, 32'hF);
+         repeat (2) @(negedge clk);
+      end
+      // 每通道虚拟 spi/chk 事件分别走配对超时, 同时覆盖全部注错 lane
+      mbus_wr(16'h0004, 32'hAF);
+      mbus_wr(16'h0008, 32'hF);
+      repeat (30) @(negedge clk);
+      mbus_rd(16'h0010, rd);
+      chk32("all-lane SPI injection timeout", rd, 32'hF);
+      mbus_wr(16'h0010, 32'hF);
+      repeat (2) @(negedge clk);
+      mbus_wr(16'h000C, 32'hF);
+      repeat (30) @(negedge clk);
+      mbus_rd(16'h0010, rd);
+      chk32("all-lane CHK injection timeout", rd, 32'hF);
+      mbus_wr(16'h0010, 32'hF);
+      mbus_wr(16'h0004, 32'hA0);
+      repeat (2) @(negedge clk);
+      // 每通道计数器 Q/Q_n 失配 (整向量 force, 避免多次位选打错位)
+      for (int k = 0; k < NUM_INT; k++) begin
+         @(negedge clk);
+         fi_data12 = (12'h001 << (3 * k));
+         force dut.u_int_prot.r.change_cnt = fi_data12;
+         repeat (2) @(negedge clk);
+         chk1($sformatf("lane %0d cnt FI firing", k),
+              (dut.u_int_prot.r.change_cnt === fi_data12), 1'b1);
+         mbus_rd(16'h001C, rd);
+         chk32($sformatf("lane %0d cnt FI status", k), rd, (32'h1 << k));
+         release dut.u_int_prot.r.change_cnt;
+         mbus_wr(16'h001C, (32'h1 << k));
+         repeat (2) @(negedge clk);
+      end
+
+      //---------------------------------------------------------------- T19
+      $display("--- T19: reg_wrap duplicate and write-selftest FI ---");
+      // PAR_SELFTEST 锁存副本失配: par_selftest=0 且 Q/Q_n 失配臂
+      @(negedge clk);
+      fi_bit = 1'b0;
+      force dut.u_int_prot_regfile.plr.q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h0014, rd);
+      chk32("PAR latch duplicate mismatch", rd, 32'h1);
+      release dut.u_int_prot_regfile.plr.q_n;
+      mbus_wr(16'h0014, 32'h1);
+      repeat (2) @(negedge clk);
+
+      // 每个 wrap 的 flt_q/flt_q_n 互补失配都必须实际触发并自愈
+      @(negedge clk);
+      fi_bit = 1'b0;
+      force dut.u_int_prot_regfile.u_w_en.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("EN wrap duplicate FI", dut.u_int_prot_regfile.u_w_en.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_en.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h4);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ien.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("IEN wrap duplicate FI", dut.u_int_prot_regfile.u_w_ien.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_ien.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h8);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ispi.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("ISPI wrap duplicate FI", dut.u_int_prot_regfile.u_w_ispi.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_ispi.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h10);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ichk.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("ICHK wrap duplicate FI", dut.u_int_prot_regfile.u_w_ichk.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_ichk.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h20);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_sta.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("STA wrap duplicate FI", dut.u_int_prot_regfile.u_w_sta.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_sta.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h40);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_cmd.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("CMD wrap duplicate FI", dut.u_int_prot_regfile.u_w_cmd.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_cmd.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h80);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_flt.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("FLT wrap duplicate FI", dut.u_int_prot_regfile.u_w_flt.flt, 1'b1);
+      release dut.u_int_prot_regfile.u_w_flt.r.flt_q_n;
+      mbus_wr(16'h0014, 32'h100);
+      repeat (2) @(negedge clk);
+
+      // wr && selftest_key: 自测与目标寄存器写同拍, 随后正常重写治愈
+      @(negedge clk);
+      fi_bit = 1'b1;
+      force dut.u_int_prot_regfile.u_w_en.selftest_key = fi_bit;
+      mbus_wr(16'h0000, 32'hF);
+      release dut.u_int_prot_regfile.u_w_en.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("EN write-selftest FI", dut.u_int_prot_regfile.u_w_en.flt, 1'b1);
+      mbus_wr(16'h0000, 32'hF);
+      mbus_wr(16'h0014, 32'h4);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ien.selftest_key = fi_bit;
+      mbus_wr(16'h0004, 32'hA0);
+      release dut.u_int_prot_regfile.u_w_ien.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("IEN write-selftest FI", dut.u_int_prot_regfile.u_w_ien.flt, 1'b1);
+      mbus_wr(16'h0004, 32'hA0);
+      mbus_wr(16'h0014, 32'h8);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ispi.selftest_key = fi_bit;
+      mbus_wr(16'h0008, 32'h0);
+      release dut.u_int_prot_regfile.u_w_ispi.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("ISPI write-selftest FI", dut.u_int_prot_regfile.u_w_ispi.flt, 1'b1);
+      mbus_wr(16'h0008, 32'h0);
+      mbus_wr(16'h0014, 32'h10);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_ichk.selftest_key = fi_bit;
+      mbus_wr(16'h000C, 32'h0);
+      release dut.u_int_prot_regfile.u_w_ichk.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("ICHK write-selftest FI", dut.u_int_prot_regfile.u_w_ichk.flt, 1'b1);
+      mbus_wr(16'h000C, 32'h0);
+      mbus_wr(16'h0014, 32'h20);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_sta.selftest_key = fi_bit;
+      mbus_wr(16'h0010, 32'h1);
+      release dut.u_int_prot_regfile.u_w_sta.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("STA write-selftest FI", dut.u_int_prot_regfile.u_w_sta.flt, 1'b1);
+      mbus_wr(16'h0010, 32'h1);
+      mbus_wr(16'h0014, 32'h40);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_cmd.selftest_key = fi_bit;
+      mbus_wr(16'h0014, 32'h80);
+      release dut.u_int_prot_regfile.u_w_cmd.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("CMD write-selftest FI", dut.u_int_prot_regfile.u_w_cmd.flt, 1'b1);
+      mbus_wr(16'h0014, 32'h80);
+
+      @(negedge clk);
+      force dut.u_int_prot_regfile.u_w_flt.selftest_key = fi_bit;
+      mbus_wr(16'h001C, 32'h8000_0000);
+      release dut.u_int_prot_regfile.u_w_flt.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("FLT write-selftest FI", dut.u_int_prot_regfile.u_w_flt.flt, 1'b1);
+      mbus_wr(16'h001C, 32'h8000_0000);
+      mbus_wr(16'h0014, 32'h100);
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h0014, rd);
+      chk32("all wrap FI healed", rd, 32'h2);
+
+      //---------------------------------------------------------------- T20
+      $display("--- T20: mid-run reset round trip ---");
+      run_check = 1'b0;
+      @(negedge clk);
+      rstn = 1'b0;
+      repeat (2) @(negedge clk);
+      mbus_rd(16'h0000, rd);
+      chk32("mid-run reset CFG_EN", rd, 32'hF);
+      rstn = 1'b1;
+      repeat (3) @(negedge clk);
+      run_check = 1'b1;
+      mbus_rd(16'h0010, rd);
+      chk32("mid-run reset STA_ERR", rd, 32'h0);
+      mbus_rd(16'h001C, rd);
+      chk32("mid-run reset STA_FAULT", rd, 32'h0);
 
       //---------------------------------------------------------------- 收尾
       repeat (10) @(negedge clk);

@@ -36,7 +36,7 @@ def fam(sig, scope):
     if re.match(r'^addr\[15:9\]$', s):
         return '实例号域 IDX=0 本集成恒 0'
     if re.match(r'^rv\[287:0\]$', s):
-        return '宏 288b 读向量未用高 14 位 tie-0 (行 274b)'
+        return '宏 RAND_INIT=0: rv 仅随机初始化臂使用, 本集成该臂结构不激活'
     if re.match(r'^(inj[12]_pos\[7:5\]|i[12]_sh\[13:11\])$', s):
         return '注错位置域 ≤31: pos[7:5] 恒 0 (word 内 bit 位置)'
     if re.match(r'^(inj2_word\[1\]|i2_sh\[5\]|lat_word\[1\]|fail_word\[1\])$', s):
@@ -117,6 +117,7 @@ tgl_re = re.compile(r"^\s*(\S+?)\s+(Yes|No)\s+(Yes|No)\s+(Yes|No)"
 hdr = None
 holes = {}
 unclassified = set()
+used_families = set()
 for raw_ln in open("urg_full/modinfo.txt", encoding="utf-8", errors="replace"):
     ln = raw_ln.rstrip("\n")
     m = re.match(r"^Toggle Coverage for (Instance|Module) : (.*)$", ln)
@@ -129,8 +130,11 @@ for raw_ln in open("urg_full/modinfo.txt", encoding="utf-8", errors="replace"):
     m = tgl_re.match(ln)
     if m and "No" in (m.group(2), m.group(3)):
         sig = m.group(1)
-        if fam(sig, hdr) is None:
+        reason = fam(sig, hdr)
+        if reason is None:
             unclassified.add(hdr + " :: " + sig)
+        else:
+            used_families.add(reason)
         holes.setdefault(hdr, set()).add(sig)
 
 print("洞 scope 数: %d" % len(holes))
@@ -141,6 +145,11 @@ if unclassified:
 
 n = 0
 with open("tgl_struct_excl.el", "w") as f:
+    f.write("# axi2sram_ctrl structural toggle exclusions; regenerated from raw holes.\n")
+    f.write("# Only parameter/contract-tied bits are listed; FI-reachable arms stay in TB.\n")
+    for reason in sorted(used_families):
+        f.write("# FAMILY: %s\n" % reason)
+    f.write("\n")
     for key in sorted(holes):
         decls = D.get(key, {}).get("decl", {})
         rows = []

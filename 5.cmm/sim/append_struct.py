@@ -37,7 +37,7 @@ TARGETS = [
     ("fullexclude.tgl",   "reg_wrap.sv",    "Toggle",    "dup_err",                  None,
      r"u_w_cmd|^MODULE: reg_wrap", None),
     ("fresh_line.dump",   "cmm_regfile.sv", "Block",     "cw_wd[40:37] = r_mb.wdata_q", None,
-     None, 1080),
+     None, None),
     # I: 无写注错臂 108/110 行 —— 仅 W=64 模块参数组 (dump 文本为 urg 规范化:
     # "if (selftest_key)" / "v.par_q = (~r.par_q);", 以行号锚定)
     ("fresh_line_mod.dump", "reg_wrap.sv",  "Block",     "if (selftest_key)",      None,

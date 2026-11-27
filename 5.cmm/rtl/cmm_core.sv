@@ -178,11 +178,11 @@ module cmm_core #(
                 r_dut <= rin_dut;
             end
 
-`ifndef SYNTHESIS
+// synopsys translate_off
             initial begin
                 r_dut = DUT_REG_INIT;
             end
-`endif
+// synopsys translate_on
 
             assign dut_sq[i]  =   r_dut.psc_cnt[PSC_CH];  // clk_dut[i]/2^(PSC_CH+1)
             assign psc_dup[i] = (r_dut.psc_cnt != ~r_dut.psc_cnt_n);

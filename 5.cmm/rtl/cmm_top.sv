@@ -44,9 +44,11 @@
 // the channel EN=1111 only AFTER opening the gate, and EN=0000 BEFORE
 // closing it. EN nibbles are F/0000-only constants (coded enables).
 //
-// RESET: rst_n is the async POR; rst_ref_n is generated with async assert /
-// sync release into clk_ref. mbus_rstn is the mbus-domain reset. Both must
-// assert together at system level (regfile CDC handshake alignment).
+// RESET: mbus_rstn is the raw async reset for the whole monitor; the ref
+// domain reset ref_rstn_s is generated in this top by u_ref_rst (mbus_rstn
+// sync release into the selected clk_ref). mbus_rstn is used directly in the
+// mbus domain without synchronization (single raw reset, regfile CDC
+// handshake stays aligned).
 //
 // FAIL_DEAD (clk_ref itself stops): the ref domain cannot report its own
 // death - covered by the REF_STALE watchdog in the mbus domain (requires
@@ -89,7 +91,7 @@ module cmm_top #(
     // reference clocks (selected one drives the whole monitor domain)
     input  logic              refclk0,
     input  logic              refclk1,
-    input  logic              rst_n,          // async POR
+    input  logic              scan_mode,      // DFT: bypass ref reset sync
     // clocks under test
     input  logic [N_DUT-1:0]  clk_dut,
     // mbus configuration interface
@@ -138,19 +140,23 @@ module cmm_top #(
     logic [CNT_W*N_DUT-1:0] dbg_shadow, dbg_noedge, dbg_edgecnt;
 
     //=========================================================================
-    // reference clock select + monitor reset (async assert / sync release)
+    // reference clock select + ref-domain reset sync (rule 26)
     //=========================================================================
     logic clk_ref;
+    logic ref_rstn_s;
     assign clk_ref = cfg_refsel ? refclk1 : refclk0;
 
-    // reset sync via cell wrap (6.apb2mbus/rtl): async assert to 0,
-    // sync release to 1 over 2 clk_ref cycles (d tied 1)
-    logic rst_ref_n;
-    sync_2dff #(.WIDTH(1)) u_rst_ref_sync (
-        .clk (clk_ref  ),
-        .rstn(rst_n    ),
-        .d   (1'b1     ),
-        .q   (rst_ref_n)
+    // 复位同步收编在本顶层 (规则 26): mbus_rstn 同步到 clk_ref -> ref_rstn_s,
+    //   整个 clk_ref 域 (core FSM + regfile 影子/sticky) 单一复位源, 下层不再
+    //   自行例化 rst_sync (ref 域无独立裸复位, 同 dup_ctrl).
+    rst_sync #(
+        .SYNC_LVL_NUM(2   ),
+        .DEF_VAL     (1'b0)
+    ) u_ref_rst (
+        .clk      (clk_ref   ),
+        .rstn     (mbus_rstn ),
+        .scan_mode(scan_mode ),
+        .rstn_s   (ref_rstn_s)
     );
 
     //=========================================================================
@@ -282,15 +288,15 @@ module cmm_top #(
     logic [3:0] dbs_s2;
     sync_2dff #(.WIDTH(3)) u_inj_sync (
         .clk (clk_ref                    ),
-        .rstn(rst_ref_n                  ),
+        .rstn(ref_rstn_s                 ),
         .d   ({inj_cnt, inj_cmp, inj_psc}),
         .q   (inj_s2                     )
     );
     sync_2dff #(.WIDTH(4)) u_dbs_sync (
-        .clk (clk_ref  ),
-        .rstn(rst_ref_n),
-        .d   (dbgsel   ),
-        .q   (dbs_s2   )
+        .clk (clk_ref   ),
+        .rstn(ref_rstn_s),
+        .d   (dbgsel    ),
+        .q   (dbs_s2    )
     );
 
     //=========================================================================
@@ -310,7 +316,7 @@ module cmm_top #(
         .N_DEB  (N_DEB  )
     ) u_cmm_core (
         .clk_ref    (clk_ref      ),
-        .rst_ref_n  (rst_ref_n    ),
+        .rst_ref_n  (ref_rstn_s   ),
         .clk_dut    (clk_dut      ),
         .cfg_winlo  (cfg_winlo    ),
         .cfg_winhi  (cfg_winhi    ),
@@ -406,7 +412,7 @@ module cmm_top #(
     logic rp_s2;
     sync_2dff #(.WIDTH(1)) u_rp_sync (
         .clk (clk_ref     ),
-        .rstn(rst_ref_n   ),
+        .rstn(ref_rstn_s  ),
         .d   (reg_prot_lvl),
         .q   (rp_s2       )
     );
@@ -416,10 +422,10 @@ module cmm_top #(
     // 不再并入 reg_par_fault; 粘滞电平 2FF 同步安全)
     logic iflt_s2;
     sync_2dff #(.WIDTH(1)) u_iflt_sync (
-        .clk (clk_ref ),
-        .rstn(rst_ref_n),
-        .d   (iflt_lvl ),
-        .q   (iflt_s2  )
+        .clk (clk_ref  ),
+        .rstn(ref_rstn_s),
+        .d   (iflt_lvl  ),
+        .q   (iflt_s2   )
     );
 
     assign alarm_any = (|r.fail_q) || (|r.dead_q);
@@ -528,8 +534,8 @@ module cmm_top #(
     //=========================================================================
     // 时序进程: 只做复位装载与 r <= rin
     //=========================================================================
-    always_ff @(posedge clk_ref or negedge rst_ref_n) begin : seq
-        if (!rst_ref_n) begin
+    always_ff @(posedge clk_ref or negedge ref_rstn_s) begin : seq
+        if (!ref_rstn_s) begin
             r <= REF_REG_RST;
         end else begin
             r <= rin;
@@ -571,7 +577,7 @@ module cmm_top #(
         .rdata          (mbus_rdata     ),
         .rpar           (mbus_rpar      ),
         .clk_ref        (clk_ref        ),
-        .rst_ref_n      (rst_ref_n      ),
+        .rst_ref_n      (ref_rstn_s     ),
         .cfg_en         (cfg_en         ),
         .cfg_force      (cfg_force      ),
         .cfg_winlo      (cfg_winlo      ),

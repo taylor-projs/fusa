@@ -43,13 +43,18 @@ regfile 是唯一双域模块, 每个寄存器都是所在域的 reg_wrap, 命�
 
 *图 1: 顶层结构 — mbus (APB) 接入, regfile 唯一双域模块 (规则 23)*
 
-- `dup_ctrl_top` — 端口壳: 仅例化 `u_dup_ctrl_regfile`, `scan_mode` 透传
+- `dup_ctrl_top` — 薄壳: 例化 `u_mod_rst` (`rst_sync`) 与
+  `u_dup_ctrl_regfile`; `scan_mode` 接 `u_mod_rst` 的 DFT 旁路
   (规则 19; v2 内部 tie 0 属违规)。
 - `dup_ctrl_regfile` — 唯一双域模块: mbus 域 (r_mb + image wraps + sta 像) /
   mod 域 (r_mod.ack_t + 影子 wraps + 粘滞捕获)。参数 `IDX` / `ERR_SYNC_STAGE`
   (2|3, 默认 3, 全部同步链统一)。
-- 复位: `rstn` 异步断言两域共源 (系统级约束: 同时断言以对齐握手, 同 ia);
-  mod 域释放经 `u_mod_rst`(rst_sync, scan_mode 旁路)对齐 mod_clk。
+- 复位: 外部仅 `rstn` (mbus_rstn) 一路异步低有效裸复位, mbus 域直接使用、
+  不做同步; `u_mod_rst` 在 top 内将其同步释放到 `mod_clk` 生成
+  `mod_rstn_s` (`scan_mode` DFT 旁路), 下发 `dup_ctrl_regfile.mod_rstn`。
+  整个 mod 域 (配置影子 + err 粘滞) 共用此复位; 不再提供独立 `mod_rstn`
+  裸复位端口, regfile 内也不例化 `rst_sync` (规则 26), 避免影子/sticky
+  被独立清零而丢失故障记录。
 
 ## 3. 寄存器地图 (mbus, 32bit)
 
@@ -86,7 +91,7 @@ PERR 组号 ↔ STA_PAR bit = 2+组号 (image+shadow 同组):
 | err_i | mod 域 → u_err_st | **同域直入**(生成物已打拍), 捕获与 err 同拍 —— 每个功能拍失配必被粘滞(单拍即捕获, v1 "≥2 拍可观测宽度"约束作废) |
 | err_st / err_raw | mod → mbus | 电平, sync_dff 首级(s1) + reg_wrap 第二级(s2 = 寄存器面本身, ia 方法); STA_ERR/esm_err 与 STA_RAW 各一条 |
 | 影子 flt ×4 | mod → mbus | 电平, `u_flt_sync`(sync_2dff WIDTH=4)打包回同步 → PERR 组 0/1/2/3 的 mod 侧 |
-| mod 复位 | — | rst_sync(异步断言/2FF 释放对齐 mod_clk, scan_mode 旁路透传到 top) |
+| mod 复位 | mbus → mod | 外部唯一 `rstn` 在 top 的 `u_mod_rst` 经 `rst_sync` 生成 `mod_rstn_s` (异步断言/2FF 释放对齐 mod_clk, `scan_mode` DFT 旁路), 作为 regfile 整个 mod 域唯一复位; 无独立 `mod_rstn` 裸端口, regfile 内无 `rst_sync` (规则 26) |
 
 **SW 契约**: (a) 依赖性配置/W1C 写前 poll `STA_CDC[0]` CFG_BUSY 到 0
 (TB 的 mbus_wr 已内建), 或按跨域往返间隔 (~2×STAGES+2 拍两域)隔开写;
@@ -136,7 +141,7 @@ esm_err / esm_fault / reg_par_fault 三对双轨为 mbus 域输出 (2026-11-13 �
 |---|---|---|
 | mod_clk | 该 wrapper 的比较时钟(DCLS 主时钟) | 单 wrapper 单比较时钟; 捕获/命令生效均需该时钟在跑(停摆 = 写被丢, busy 可见) |
 | err_i | `err_fusadcls_<mod>`(1 路) | **单 dup wrapper 专用**; 多 wrapper = 多个 dup_ctrl 实例各接 1 路 |
-| rstn | DCLS 复位(异步低) | 两域共源复位, 系统级须同时断言(对齐握手) |
+| rstn | DCLS 复位(异步低) | 本模块唯一外部裸复位: mbus 域裸用, top 内同步释放到 mod_clk; 不再有独立 `mod_rstn` 端口。系统级仍须与 DCLS 复位同时断言以对齐握手 |
 | scan_mode | DFT | 透传 rst_sync 旁路(v3 新增端口, 规则 19) |
 | fi_o[1:0] | `dcls_fault_injection[1:0]` | **直连**(v3: 影子在 mod 域, 本模块不再同步, 对端也不必); 01↔10 直切允许 |
 | — | `icg_mode` / scan 类 | 不入寄存器, 集成者接 DFT 信号或 tie 0 |

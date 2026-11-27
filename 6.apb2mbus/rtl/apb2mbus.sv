@@ -175,14 +175,14 @@ module apb2mbus #(
    //   HANG_TO<2 -> HANG_LAST<=0 退化, 看门狗 req 一发出即误触发
    //   (HANG_TO 不设上限: 大值只是计数器宽几级, 无功能错误; 下限之外的
    //    裕量要求 = ">=4x 正常往返", 依赖时钟比, elaboration 拿不到, 属集成评审)
-`ifndef SYNTHESIS
+// synopsys translate_off
    initial begin
       assert (NP >= 1 && NP <= 255)
          else $fatal(1, "apb2mbus: NP=%0d out of range [1,255] (0xFF = local plane)", NP);
       assert (HANG_TO >= 2)
          else $fatal(1, "apb2mbus: HANG_TO=%0d must be >= 2", HANG_TO);
    end
-`endif
+// synopsys translate_on
 
    // ------------------------------------------------------------------
    // 寄存器记录 (每时钟域一份) 与复位常量

@@ -59,23 +59,25 @@ module tb_edc_side;
 
    // ---------------- 时钟 / 复位 ----------------
    reg mbus_clk, axi_clk;
-   reg mbus_rstn, axi_rstn;
+   reg mbus_rstn, axi_rstn, scan_mode;
 
    initial begin
       mbus_clk = 0; axi_clk = 0;
-      mbus_rstn = 0; axi_rstn = 0;
+      mbus_rstn = 0; axi_rstn = 0; scan_mode = 0;
    end
    always #21  mbus_clk = ~mbus_clk;         // ~24MHz (与 AXI 异源)
    always #4   axi_clk  = ~axi_clk;          // 125MHz
 
    // ---------------- 计数 / 错误汇总 ----------------
    integer errors;
+   integer checks;
    reg     or_bad, rail_bad;
    integer rdata;
    reg [63:0] fv;                            // force 暂存 (禁自引用 force)
 
    task automatic check(input cond, input [8*72:1] msg);
       begin
+         checks = checks + 1;
          if (cond !== 1'b1) begin
             $display("ERR: %0s at %0t", msg, $time);
             errors = errors + 1;
@@ -395,6 +397,7 @@ module tb_edc_side;
       .rpar           (rp_ms          ),
       .axi_clk        (axi_clk        ),
       .axi_rstn       (axi_rstn       ),
+      .scan_mode      (scan_mode      ),
       // NIC 入口 (SIDE=0): req GEN, rsp CHK; GEN 方向 user 输入不接
       .awid           (gm_awid        ),
       .awaddr         (gm_awaddr      ),
@@ -466,6 +469,7 @@ module tb_edc_side;
       .rpar           (rp_sl          ),
       .axi_clk        (axi_clk        ),
       .axi_rstn       (axi_rstn       ),
+      .scan_mode      (scan_mode      ),
       // NIC 出口 (SIDE=1): req CHK, rsp GEN; GEN 方向 user 输入不接
       .awid           (gm_awid        ),
       .awaddr         (gm_awaddr      ),
@@ -571,7 +575,7 @@ module tb_edc_side;
    reg [RUW-1:0]  ruser_a;
 
    initial begin
-      errors = 0; or_bad = 0; rail_bad = 0; rnd_run = 0; rail_chk_en = 1;
+      errors = 0; checks = 0; or_bad = 0; rail_bad = 0; rnd_run = 0; rail_chk_en = 1;
       mb_ce = 0; mb_wr = 0; mb_par = 0; mb_addr = 16'h0; mb_wdata = 32'h0;
       gm_awvalid = 0; gm_wvalid = 0; gm_arvalid = 0;
       sl_aw_rdy = 1; sl_w_rdy = 1; sl_ar_rdy = 1;
@@ -579,6 +583,8 @@ module tb_edc_side;
       sm_bvalid = 0; sm_rvalid = 0;
 
       repeat (5) @(negedge axi_clk);
+      // P0: scan_mode 翻转 (复位保持期内, 规则 19: 旁路 rst_sync 不影响功能, 覆盖其 toggle)
+      scan_mode = 1; repeat (3) @(negedge axi_clk); scan_mode = 0; repeat (2) @(negedge axi_clk);
       mbus_rstn = 1; axi_rstn = 1;
       repeat (10) @(negedge mbus_clk);
 
@@ -1625,12 +1631,136 @@ module tb_edc_side;
          rd_check(16'h0010, 32'h0, "S14l: POS[0] restored 0");
       end
 
+      // -------- S14m: 聚合器 PATH_SELFTEST + 在线源自测同拍 --------
+      // 镜像 top T30/T31, 补齐 side 实例域; 所有新增激励均走正常寄存器面,
+      // 仅双副本与轨互补检查使用既有 force/release FI 规则.
+      $display("S14m: agg PATH_SELFTEST and live-source selftest");
+      begin : s14m
+         rd_check(16'h0228, 32'h0, "S14m: mask reset 0");
+         mb_wr16(16'h0228, 32'h0000_00F5);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0228, 32'h0, "S14m: bad-key load ignored");
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "S14m: rails quiet after bad key");
+         mb_wr16(16'h0228, 32'h0000_00FA);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b1 && agg_esm_err_n === 1'b0
+               && agg_esm_fault === 1'b1 && agg_esm_fault_n === 1'b0
+               && agg_reg_par_fault === 1'b1 && agg_reg_par_fault_n === 1'b0
+               && agg_rail_fault === 1'b1 && agg_rail_fault_n === 1'b0,
+               "S14m: all four rails driven");
+         rd_check(16'h0228, 32'h0000_00F0, "S14m: mask readback F0");
+         rd_check(16'h0200, 32'h0, "S14m: ERR source-free");
+         rd_check(16'h0204, 32'h0, "S14m: FAULT source-free");
+         rd_check(16'h0220, 32'h0, "S14m: RAIL source-free");
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PAR source-free");
+         mb_wr16(16'h0228, 32'h0000_002A);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b1
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "S14m: per-channel select");
+         mb_wr16(16'h0228, 32'h0000_000A);
+         repeat (2) @(negedge mbus_clk);
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "S14m: all rails released");
+         rd_check(16'h0228, 32'h0, "S14m: mask readback 0");
+
+         // PERR5 自测与双副本 FI
+         mb_wr16(16'h021C, 32'h0000_051A);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0081, "S14m: PERR5 selftest");
+         mb_wr16(16'h0218, 32'h0000_0080);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PERR5 healed");
+         force u_agg.u_w_esmtst.r.flt_q_n = 1'b0;
+         @(posedge mbus_clk);
+         release u_agg.u_w_esmtst.r.flt_q_n;
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0081, "S14m: ESMTEST dup -> PERR5");
+         mb_wr16(16'h0218, 32'h0000_0080);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0002, "S14m: ESMTEST dup clean");
+         force u_agg.plr.q_n = 1'b0;
+         @(posedge mbus_clk);
+         release u_agg.plr.q_n;
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0001, "S14m: PAR latch dup -> set");
+         mb_wr16(16'h0218, 32'h0000_0001);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PAR latch dup clean");
+
+         // 在线 core_err_i 与 regsel0 自测同拍
+         force ms_esm_err = 1'b1;
+         force ms_esm_err_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         mb_wr16(16'h021C, 32'h0000_001A);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0005, "S14m: live ERR + selftest");
+         release ms_esm_err;
+         release ms_esm_err_n;
+         mb_wr16(16'h0200, 32'h0000_0001);
+         mb_wr16(16'h0218, 32'h0000_0004);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0200, 32'h0, "S14m: ERR state clean");
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PERR0 clean");
+
+         // 在线 core_fault_i 与 regsel1 自测同拍
+         force ms_esm_fault = 1'b1;
+         force ms_esm_fault_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         mb_wr16(16'h021C, 32'h0000_011A);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0009, "S14m: live FAULT + selftest");
+         release ms_esm_fault;
+         release ms_esm_fault_n;
+         mb_wr16(16'h0204, 32'h0000_0001);
+         mb_wr16(16'h0218, 32'h0000_0008);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0204, 32'h0, "S14m: FAULT state clean");
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PERR1 clean");
+
+         // 在线 core_par_i 与 regsel3 自测同拍
+         force ms_reg_par_fault = 1'b1;
+         force ms_reg_par_fault_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         mb_wr16(16'h021C, 32'h0000_031A);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0021, "S14m: live PARCORE + selftest");
+         release ms_reg_par_fault;
+         release ms_reg_par_fault_n;
+         mb_wr16(16'h0210, 32'h0000_0001);
+         mb_wr16(16'h0218, 32'h0000_0020);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0210, 32'h0, "S14m: PARCORE state clean");
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PERR3 clean");
+
+         // 在线 rail_viol 与 regsel4 自测同拍
+         rail_chk_en = 0;
+         force ms_esm_err_n = ms_esm_err;
+         repeat (2) @(negedge mbus_clk);
+         mb_wr16(16'h021C, 32'h0000_041A);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0218, 32'h0000_0041, "S14m: live RAIL + selftest");
+         release ms_esm_err_n;
+         rail_chk_en = 1;
+         mb_wr16(16'h0220, 32'h0000_0001);
+         mb_wr16(16'h0218, 32'h0000_0040);
+         repeat (2) @(negedge mbus_clk);
+         rd_check(16'h0220, 32'h0, "S14m: RAIL state clean");
+         rd_check(16'h0218, 32'h0000_0002, "S14m: PERR4 clean");
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "S14m: aggregate rails final clean");
+      end
+
       // -------- S13: 结论 --------
       $display("S13: summary");
       check(or_bad === 1'b0, "S13: OR-net clean (unselected drive 0)");
       check(rail_bad === 1'b0, "S13: dual rails complementary");
       if ((or_bad === 1'b0) && (rail_bad === 1'b0) && (errors == 0)) begin
-         $display("TB PASS: tb_edc_side all checks passed");
+         $display("TB PASS: tb_edc_side all %0d checks passed", checks);
       end else begin
          $display("TB FAIL: errors=%0d or_bad=%0b rail_bad=%0b",
                   errors, or_bad, rail_bad);

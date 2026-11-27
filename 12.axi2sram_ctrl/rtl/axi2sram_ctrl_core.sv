@@ -43,7 +43,9 @@
 //   推口同拍可停 (aw/arready 组合关门) → occ 冻在 3, ff 稳电平免镜像
 //   (v3.6 用户钦定, cmd_cnt 在途镜像退役); 在途帽 = fifo 4 (ghost 1
 //   + mem 3) + 影子 1 = 5。AW/AR 仲裁 = 寄存 toggle rac 只决同拍
-//   竞争 (复位读侧), 单侧请求组合直授 ready (v3.7, 换向零气泡)。
+//   竞争 (复位读侧), 单侧请求组合直授 ready (v3.7, 换向零气泡);
+//   v4.2 严格轮询 (RR): 两侧同拍有效时每授权一次即翻转偏好, 持续有效
+//   的读流不再饿死写 (旧: 读偏好仅在 AR 空闲才让出, 写等待无上界)。
 //   W/R/B 通道缓冲同 fifo_sync: wskip 深 2 接 W 拍
 //   {wlast,wstrb,wdata} (wready = ~ff), rskip 深 4 接 R 拍
 //   {rlast,rresp,rid,rdata}, bskip 深 4 接 B 响应 {resp,user,id}
@@ -160,11 +162,13 @@ module axi2sram_ctrl_core #(
    //--------------------------------------------------------------------------
    // 参数约束
    //--------------------------------------------------------------------------
+   // synopsys translate_off
    initial begin
       if (OSTD != 2**$clog2(OSTD)) begin
          $fatal(1, "axi2sram_ctrl_core: OSTD=%0d must be a power of 2", OSTD);
       end
    end
+   // synopsys translate_on
 
    localparam integer CMD_M = $clog2(OSTD);      // 命令 fifo 地址位宽 (深度 2^M)
 
@@ -175,7 +179,14 @@ module axi2sram_ctrl_core #(
    localparam [LAW-1:0] LINE_MAX = {LAW{1'b1}};
 
    //--------------------------------------------------------------------------
-   // AXI 地址/lane 辅助 (INCR/WRAP 逐拍)
+   // AXI 地址/lane 辅助 (FIXED/INCR/WRAP 逐拍)
+   //   AXI4 A3.4.1: INCR 非首拍地址 = align(起始, 2^size) + b*2^size (起始地址
+   //   可非对齐, 仅首拍保持原值); FIXED 每拍同一地址; WRAP 容器内回卷.
+   //   WRAP 起始须对齐 size (AXI 规定, 非对齐属未定义); 本实现容错: 非对齐
+   //   WRAP 起始按 size 下对齐后计算 (首拍取整个 size 块, 不丢 lane) —— 防
+   //   前级 NIC upsizer 输出非对齐 WRAP 起始 (如 0x528 size=5) 时静默丢低位 lane.
+   //   (2026-11-26 修: 旧实现 INCR 用 a0 + b*n, 非对齐起始时非首拍 lane 偏移
+   //    错位 -> 读数据低位 lane 被掩码清零; FIXED 被当 INCR)
    //--------------------------------------------------------------------------
    function automatic logic [LAW+4:0] beat_addr(input logic [LAW+4:0] a0,
                                                 input logic [2:0] size,
@@ -185,19 +196,26 @@ module axi2sram_ctrl_core #(
       int unsigned n;
       int unsigned c;
       int unsigned base;
+      int unsigned al;
       int unsigned a;
       begin
-         n = 1 << size;
+         n  = 1 << size;
+         al = a0 & ~(n - 1);
          if (burst == 2'b10) begin
             c    = (unsigned'(len) + 1) * n;
-            base = a0 & ~(c - 1);
-            a    = base + (((a0 - base) + b * n) % c);
+            base = al & ~(c - 1);
+            a    = base + (((al - base) + b * n) % c);
+         end else if (burst == 2'b00) begin
+            a    = a0;
+         end else if (b == 8'd0) begin
+            a    = a0;
          end else begin
-            a    = a0 + b * n;
+            a    = al + b * n;
          end
          beat_addr = a[LAW+4:0];
       end
    endfunction
+
 
    // 窄传输 lane 掩码 (行级 256 lane): size=5 全行; 否则行内
    //   [off, off+2^size) 字节. 注意不可用 32bit 掩码与 256bit 数据相与
@@ -228,7 +246,7 @@ module axi2sram_ctrl_core #(
    } state_e;
 
    // W/R/B 通道缓冲深度 (fifo_sync: 深度 = 2^M)
-   localparam integer WSKIP_M   = 1;                  // wskip 深 2 (W-first 窗口)
+   localparam integer WSKIP_M   = 2;                  // wskip 深 4 (W-first 窗口)
    localparam integer RSKIP_M   = 2;                  // rskip 深 4 (rready 偶发堵塞容忍)
    localparam integer BSKIP_M   = 2;                  // bskip 深 4 (bready 偶发堵塞容忍, v3.8)
    localparam integer RSKIP_D   = 2 ** RSKIP_M;
@@ -606,9 +624,10 @@ module axi2sram_ctrl_core #(
       awready_c = cmd_acc && (!r.rac || !axi_arvalid);
       arready_c = cmd_acc && ( r.rac || !axi_awvalid);
 
-      // 仲裁 toggle: 当前侧空闲即让给对侧 (偏好随让渡更新; 门关时保持)
+      // 仲裁 toggle (严格轮询 RR): 当前侧空闲, 或当前侧刚被授权而对侧在等,
+      //   即把偏好让给对侧 (门关无授权时保持) —— 两侧持续有效时读写交替授权
       if (r.rac) begin
-         if (axi_awvalid && !axi_arvalid) begin
+         if (axi_awvalid && (!axi_arvalid || cmd_acc)) begin
             v.rac = 1'b0;
          end
       end else begin

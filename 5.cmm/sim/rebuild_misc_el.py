@@ -11,7 +11,7 @@
 # are excluded together with the by-design unreachable ARM->ERR.
 import re, os
 
-SIM = "/home/eda/work/cmm/sim"
+SIM = os.path.dirname(os.path.abspath(__file__))
 KW  = r"(?:Block|Condition|Branch|Fsm|Transition)"
 
 def parse_blocks(path, active_only=True):
@@ -40,18 +40,24 @@ def parse_blocks(path, active_only=True):
     flush()
     return blocks
 
-def parse_fresh(path):
-    scopes, cur = {}, None
+def parse_fresh_seq(path):
+    """Fresh dump scopes in source order; retains duplicate MODULE names.
+
+    FSM dumps have one cmm_top scope per parameterization (N_DUT=5 and the
+    DUT2 N_DUT=1 instance), with identical MODULE keys but distinct checksums.
+    """
+    scopes, cur = [], None
     for ln in open(path):
         ln = ln.rstrip("\n")
         m = re.match(r'^// CHECKSUM: "(\d+ \d+)"', ln)
         if m:
             cur = {"checksum": m.group(1), "hdr": None, "rows": []}
+            scopes.append(cur)
             continue
         m = re.match(r"^// (MODULE|INSTANCE): (.*)$", ln)
-        if m:
+        if m and cur is not None:
             cur["hdr"] = ln[3:]
-            scopes[m.group(1)[0] + ":" + m.group(2).rstrip()] = cur
+            cur["key"] = m.group(1)[0] + ":" + m.group(2).rstrip()
             continue
         m = re.match(r"^// (%s) (\d+) (.*)$" % KW, ln)
         if m and cur is not None:
@@ -62,6 +68,10 @@ def parse_fresh(path):
             cur["rows"].append((m.group(1), m.group(2), ln[3:]))
     return scopes
 
+
+def parse_fresh(path):
+    return {sc["key"]: sc for sc in parse_fresh_seq(path)}
+
 def nohash(tail):
     """drop the urg content-hash right after Keyword <n> - it changes between
     compiles even for identical expressions"""
@@ -69,23 +79,25 @@ def nohash(tail):
 
 def rebuild(metric, old_file, fresh_file, fsm_all=False):
     old = parse_blocks(os.path.join(SIM, "excl", old_file))
-    # a dump run writes BOTH domains: fullexclude.<m> (instance) and
-    # fullexclude_module.<m> (module definition) - merge them
-    fresh = parse_fresh(os.path.join(SIM, fresh_file))
-    fresh.update(parse_fresh(os.path.join(SIM, fresh_file.replace(".dump", "_mod.dump"))))
+    if fsm_all:
+        fresh = (parse_fresh_seq(os.path.join(SIM, fresh_file)) +
+                 parse_fresh_seq(os.path.join(SIM, fresh_file.replace(".dump", "_mod.dump"))))
+    else:
+        fresh = parse_fresh(os.path.join(SIM, fresh_file))
+        fresh.update(parse_fresh(os.path.join(SIM, fresh_file.replace(".dump", "_mod.dump"))))
     out, kept, dropped = [], 0, 0
     if fsm_all:
-        # emit one block per scope (instance AND module domains) that carries
-        # the FSM: artifact transitions of the struct-reset pseudo state (the
-        # 95'b blob = REF_REG_RST constant) + by-design unreachable ARM->ERR;
-        # the four lifecycle arcs stay measured
-        for key, sc in fresh.items():
-            if not any(h == "Fsm" for h, t, raw in sc["rows"]):
+        # Emit every FSM scope (main instance plus both module parameterizations).
+        # Struct-reset constants are urg pseudo-states, not reachable FSM states;
+        # their five arcs and the by-design unreachable ARM->ERR are excluded.
+        # The four real lifecycle arcs always remain measured.
+        for sc in fresh:
+            fsm_rows = [raw for h, t, raw in sc["rows"] if h == "Fsm"]
+            if not fsm_rows:
                 continue
-            blk = ['CHECKSUM: "%s"' % sc["checksum"], sc["hdr"],
-                   "Fsm r.fsm_state \"1592279044\""]
+            blk = ['CHECKSUM: "%s"' % sc["checksum"], sc["hdr"], fsm_rows[0]]
             for h, t, raw in sc["rows"]:
-                if not raw.startswith("Transition"):
+                if h != "Transition":
                     continue
                 if re.match(r"Transition (FSM_ARM->FSM_RUN|FSM_ERR->FSM_ARM"
                             r"|FSM_RUN->FSM_ARM|FSM_RUN->FSM_ERR) ", raw):

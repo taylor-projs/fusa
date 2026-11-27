@@ -43,10 +43,14 @@ package ecc_math;
       begin
          p = 0;
          n = -1;
-         while (n < i) begin
-            p = p + 1;
-            if ((p & (p - 1)) != 0) begin
-               n = n + 1;
+         // 固定上界 for (综合可静态展开; 原 while 依赖 DC 的 while 展开迭代上限)
+         // 上界 300 > 最大码字位置 266; n>=i 后 p 保持不变, 与原 while 语义一致
+         for (int k = 0; k < 300; k++) begin
+            if (n < i) begin
+               p = p + 1;
+               if ((p & (p - 1)) != 0) begin
+                  n = n + 1;
+               end
             end
          end
          hpos = p;
@@ -59,7 +63,7 @@ package ecc_math;
          enc_h = '0;
          for (int i = 0; i < 256; i++) begin
             if (d[i]) begin
-               enc_h = enc_h ^ hpos(i)[8:0];
+               enc_h = enc_h ^ 9'(hpos(i));   // 尺寸转换: SV 不允许对函数调用结果做位选
             end
          end
       end
@@ -173,7 +177,7 @@ endmodule
 module mcu_sram_wrapper #(
    parameter integer DEPTH     = 32768,   // 行数 (2 的幂)
    parameter bit     RAND_INIT = 1'b0,    // 上电内容 (透传宏)
-   localparam integer LAW      = $clog2(DEPTH)
+   parameter integer LAW       = $clog2(DEPTH)
 )(
    input  logic            clk,
    input  logic            rstn,          // 异步低有效 (axi 域)

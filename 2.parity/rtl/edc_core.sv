@@ -30,10 +30,11 @@
 //       W1C 经 toggle 命令跨域清除 (置位优先);
 //     - inj_en / inj_force: mbus 配置同步到 mod 域影子后输出给引擎;
 //     - inj_pos: 准静态不同步, mbus 域直出;
-//     - regfile mod 域寄存器一律复位于 rst_sync(mbus_rstn -> mod_clk),
-//       **不用 axi_rstn** -> AXI 域单独复位时 err/fault sticky 与 cfg
-//       影子保留 (故障不丢), CPU W1C 后才干净; 站点引擎随 axi_rstn
-//       复位 (监视器重新对齐被监视域).
+//     - 复位同步收编在本叶顶层 (规则 26): mbus_rstn 在 mbus 域裸用;
+//       axi_rstn 经 u_axi_rst 同步到 axi_clk 得 axi_rstn_s (给 CHK 站点
+//       引擎), mbus_rstn 经 u_mod_rst 同步到 axi_clk 得 mod_rstn_s (给
+//       regfile mod 域, 故障保留), 下层不再自行例化 rst_sync.
+//       scan_mode 在本顶层对外, 供 DFT 旁路两路复位同步器.
 //   详见 edc_regfile 文件头.
 //
 //   ESM 双轨 (esm_err/esm_fault/reg_par_fault, 各带反轨); err/fault
@@ -48,8 +49,9 @@
 //   mbus 侧 : ce/wr/addr/wdata/par 由 apb2mbus 广播给所有 leaf, 本实例
 //             用 IDX 自行译码; rdata/rpar 仅在选中时有效, 未选中驱动 0
 //             (顶层 OR 网汇聚). rpar = ^rdata 读回程偶校验 (叶端契约).
-//   AXI 侧  : 跟随被监视端口的 axi_clk / axi_rstn. qos/region 不在 EDC
-//             站点内, 旁路 IP 不触及, 不引入端口.
+//   AXI 侧  : 跟随被监视端口的 axi_clk / axi_rstn (axi_rstn 经本模块
+//             rst_sync 对齐 axi_clk 后下发 axi_rstn_s 供 regfile mod 域与
+//             站点引擎复位, 规则 26); qos/region 不在 EDC 站点内, 旁路 IP 不触及.
 //
 //   全局站点号 (req 与 rsp 合并, 与 cfg/sta 的 bit 一一对应, 共 18 个):
 //     0  AW awaddr_hi [39:20]           1  AW awaddr_lo [19:0]
@@ -84,10 +86,21 @@ module edc_core #(
                             (IDW >= 12) ? 5 :
                             (IDW >= 5)  ? 4 :
                             (IDW >= 2)  ? 3 : 1,
+   parameter integer AXI_DW = 64,        // AXI 数据位宽 (32 | 64)
+   parameter integer EDW  = (AXI_DW >= 58) ? 7 :
+                            (AXI_DW >= 27) ? 6 :
+                            (AXI_DW >= 12) ? 5 :
+                            (AXI_DW >= 5)  ? 4 :
+                            (AXI_DW >= 2)  ? 3 : 1,   // wdata/rdata 站点 EDC 宽 (64->7, 32->6)
+   parameter integer EMW  = ((AXI_DW/8) >= 58) ? 7 :
+                            ((AXI_DW/8) >= 27) ? 6 :
+                            ((AXI_DW/8) >= 12) ? 5 :
+                            ((AXI_DW/8) >= 5)  ? 4 :
+                            ((AXI_DW/8) >= 2)  ? 3 : 1,   // wstrb 站点 EDC 宽 (8->4, 4->3)
    parameter integer AWUW = 18 + EWID,  // {addr_hi, addr_lo, attri0, attri1, id}
-   parameter integer WUW  = 12,         // {wdata, wmask, wlast}
+   parameter integer WUW  = EDW + EMW + 1,   // {wdata, wmask, wlast}
    parameter integer BUW  = 3 + EWID,   // {battri, bid}
-   parameter integer RUW  = 10 + EWID   // {rdata, rattri, rid}
+   parameter integer RUW  = EDW + 3 + EWID   // {rdata, rattri, rid}
 )(
    // ---------------- mbus 侧 (leaf, apb2mbus 广播) ----------------
    input  logic           mbus_clk,
@@ -102,7 +115,8 @@ module edc_core #(
 
    // ---------------- AXI 侧时钟 / 复位 ----------------
    input  logic           axi_clk,
-   input  logic           axi_rstn,
+   input  logic           axi_rstn,      // axi 域裸复位, 本顶层同步
+   input  logic           scan_mode,     // DFT: 旁路 axi 域复位同步器
 
    // ---------------- AXI4 AW tap (全输入, 无驱动) ----------------
    input  logic [IDW-1:0]  awid,
@@ -118,8 +132,8 @@ module edc_core #(
    input  logic            awready,
 
    // ---------------- AXI4 W tap ----------------
-   input  logic [63:0]     wdata_axi,    // 避免与 mbus wdata 重名
-   input  logic [7:0]      wstrb,
+   input  logic [AXI_DW-1:0] wdata_axi,    // 避免与 mbus wdata 重名
+   input  logic [AXI_DW/8-1:0] wstrb,
    input  logic            wlast,
    input  logic [WUW-1:0]  wuser,        // CHK 方向 (SIDE!=0)
    input  logic            wvalid,
@@ -147,7 +161,7 @@ module edc_core #(
 
    // ---------------- AXI4 R tap ----------------
    input  logic [IDW-1:0]  rid,
-   input  logic [63:0]     rdata_axi,    // 避免与 mbus rdata 重名
+   input  logic [AXI_DW-1:0] rdata_axi,    // 避免与 mbus rdata 重名
    input  logic [1:0]      rresp,
    input  logic            rlast,
    input  logic [RUW-1:0]  ruser,        // CHK 方向 (SIDE!=1)
@@ -171,13 +185,21 @@ module edc_core #(
    output logic           irq
 );
 
-`ifndef SYNTHESIS
+// synopsys translate_off
    initial begin
       if (SIDE > 2) begin
          $fatal(1, "edc_core: SIDE must be 0 (NIC-in master) / 1 (NIC-out slave) / 2 (observer)");
       end
    end
-`endif
+// synopsys translate_on
+
+// synopsys translate_off
+   initial begin
+      if ((AXI_DW != 32) && (AXI_DW != 64)) begin
+         $fatal(1, "edc_core: AXI_DW=%0d unsupported (32|64; nuclei300 EDC covers <=64b)", AXI_DW);
+      end
+   end
+// synopsys translate_on
 
    localparam integer NSITES = 18;
 
@@ -196,6 +218,35 @@ module edc_core #(
    logic [NSITES-1:0]    inj_force_q;
    logic [NSITES*64-1:0] inj_pos_q;
 
+   // =========================================================================
+   // 复位同步收编在本叶顶层 (规则 26): 下层不再自行例化 rst_sync.
+   //   u_axi_rst: axi_rstn 同步到 axi_clk -> axi_rstn_s, 给 CHK 站点引擎
+   //   u_mod_rst: mbus_rstn 同步到 axi_clk -> mod_rstn_s, 给 regfile mod 域
+   //              (故障保留: AXI 单独复位时 sticky/影子不清)
+   // =========================================================================
+   logic axi_rstn_s;
+   logic mod_rstn_s;
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_axi_rst (
+      .clk      (axi_clk   ),
+      .rstn     (axi_rstn  ),
+      .scan_mode(scan_mode ),
+      .rstn_s   (axi_rstn_s)
+   );
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_mod_rst (
+      .clk      (axi_clk   ),
+      .rstn     (mbus_rstn ),
+      .scan_mode(scan_mode ),
+      .rstn_s   (mod_rstn_s)
+   );
+
    edc_regfile #(
       .IDX   (IDX   ),
       .NSITES(NSITES)
@@ -210,6 +261,7 @@ module edc_core #(
       .rdata          (rdata          ),
       .rpar           (rpar           ),
       .mod_clk        (axi_clk        ),
+      .mod_rstn       (mod_rstn_s     ),
       .site_err       (site_err_g     ),
       .inj_en         (inj_en_dec     ),
       .inj_force      (inj_force_q    ),
@@ -236,11 +288,11 @@ module edc_core #(
    localparam integer EW_AL  = 5;   // DW=20 (aw/ar addr_lo)
    localparam integer EW_A0  = 4;   // DW=11 (attri0)
    localparam integer EW_A1  = 4;   // DW=10 (attri1)
-   localparam integer EW_WD  = 7;   // DW=64 (wdata)
-   localparam integer EW_WM  = 4;   // DW=8  (wstrb)
+   localparam integer EW_WD  = EDW; // DW=AXI_DW (wdata)
+   localparam integer EW_WM  = EMW; // DW=AXI_DW/8 (wstrb)
    localparam integer EW_WL  = 1;   // DW=1  (wlast)
    localparam integer EW_BAT = 3;   // DW=2  (bresp)
-   localparam integer EW_RD  = 7;   // DW=64 (rdata)
+   localparam integer EW_RD  = EDW; // DW=AXI_DW (rdata)
    localparam integer EW_RAT = 3;   // DW=3  ({rresp,rlast})
 
    generate
@@ -324,9 +376,9 @@ module edc_core #(
             .o_err      (                       )
          );
 
-         logic [63:0]     w_data_dat;
+         logic [AXI_DW-1:0] w_data_dat;
          assign w_data_dat = wdata_axi;
-         logic [7:0]      w_mask_dat;
+         logic [AXI_DW/8-1:0] w_mask_dat;
          assign w_mask_dat = wstrb;
          logic            w_last_dat;
          assign w_last_dat = wlast;
@@ -336,7 +388,7 @@ module edc_core #(
          logic [EW_WL-1:0] w_last_edc;
 
          edc_site #(
-            .DW  (64 ),
+            .DW  (AXI_DW),
             .MODE(0  )
          ) u_gen_w_data (
             .i_payload  (w_data_dat             ),
@@ -348,7 +400,7 @@ module edc_core #(
             .o_err      (                       )
          );
          edc_site #(
-            .DW  (8  ),
+            .DW  (AXI_DW/8),
             .MODE(0  )
          ) u_gen_w_mask (
             .i_payload  (w_mask_dat             ),
@@ -467,10 +519,13 @@ module edc_core #(
             .IDW (IDW ),
             .EWID(EWID),
             .AWUW(AWUW),
-            .WUW (WUW )
+            .WUW (WUW ),
+            .AXI_DW(AXI_DW),
+            .EDW (EDW ),
+            .EMW (EMW )
          ) u_edc_chk_req (
             .clk         (axi_clk                  ),
-            .rstn        (axi_rstn                 ),
+            .rstn        (axi_rstn_s               ),
             .awid        (awid                     ),
             .awaddr      (awaddr                   ),
             .awlen       (awlen                    ),
@@ -541,7 +596,7 @@ module edc_core #(
             .o_err      (                       )
          );
 
-         logic [63:0]    r_data_dat;
+         logic [AXI_DW-1:0] r_data_dat;
          assign r_data_dat = rdata_axi;
          logic [2:0]     r_at_dat;
          assign r_at_dat = {rresp, rlast};
@@ -553,7 +608,7 @@ module edc_core #(
          logic [EWID-1:0]   r_id_edc;
 
          edc_site #(
-            .DW  (64 ),
+            .DW  (AXI_DW),
             .MODE(0  )
          ) u_gen_r_data (
             .i_payload  (r_data_dat             ),
@@ -602,10 +657,12 @@ module edc_core #(
             .IDW (IDW),
             .EWID(EWID),
             .BUW (BUW),
-            .RUW (RUW)
+            .RUW (RUW),
+            .AXI_DW(AXI_DW),
+            .EDW (EDW )
          ) u_edc_chk_rsp (
             .clk         (axi_clk                      ),
-            .rstn        (axi_rstn                     ),
+            .rstn        (axi_rstn_s                   ),
             .bid         (bid                          ),
             .bresp       (bresp                        ),
             .buser       (buser                        ),

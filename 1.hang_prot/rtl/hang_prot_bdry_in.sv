@@ -4,10 +4,18 @@
 // v2.3: (1) DUAL-SLOT W SKID (hang_prot_wskid, shared with hang_prot_recover):
 //   TWO store-and-forward slots - slot k+1 fills while slot k replays ->
 //   ~100% write duty at the island boundary. wopen <= 2 (was <= 1).
-//   (2) MULTI-CLASS READ REMAP: N_AR_CLASS classes selected by
-//   m_arid[AR_CLS_LSB +: CLSW], per-class remapped id + per-class ar FIFO
-//   (same scheme as hang_prot_recover - main's masters are decoupled from
-//   each other at the island NIC).
+//   (2) MULTI-CLASS READ REMAP (v3.9, field-matched - IDENTICAL scheme and
+//   parameters to hang_prot_recover): N_DIST_CLS matched classes (+ one shared
+//   "others" class = N_DIST_CLS+1 in total, N_DIST_CLS >= 0; 0 = only
+//   "others", the CLS_*/DIST_CLS_* params are then unused); class k
+//   (0..N_DIST_CLS-1) = the master whose
+//   NIC master-number field m_arid[CLS_LSB +: CLS_W] equals
+//   DIST_CLS_MASTER_IDS[k]; every other master -> class N_DIST_CLS ("others").
+//   Per-class remapped id + per-class ar FIFO (main's masters are
+//   decoupled from each other at the island NIC). Replaces the v2.3
+//   bit-slice scheme (N_AR_CLASS / AR_CLS_LSB, retired): the field value
+//   may be any (non-contiguous, any-width) code, a master outside the table
+//   falls into "others" instead of aliasing onto a listed master.
 // v2 redesign (kept): ID REMAP + ID FIFOs; v2.1 (kept): AW/W store-and-
 //   forward - a partial W burst never enters the island.
 // (safety-island integration; ref: TI Hercules RM57Lx SCM ch.3 + the
@@ -33,8 +41,12 @@
 //
 // ============================ ID REMAP ====================================
 // Same scheme as the outbound unit, mirrored:
-//   AR -> AR_ID_REMAP | class (class = m_arid[AR_CLS_LSB +: CLSW];
-//   constraint: AR_ID_REMAP low CLSW bits = 0, elaboration-checked),
+//   AR -> DIST_CLS_REMAP_IDS[k] (class k matched) or AR_ID_REMAP (others);
+//   the FORWARDED id's low CLSW bits (CLSW = clog2(N_DIST_CLS+1)) carry the class:
+//     - AR_ID_REMAP low CLSW bits = N_DIST_CLS
+//     - DIST_CLS_REMAP_IDS[k] low CLSW bits = k
+//     - DIST_CLS_MASTER_IDS entries unique; CLS_LSB+CLS_W <= AXI_ID_W
+//   (all elaboration-checked),
 //   AW -> AW_ID_REMAP on the island side. The island NIC/SRAM answer with
 //   the remapped id in order; m_rid / m_bid are ALWAYS restored from the
 //   local per-class / aw ID FIFOs (normal AND block mode), so a live main
@@ -82,8 +94,7 @@
 //            and SRAM retire their transactions, o.t slots free, other
 //            island masters keep working. Also absorbed whenever the
 //            RETURNING CLASS occupancy is 0 (late/phantom, per-class
-//            rule - same as the outbound unit; N_AR_CLASS=1 degenerates
-//            to the total-otd rule).
+//            rule - same as the outbound unit).
 //     dummy: LEN-exact SLVERR R (per class, class = dum_cls two-tier
 //            pick: a CUT burst first - beats delivered, RLAST pending -
 //            then lowest pending; finishing the cut burst first keeps
@@ -149,13 +160,25 @@ module hang_prot_bdry_in #(
     parameter int                  OTD_MAX     = 8,             // FIFO depth
     parameter int                  OTD_W       = $clog2(OTD_MAX+1),
     parameter int                  AXI_ID_W    = 4,
-    parameter int                  N_AR_CLASS  = 1,             // read id classes
-    parameter int                  AR_CLS_LSB  = 0,             // m_arid class bits
-    parameter logic [AXI_ID_W-1:0] AR_ID_REMAP = '0,            // base: AR -> base|cls
+    // ---- field-matched AR classes (v3.9; same params as hang_prot_recover) --
+    // N_DIST_CLS = number of MATCHED classes (>= 0, excl. "others"; 0 = single
+    // "others" class, CLS_*/DIST_CLS_* unused). NIC master-number
+    // field = m_arid[CLS_LSB +: CLS_W] (CLS_LSB = width of any NIC field
+    // below it, CLS_W = field width). DIST_CLS_MASTER_IDS[k] = field value of
+    // the master in class k (CLS_W bits/entry, N_DIST_CLS entries, unique);
+    // DIST_CLS_REMAP_IDS[k] = its forwarded id (low CLSW bits = k).
+    parameter int                            N_DIST_CLS = 2,   // 0 = only "others"
+    parameter int                            CLS_LSB = 0,
+    parameter int                            CLS_W   = 2,
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*CLS_W-1:0]    DIST_CLS_MASTER_IDS = '0,
+    parameter logic [(N_DIST_CLS > 0 ? N_DIST_CLS : 1)*AXI_ID_W-1:0] DIST_CLS_REMAP_IDS  = '0,
+    parameter logic [AXI_ID_W-1:0] AR_ID_REMAP = '0,            // OTHER masters -> this
     parameter logic [AXI_ID_W-1:0] AW_ID_REMAP = '0,
     parameter int                  AXI_ADDR_W  = 32,
     parameter int                  AXI_DATA_W  = 32,
     parameter int                  STRB_W      = AXI_DATA_W/8,
+    parameter int                  AWUSER_W    = 1,
+    parameter int                  WUSER_W     = 1,
     parameter int                  WSKID_BEATS = 16,            // max ARLEN+1 per burst
     parameter int                  NSLOT       = 2              // W skid ring depth
                                                                  // (v2.4; <= OTD_MAX)
@@ -186,9 +209,16 @@ module hang_prot_bdry_in #(
     input  logic [7:0]            m_awlen,
     input  logic [2:0]            m_awsize,
     input  logic [1:0]            m_awburst,
+    input  logic [2:0]            m_awprot,
+    input  logic                 m_awlock,
+    input  logic [3:0]            m_awcache,
+    input  logic [3:0]            m_awqos,
+    input  logic [3:0]            m_awregion,
+    input  logic [AWUSER_W-1:0]   m_awuser,
     input  logic                  m_wvalid,
     output logic                  m_wready,
     input  logic                  m_wlast,
+    input  logic [WUSER_W-1:0]    m_wuser,
     input  logic [AXI_DATA_W-1:0] m_wdata,
     input  logic [STRB_W-1:0]     m_wstrb,
     output logic                  m_bvalid,     // to main (dummy or pass-through)
@@ -212,8 +242,15 @@ module hang_prot_bdry_in #(
     output logic [7:0]            s_awlen,
     output logic [2:0]            s_awsize,
     output logic [1:0]            s_awburst,
+    output logic [2:0]            s_awprot,
+    output logic                 s_awlock,
+    output logic [3:0]            s_awcache,
+    output logic [3:0]            s_awqos,
+    output logic [3:0]            s_awregion,
+    output logic [AWUSER_W-1:0]   s_awuser,
     output logic                  s_wvalid,     // replayed W burst
     output logic                  s_wlast,
+    output logic [WUSER_W-1:0]    s_wuser,
     output logic [AXI_DATA_W-1:0] s_wdata,
     output logic [STRB_W-1:0]     s_wstrb,
     input  logic                  s_wready,
@@ -242,29 +279,48 @@ module hang_prot_bdry_in #(
 
     localparam int PTR_W  = (OTD_MAX <= 2) ? 1 : $clog2(OTD_MAX);
     localparam int BEAT_W = 9;
-    // class field width (N_AR_CLASS = 1 -> degenerate 1-bit, always class 0)
-    localparam int CLSW   = (N_AR_CLASS <= 2) ? 1 : $clog2(N_AR_CLASS);
+    // classes: k = matched master k (0..N_DIST_CLS-1), N_DIST_CLS = "others";
+    //   N_CLS = N_DIST_CLS+1 total, class field width CLSW = clog2(N_CLS)
+    //   (N_CLS = 2 -> 1 bit)
+    localparam int N_CLS  = N_DIST_CLS + 1;
+    localparam int CLSW   = (N_CLS <= 2) ? 1 : $clog2(N_CLS);
 
-`ifndef SYNTHESIS
+// synopsys translate_off
     initial begin : param_chk
-        if ((N_AR_CLASS & (N_AR_CLASS-1)) != 0 || N_AR_CLASS < 1) begin
-            $error("[hang_prot_bdry_in] N_AR_CLASS must be a power of 2 >= 1 (got %0d)",
-                   N_AR_CLASS);
+        if (N_DIST_CLS < 0) begin
+            $error("[hang_prot_bdry_in] N_DIST_CLS must be >= 0 (got %0d)", N_DIST_CLS);
         end
         if (CLSW > AXI_ID_W) begin
             $error("[hang_prot_bdry_in] class field (%0d bits) wider than AXI_ID_W (%0d)",
                    CLSW, AXI_ID_W);
         end
-        if ((N_AR_CLASS > 1) && (AR_ID_REMAP[CLSW-1:0] != '0)) begin
-            $error("[hang_prot_bdry_in] AR_ID_REMAP low %0d bit(s) must be 0 (class field)",
-                   CLSW);
+        if ((N_DIST_CLS > 0) && ((CLS_W < 1) || (CLS_LSB + CLS_W > AXI_ID_W))) begin
+            $error("[hang_prot_bdry_in] NIC master-number field [CLS_LSB=%0d +: CLS_W=%0d] outside m_arid (%0d bits)",
+                   CLS_LSB, CLS_W, AXI_ID_W);
+        end
+        if (AR_ID_REMAP[CLSW-1:0] != N_DIST_CLS[CLSW-1:0]) begin
+            $error("[hang_prot_bdry_in] AR_ID_REMAP low %0d bit(s) must equal N_DIST_CLS=%0d (others class field)",
+                   CLSW, N_DIST_CLS);
+        end
+        for (int k = 0; k < N_DIST_CLS; k++) begin
+            if (DIST_CLS_REMAP_IDS[k*AXI_ID_W +: CLSW] != k[CLSW-1:0]) begin
+                $error("[hang_prot_bdry_in] DIST_CLS_REMAP_IDS[%0d] low %0d bit(s) must equal %0d (class field; forwarded ids must stay distinct)",
+                       k, CLSW, k);
+            end
+            for (int j = 0; j < k; j++) begin
+                if (DIST_CLS_MASTER_IDS[k*CLS_W +: CLS_W]
+                            == DIST_CLS_MASTER_IDS[j*CLS_W +: CLS_W]) begin
+                    $error("[hang_prot_bdry_in] DIST_CLS_MASTER_IDS[%0d] == [%0d] (duplicate NIC master number)",
+                           k, j);
+                end
+            end
         end
         if ((NSLOT < 2) || (NSLOT > OTD_MAX)) begin
             $error("[hang_prot_bdry_in] NSLOT must be 2..OTD_MAX (got %0d, OTD_MAX=%0d)",
                    NSLOT, OTD_MAX);
         end
     end
-`endif
+// synopsys translate_on
 
     function automatic logic [PTR_W-1:0] ptr_inc
         (input logic [PTR_W-1:0] p);
@@ -290,17 +346,17 @@ module hang_prot_bdry_in #(
         logic                                          qrel_pend;    // quiesce_rel seen, waiting for safe exit
         logic                                          qrel_pend_n;  // inverted duplicate rail
         // per-class AR FIFO: payload + pointers/occupancy/beat count (+ dups)
-        logic [N_AR_CLASS-1:0][OTD_MAX-1:0][AXI_ID_W-1:0] ar_id;
-        logic [N_AR_CLASS-1:0][OTD_MAX-1:0][7:0]          ar_len;
-        logic [N_AR_CLASS-1:0][OTD_MAX-1:0]               ar_par;
-        logic [N_AR_CLASS-1:0][PTR_W-1:0]                 ar_wr;
-        logic [N_AR_CLASS-1:0][PTR_W-1:0]                 ar_wr_n;
-        logic [N_AR_CLASS-1:0][PTR_W-1:0]                 ar_rp;
-        logic [N_AR_CLASS-1:0][PTR_W-1:0]                 ar_rp_n;
-        logic [N_AR_CLASS-1:0][OTD_W-1:0]                 ar_occ;
-        logic [N_AR_CLASS-1:0][OTD_W-1:0]                 ar_occ_n;
-        logic [N_AR_CLASS-1:0][BEAT_W-1:0]                rbeat_cnt;
-        logic [N_AR_CLASS-1:0][BEAT_W-1:0]                rbeat_cnt_n;
+        logic [N_CLS-1:0][OTD_MAX-1:0][AXI_ID_W-1:0]   ar_id;
+        logic [N_CLS-1:0][OTD_MAX-1:0][7:0]            ar_len;
+        logic [N_CLS-1:0][OTD_MAX-1:0]                 ar_par;
+        logic [N_CLS-1:0][PTR_W-1  :0]                 ar_wr;
+        logic [N_CLS-1:0][PTR_W-1  :0]                 ar_wr_n;
+        logic [N_CLS-1:0][PTR_W-1  :0]                 ar_rp;
+        logic [N_CLS-1:0][PTR_W-1  :0]                 ar_rp_n;
+        logic [N_CLS-1:0][OTD_W-1  :0]                 ar_occ;
+        logic [N_CLS-1:0][OTD_W-1  :0]                 ar_occ_n;
+        logic [N_CLS-1:0][BEAT_W-1 :0]                 rbeat_cnt;
+        logic [N_CLS-1:0][BEAT_W-1 :0]                 rbeat_cnt_n;
         // AW FIFO: payload + pointers + B-owed ledger (+ dups)
         logic [OTD_MAX-1:0][AXI_ID_W-1:0]              aw_id;
         logic [OTD_MAX-1:0]                            aw_par;
@@ -405,14 +461,32 @@ module hang_prot_bdry_in #(
     //   dummy B gated on (bdum_owed != 0). Cleared at quiesce_exit.
     //--------------------------------------------------------------------------
 
-    // request class (from the main id bits; 0 when single-class)
-    logic [CLSW-1:0] m_arcls;
-    assign m_arcls = (N_AR_CLASS == 1) ? '0 : m_arid[AR_CLS_LSB +: CLSW];
+    // request class (v3.9 field match, same as hang_prot_recover): the NIC
+    //   master-number field m_arid[CLS_LSB +: CLS_W] vs DIST_CLS_MASTER_IDS[k];
+    //   hit -> class k + that master's forwarded id DIST_CLS_REMAP_IDS[k];
+    //   miss -> class N_DIST_CLS ("others", shared AR_ID_REMAP). Table entries
+    //   are unique (elaboration-checked) so the descending loop never
+    //   arbitrates.
+    logic [CLSW-1:0]     m_arcls;
+    logic                mcore_hit;
+    logic [AXI_ID_W-1:0] mcore_fwd_id;
+    always_comb begin : mcore_match
+        mcore_hit    = 1'b0;
+        m_arcls      = N_DIST_CLS[CLSW-1:0];
+        mcore_fwd_id = AR_ID_REMAP;
+        for (int k = N_DIST_CLS-1; k >= 0; k--) begin
+            if (m_arid[CLS_LSB +: CLS_W] == DIST_CLS_MASTER_IDS[k*CLS_W +: CLS_W]) begin
+                mcore_hit    = 1'b1;
+                m_arcls      = k[CLSW-1:0];
+                mcore_fwd_id = DIST_CLS_REMAP_IDS[k*AXI_ID_W +: AXI_ID_W];
+            end
+        end
+    end
 
     // response class: normal = low bits of the returned (remapped) id;
     // block = the dummy engine's pick (lowest pending class).
     logic [CLSW-1:0] s_rcls;
-    assign s_rcls = (N_AR_CLASS == 1) ? '0 : s_rid[0 +: CLSW];
+    assign s_rcls = (N_CLS == 1) ? '0 : s_rid[0 +: CLSW];   // N_DIST_CLS=0: single class, no routing field
 
     // per-class occupancy COUNTERS (not pointer equality!): a class may fill
     //   the whole global OTD_MAX budget -> full ring -> wr == rp, which a
@@ -428,16 +502,16 @@ module hang_prot_bdry_in #(
     //   stream; quarantine: tier-2 finishes it before any other class
     //   starts). No AR is accepted in quarantine (m_arready = 0), so a
     //   lower class cannot appear mid-burst - the pick is stable until the
-    //   cut burst pops. N_AR_CLASS = 1 degenerates (both tiers pick 0).
+    //   cut burst pops.
     always_comb begin : dum_cls_sel
         dum_cls = '0;
-        for (int c = N_AR_CLASS-1; c >= 0; c--) begin
+        for (int c = N_CLS-1; c >= 0; c--) begin
             if (r.ar_occ[c] != '0) begin
                 dum_cls = c[CLSW-1:0];
             end
         end
         // tier 2 overrides: finish the CUT burst first
-        for (int c = N_AR_CLASS-1; c >= 0; c--) begin
+        for (int c = N_CLS-1; c >= 0; c--) begin
             if ((r.ar_occ[c] != '0) && (r.rbeat_cnt[c] != '0)) begin
                 dum_cls = c[CLSW-1:0];
             end
@@ -581,7 +655,7 @@ module hang_prot_bdry_in #(
     always_comb begin : ar_fifo_chk
         ar_ent_err = 1'b0;
         ar_dup_err = 1'b0;
-        for (int c = 0; c < N_AR_CLASS; c++) begin
+        for (int c = 0; c < N_CLS; c++) begin
             if (r.ar_occ[c] != '0) begin
                 if (((^r.ar_id [c][r.ar_rp[c]]) ^ (^r.ar_len[c][r.ar_rp[c]]))
                         != r.ar_par[c][r.ar_rp[c]]) begin
@@ -650,15 +724,19 @@ module hang_prot_bdry_in #(
 
     logic [AXI_ID_W-1:0] s_arid_w;
     always_comb begin : s_arid_mux
-        s_arid_w           = AR_ID_REMAP;
-        s_arid_w[CLSW-1:0] = m_arcls;     // base id (low bits 0) | class
+        // matched master -> ITS forwarded id, everyone else -> shared
+        //   AR_ID_REMAP; the low CLSW routing field is rewritten from the
+        //   class by construction (elaboration-checked to agree anyway), so
+        //   the s_rid class decode can never desync from the FIFO push.
+        s_arid_w           = mcore_hit ? mcore_fwd_id : AR_ID_REMAP;
+        s_arid_w[CLSW-1:0] = m_arcls;
     end
     assign s_arid = s_arid_w;
 
     // R phantom gating is PER CLASS (v2.3): ar_occ[s_rcls]==0 proves no
     //   transaction of the RETURNING class awaits -> absorb, even if
-    //   another class still has real outstanding. N_AR_CLASS=1 degenerates
-    //   to the v2 total-otd gate. B stays on the total aw ledger.
+    //   another class still has real outstanding. B stays on the total aw
+    //   ledger.
     assign s_rready  = (r.blk_r || (r.ar_occ[s_rcls] == '0)) ? 1'b1 : m_rready;
     assign s_bready  = (r.blk_r || (wr_otd_mon       == '0)) ? 1'b1 : m_bready;
 
@@ -674,50 +752,66 @@ module hang_prot_bdry_in #(
     logic wsk_fault_n;
 
     hang_prot_wskid #(
-        .AXI_ADDR_W   (AXI_ADDR_W          ),
-        .AXI_DATA_W   (AXI_DATA_W          ),
-        .STRB_W       (STRB_W              ),
-        .WSKID_BEATS  (WSKID_BEATS         ),
-        .NSLOT        (NSLOT               )
+        .AXI_ADDR_W (AXI_ADDR_W ),
+        .AXI_DATA_W (AXI_DATA_W ),
+        .STRB_W     (STRB_W     ),
+        .AWUSER_W   (AWUSER_W   ),
+        .WUSER_W    (WUSER_W    ),
+        .WSKID_BEATS(WSKID_BEATS),
+        .NSLOT      (NSLOT      )
     ) u_hang_prot_wskid (
-        .clk          (clk                 ),
-        .rstn         (rstn                ),
-        .mode         (r.blk_r             ),
-        .force_clear  (quiesce_exit        ),
-        .aw_allow     (wr_otd_mon < OTD_MAX),
+        .clk        (clk                 ),
+        .rstn       (rstn                ),
+        .mode       (r.blk_r             ),
+        .force_clear(quiesce_exit        ),
+        .aw_allow   (wr_otd_mon < OTD_MAX),
 
-        .m_awvalid    (m_awvalid           ),
-        .m_awready    (m_awready           ),
-        .m_awaddr     (m_awaddr            ),
-        .m_awlen      (m_awlen             ),
-        .m_awsize     (m_awsize            ),
-        .m_awburst    (m_awburst           ),
-        .m_wvalid     (m_wvalid            ),
-        .m_wready     (m_wready            ),
-        .m_wdata      (m_wdata             ),
-        .m_wstrb      (m_wstrb             ),
-        .m_wlast      (m_wlast             ),
+        .m_awvalid (m_awvalid ),
+        .m_awready (m_awready ),
+        .m_awaddr  (m_awaddr  ),
+        .m_awlen   (m_awlen   ),
+        .m_awsize  (m_awsize  ),
+        .m_awburst (m_awburst ),
+        .m_awprot  (m_awprot  ),
+        .m_awlock  (m_awlock  ),
+        .m_awcache (m_awcache ),
+        .m_awqos   (m_awqos   ),
+        .m_awregion(m_awregion),
+        .m_awuser  (m_awuser  ),
+        .m_wvalid  (m_wvalid  ),
+        .m_wready  (m_wready  ),
+        .m_wdata   (m_wdata   ),
+        .m_wstrb   (m_wstrb   ),
+        .m_wlast   (m_wlast   ),
+        .m_wuser   (m_wuser   ),
 
-        .s_awvalid    (s_awvalid           ),
-        .s_awready    (s_awready           ),
-        .s_awaddr     (s_awaddr            ),
-        .s_awlen      (s_awlen             ),
-        .s_awsize     (s_awsize            ),
-        .s_awburst    (s_awburst           ),
-        .s_wvalid     (s_wvalid            ),
-        .s_wlast      (s_wlast             ),
-        .s_wdata      (s_wdata             ),
-        .s_wstrb      (s_wstrb             ),
-        .s_wready     (s_wready            ),
+        .s_awvalid (s_awvalid ),
+        .s_awready (s_awready ),
+        .s_awaddr  (s_awaddr  ),
+        .s_awlen   (s_awlen   ),
+        .s_awsize  (s_awsize  ),
+        .s_awburst (s_awburst ),
+        .s_awprot  (s_awprot  ),
+        .s_awlock  (s_awlock  ),
+        .s_awcache (s_awcache ),
+        .s_awqos   (s_awqos   ),
+        .s_awregion(s_awregion),
+        .s_awuser  (s_awuser  ),
+        .s_wvalid  (s_wvalid  ),
+        .s_wlast   (s_wlast   ),
+        .s_wuser   (s_wuser   ),
+        .s_wdata   (s_wdata   ),
+        .s_wstrb   (s_wstrb   ),
+        .s_wready  (s_wready  ),
 
-        .all_free     (wsk_all_free        ),
-        .any_replay   (                    ),
-        .quiesce_ok   (wsk_quiesce_ok      ),
-        .sk_onehot    (sk_onehot           ),
-        .sk_integrity (sk_integrity        ),  // live entry condition (FuSa v3.1)
-        .sk_fault     (wsk_fault           ),
-        .sk_fault_n   (wsk_fault_n         ),
-        .slot_st      (wsk_slot_st         )
+        .all_free    (wsk_all_free  ),
+        .any_replay  (),
+        .quiesce_ok  (wsk_quiesce_ok),
+        .sk_onehot   (sk_onehot     ),
+        .sk_integrity(sk_integrity  ),  // live entry condition (FuSa v3.1)
+        .sk_fault    (wsk_fault     ),
+        .sk_fault_n  (wsk_fault_n   ),
+        .slot_st     (wsk_slot_st   )
     );
 
     //--------------------------------------------------------------------------

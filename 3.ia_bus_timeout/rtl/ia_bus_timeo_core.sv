@@ -24,9 +24,9 @@
 //   (路由到不同 ESM 组: 坏掉的监视器绝不与真实超时不可区分)
 //
 //   复位: mbus_rstn (mbus_clk 域) 与 axi_rstn (axi_clk 域) 必须在系统
-//   级同时断言 (CDC 握手对齐, 见 regfile 头注释); 均为异步低有效;
-//   mon 内部 rst_sync 做异步断言/同步释放, scan_mode 逐层拉到本顶层
-//   (DFT 旁路, 8.reset_checker 惯例)。
+//   级同时断言 (CDC 握手对齐, 见 regfile 头注释); 均为异步低有效。
+//   mbus_rstn 裸用; axi_rstn 在本顶层经 rst_sync 生成 axi_rstn_s, 同时
+//   下发 regfile 功能域与 mon (规则 26), scan_mode 为 DFT 旁路。
 //============================================================================
 module ia_bus_timeo_core #(
     parameter int          OTD_MAX        = 8,       // outstanding saturation
@@ -48,8 +48,8 @@ module ia_bus_timeo_core #(
 
     // ---- monitor clock / reset ---------------------------------------------
     input  logic            axi_clk,
-    input  logic            axi_rstn,       // async, active-low
-    input  logic            scan_mode,      // DFT: bypass monitor reset sync
+    input  logic            axi_rstn,       // raw async, active-low
+    input  logic            scan_mode,      // DFT: bypass axi reset sync
 
     // ---- AXI4 observation only (axi_clk domain, scalar taps) ---------------
     input  logic            axi_arvalid,    // read address request
@@ -93,6 +93,34 @@ module ia_bus_timeo_core #(
     logic [6:0]               fu_src;
 
     //--------------------------------------------------------------------------
+    // axi_clk 域复位同步 (规则 26): 复位同步收编在 top, 下层不再自行例化 rst_sync.
+    //   u_axi_rst    : axi_rstn 同步到 axi_clk -> axi_rstn_s, 给 mon
+    //   u_axi_reg_rst: mbus_rstn 同步到 axi_clk -> axi_reg_rstn, 给 regfile
+    //                  axi 域 (故障保留: axi 域单独复位时 sticky/影子不清)
+    //--------------------------------------------------------------------------
+    logic axi_rstn_s;
+    logic axi_reg_rstn;
+    rst_sync #(
+       .SYNC_LVL_NUM(3   ),
+       .DEF_VAL     (1'b0)
+    ) u_axi_rst (
+       .clk      (axi_clk   ),
+       .rstn     (axi_rstn  ),
+       .scan_mode(scan_mode ),
+       .rstn_s   (axi_rstn_s)
+    );
+
+    rst_sync #(
+       .SYNC_LVL_NUM(3   ),
+       .DEF_VAL     (1'b0)
+    ) u_axi_reg_rst (
+       .clk      (axi_clk     ),
+       .rstn     (mbus_rstn   ),
+       .scan_mode(scan_mode   ),
+       .rstn_s   (axi_reg_rstn)
+    );
+
+    //--------------------------------------------------------------------------
     // Register file (mbus_clk <-> axi_clk CDC inside)
     //--------------------------------------------------------------------------
     ia_bus_timeo_regfile #(
@@ -113,7 +141,7 @@ module ia_bus_timeo_core #(
         .rpar              (rpar              ),
 
         .aclk              (axi_clk           ),
-        .rstn              (axi_rstn          ),
+        .rstn              (axi_reg_rstn      ),
 
         .cfg_wr            (cfg_wr            ),
         .cfg_key           (cfg_key           ),
@@ -159,9 +187,7 @@ module ia_bus_timeo_core #(
         .REQ2RESP_RST  (REQ2RESP_RST  )
     ) u_ia_bus_timeo_mon (
         .clk               (axi_clk           ),
-        .rstn              (axi_rstn          ),
-        .scan_mode         (scan_mode         ),
-
+        .rstn              (axi_rstn_s        ),
         .axi_arvalid       (axi_arvalid       ),
         .axi_arready       (axi_arready       ),
         .axi_rvalid        (axi_rvalid        ),

@@ -59,12 +59,12 @@ module tb_edc_top;
    // ---------------- 时钟 / 复位 ----------------
    reg apb_clk, mbus_clk, m_clk, s_clk;
    reg mbus_run;
-   reg apb_rstn, mbus_rstn, m_rstn, s_rstn;
+   reg apb_rstn, mbus_rstn, m_rstn, s_rstn, scan_mode;
 
    initial begin
       apb_clk = 0;
       mbus_run = 1;
-      apb_rstn = 0; mbus_rstn = 0; m_rstn = 0; s_rstn = 0;
+      apb_rstn = 0; mbus_rstn = 0; m_rstn = 0; s_rstn = 0; scan_mode = 0;
    end
    always #10 apb_clk = ~apb_clk;                        // 50MHz
    initial mbus_clk = 0;
@@ -76,6 +76,7 @@ module tb_edc_top;
 
    // ---------------- 计数 / 错误汇总 ----------------
    integer errors;
+   integer checks;
    reg     slverr_seen;
    reg     hang_evt_seen;
    reg     rpar_evt_seen;
@@ -87,6 +88,7 @@ module tb_edc_top;
 
    task automatic check(input cond, input [8*72:1] msg);
       begin
+         checks = checks + 1;
          if (cond !== 1'b1) begin
             $display("ERR: %0s at %0t", msg, $time);
             errors = errors + 1;
@@ -777,6 +779,7 @@ module tb_edc_top;
       .rpar           (rp0            ),
       .axi_clk        (m_clk          ),
       .axi_rstn       (m_rstn         ),
+      .scan_mode      (scan_mode      ),
       // 观测 (SIDE=2): 全通道 CHK, user_o 恒 0 不接
       .awid           (x0_awid        ),
       .awaddr         (x0_awaddr      ),
@@ -848,6 +851,7 @@ module tb_edc_top;
       .rpar           (rp1            ),
       .axi_clk        (s_clk          ),
       .axi_rstn       (s_rstn         ),
+      .scan_mode      (scan_mode      ),
       // 观测 (SIDE=2): 全通道 CHK, user_o 恒 0 不接
       .awid           (x1_awid        ),
       .awaddr         (x1_awaddr      ),
@@ -1016,7 +1020,7 @@ module tb_edc_top;
    reg [31:0] rdata;
 
    initial begin
-      errors = 0; slverr_seen = 0; hang_evt_seen = 0; rpar_evt_seen = 0;
+      errors = 0; checks = 0; slverr_seen = 0; hang_evt_seen = 0; rpar_evt_seen = 0;
       rpar_evt_cnt = 0; or_bad = 0; rail_bad = 0; mbus_ce_cnt = 0;
       rail_chk_en = 1;
       rpar_cor_en = 0; rlog_en = 0; rlog_clr = 0;
@@ -1024,6 +1028,8 @@ module tb_edc_top;
       rdata_cor_mask0 = 0; ruser_cor_mask0 = 0;
 
       repeat (5) @(negedge apb_clk);
+      // P0: scan_mode 翻转 (复位保持期内, 规则 19: 旁路 rst_sync 不影响功能, 覆盖其 toggle)
+      scan_mode = 1; repeat (3) @(negedge apb_clk); scan_mode = 0; repeat (2) @(negedge apb_clk);
       apb_rstn = 1; mbus_rstn = 1; m_rstn = 1; s_rstn = 1;
       repeat (10) @(negedge apb_clk);
 
@@ -3246,6 +3252,100 @@ module tb_edc_top;
          check(rdata === 32'h0, "T30: mask untouched by selftest");
       end
 
+      // -------- T30b: ESMTEST wrap 双副本注错 --------
+      begin : t30b
+         force u_agg.u_w_esmtst.r.flt_q_n = 1'b0;
+         @(posedge mbus_clk);
+         release u_agg.u_w_esmtst.r.flt_q_n;
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0081, "T30b: ESMTEST dup -> PERR5");
+         apb_wr(16'h0218, 32'h0000_0080);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T30b: ESMTEST dup clean");
+      end
+
+      // -------- T31: 在线状态源与 REG_SELFTEST 同拍 (wr&&selftest) --------
+      // 四个状态 wrap 的 wr 可由 core 输入轨独立置起; 该组合是可达功能分支,
+      // 不得用 reg_wrap 的地址互斥排除族误排.
+      begin : t31
+         // STA_ERR / PERR0
+         force dut0_esm_err = 1'b1;
+         force dut0_esm_err_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         apb_wr(16'h021C, 32'h0000_001A);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0005, "T31: live ERR + REG_SELFTEST");
+         release dut0_esm_err;
+         release dut0_esm_err_n;
+         apb_wr(16'h0200, 32'h0000_0001);
+         apb_wr(16'h0218, 32'h0000_0004);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0200, rdata);
+         check(rdata === 32'h0, "T31: ERR state clean");
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T31: PERR0 clean");
+
+         // STA_FAULT / PERR1
+         force dut0_esm_fault = 1'b1;
+         force dut0_esm_fault_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         apb_wr(16'h021C, 32'h0000_011A);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0009, "T31: live FAULT + REG_SELFTEST");
+         release dut0_esm_fault;
+         release dut0_esm_fault_n;
+         apb_wr(16'h0204, 32'h0000_0001);
+         apb_wr(16'h0218, 32'h0000_0008);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0204, rdata);
+         check(rdata === 32'h0, "T31: FAULT state clean");
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T31: PERR1 clean");
+
+         // STA_PARCORE / PERR3
+         force dut0_reg_par_fault = 1'b1;
+         force dut0_reg_par_fault_n = 1'b0;
+         repeat (2) @(negedge mbus_clk);
+         apb_wr(16'h021C, 32'h0000_031A);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0021, "T31: live PARCORE + REG_SELFTEST");
+         release dut0_reg_par_fault;
+         release dut0_reg_par_fault_n;
+         apb_wr(16'h0210, 32'h0000_0001);
+         apb_wr(16'h0218, 32'h0000_0020);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0210, rdata);
+         check(rdata === 32'h0, "T31: PARCORE state clean");
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T31: PERR3 clean");
+
+         // STA_RAIL / PERR4 (互补违例窗口旁路 TB 轨监视器)
+         rail_chk_en = 0;
+         force dut0_esm_err_n = dut0_esm_err;
+         repeat (2) @(negedge mbus_clk);
+         apb_wr(16'h021C, 32'h0000_041A);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0041, "T31: live RAIL + REG_SELFTEST");
+         release dut0_esm_err_n;
+         rail_chk_en = 1;
+         apb_wr(16'h0220, 32'h0000_0001);
+         apb_wr(16'h0218, 32'h0000_0040);
+         repeat (2) @(negedge mbus_clk);
+         apb_rd(16'h0220, rdata);
+         check(rdata === 32'h0, "T31: RAIL state clean");
+         apb_rd(16'h0218, rdata);
+         check(rdata === 32'h0000_0002, "T31: PERR4 clean");
+         check(agg_esm_err === 1'b0 && agg_esm_fault === 1'b0
+               && agg_reg_par_fault === 1'b0 && agg_rail_fault === 1'b0,
+               "T31: aggregate rails final clean");
+      end
+
       // -------- 收尾: 中途复位脉冲 (覆盖率 + 复位自愈) --------
       begin : midreset
          integer rnd;
@@ -3294,7 +3394,7 @@ module tb_edc_top;
       // ---------------- 结论 ----------------
       repeat (10) @(negedge apb_clk);
       if (or_bad === 1'b0 && rail_bad === 1'b0 && errors == 0) begin
-         $display("TB PASS: all tests OK");
+         $display("TB PASS: all tests OK, %0d checks", checks);
       end else begin
          if (or_bad) $display("ERR: OR-bus violation");
          if (rail_bad) $display("ERR: dual-rail violation");

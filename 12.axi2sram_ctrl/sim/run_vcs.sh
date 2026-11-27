@@ -37,9 +37,8 @@ cat > "$OUT/cov.cfg" <<EOF
 +tree $TOP.dut
 EOF
 
-# 不收 cond: parity/XOR 树让条件覆盖向量爆到 2^N 被 VCS 截断(VCM-TRIMVEC),
-# 分数无意义且拖慢仿真. 需要时自行加回 "+cond"
-CM="-cm line+fsm+tgl+branch"
+# 五指标全收; cond 的向量裁剪/残余洞由 raw+excluded 双报告审计, 不再关闭.
+CM="-cm line+cond+fsm+tgl+branch"
 
 if [ "$1" = "verdi" ]; then
    if [ ! -f "$OUT/$TOP.fsdb" ]; then echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; fi
@@ -64,6 +63,60 @@ if [ "$1" = "cov" ]; then
    exec verdi -cov -covdir "$OUT/simv.vdb" "$@"
 fi
 
+# ---------------------------------------------------------------------------
+# proto 模式: tb_axi2sram_proto (AXI 协议 / 随机并发 / 边界 补充验证)
+#   bash run_vcs.sh proto                      # 基线 DEPTH=256
+#   PROTO_TAG=d32k PROTO_PV="DEPTH=32768" bash run_vcs.sh proto
+#   PROTO_TAG=fast PROTO_PV="AXI_HP=2" bash run_vcs.sh proto      # axi 快于 mbus
+#   PROTO_TAG=slow PROTO_PV="AXI_HP=60" bash run_vcs.sh proto     # axi 慢于 mbus
+#   bash run_vcs.sh perf                       # 性能测试 (tb_axi2sram_perf, 输出 PERF 行)
+#   PROTO_PV 为空格分隔的顶层参数覆盖 (DEPTH/AXI_HP/MBUS_HP/NTX/SEED); WAVES=1 带 fsdb
+# ---------------------------------------------------------------------------
+if [ "$1" = "proto" ] || [ "$1" = "perf" ]; then
+   PMODE="$1"
+   PTAG="${PROTO_TAG:-base}"
+   PTOP=tb_axi2sram_$PMODE
+   PUP=$(echo "$PMODE" | tr a-z A-Z)
+   POUT="$SIM/obj_vcs/${PMODE}_$PTAG"
+   mkdir -p "$POUT"
+   sed "s#tb_axi2sram_ctrl.sv#tb_axi2sram_$PMODE.sv#" "$OUT/filelist.f" > "$POUT/filelist.f"
+   printf -- "-tree %s\n+tree %s.dut\n" "$PTOP" "$PTOP" > "$POUT/cov.cfg"
+   PV=""
+   for kv in ${PROTO_PV:-}; do
+      PV="$PV -pvalue+$PTOP.$kv"
+   done
+   WDEF=""
+   if [ "${WAVES:-0}" = "1" ]; then WDEF="+define+FSDB"; fi
+   echo "== [$PMODE:$PTAG] vcs compile (params: ${PROTO_PV:-default}) =="
+   rm -rf "$POUT/simv.vdb"
+   vcs -full64 -sverilog +v2k \
+       -timescale=1ns/1ps \
+       -debug_access+all -kdb -lca \
+       $CM -cm_hier "$POUT/cov.cfg" -cm_dir "$POUT/simv.vdb" \
+       $WDEF $PV \
+       -f "$POUT/filelist.f" -top $PTOP \
+       -o "$POUT/simv" -Mdir="$POUT/csrc" \
+       -l "$POUT/compile.log"
+   echo "== [$PMODE:$PTAG] simulate =="
+   cd "$POUT"
+   ./simv $CM -cm_name ${PMODE}_$PTAG -l sim.log
+   if grep -qE "FAIL|failed at|Error-" sim.log; then
+      echo "ERROR: [$PMODE:$PTAG] failures in sim.log:"
+      grep -nE "FAIL|failed at|Error-" sim.log | head -60
+      exit 1
+   fi
+   if ! grep -q "^$PUP PASS" sim.log; then
+      echo "ERROR: [$PMODE:$PTAG] $PUP PASS line not found (hang/crash?)"
+      tail -30 sim.log || true
+      exit 1
+   fi
+   grep "^$PUP PASS" sim.log
+   grep -E "INFO|^PERF PF" sim.log | head -200
+   urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
+   grep -A 6 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || true
+   exit 0
+fi
+
 echo "== vcs compile (with coverage) =="
 rm -rf "$OUT/simv.vdb"
 vcs -full64 -sverilog +v2k \
@@ -80,9 +133,15 @@ cd "$OUT"
 ./simv $CM -cm_name run1 -l sim.log
 
 # ---- 结果自检 (SVA/TB $display 不进退出码, 必须查文本) ----
-if grep -qE "FAIL|RAIL-FAIL|SEU-FI illegal|failed at|Error-" sim.log; then
+if grep -qE "FAIL|RAIL-FAIL|failed at|Error-" sim.log; then
    echo "ERROR: failures found in sim.log:"
-   grep -nE "FAIL|RAIL-FAIL|SEU-FI illegal|failed at|Error-" sim.log | head -40
+   grep -nE "FAIL|RAIL-FAIL|failed at|Error-" sim.log | head -40
+   exit 1
+fi
+# T25h 故意打四个 SEU 背门非法目标; 数量必须精确为 4, 其他用例误打会失败.
+seu_illegal_n=$(grep -c "SEU-FI illegal target" sim.log || true)
+if [ "$seu_illegal_n" -ne 4 ]; then
+   echo "ERROR: expected 4 intentional SEU illegal-target diagnostics, got $seu_illegal_n"
    exit 1
 fi
 if ! grep -q "^TB PASS: all checks passed" sim.log; then

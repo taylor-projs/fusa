@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" width="1200" height="780" font-family="Arial, Helvetica, sans-serif" font-size="13">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#37474f"/></marker>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#c62828"/></marker>
+    <marker id="arg" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2e7d32"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="780" fill="#ffffff"/>
+  <text x="600" y="28" text-anchor="middle" font-size="19" font-weight="bold" fill="#1a237e">reg_gen_parity 生成的寄存器奇偶保护架构 (mcusys_ciu, 143 个 bank 条目)</text>
+
+  <!-- APB side -->
+  <rect x="20" y="70" width="150" height="190" rx="6" fill="#e3f2fd" stroke="#1565c0" stroke-width="2"/>
+  <text x="95" y="95" text-anchor="middle" font-weight="bold" fill="#0d47a1">APB3 从端</text>
+  <text x="95" y="122" text-anchor="middle">psel / penable</text>
+  <text x="95" y="142" text-anchor="middle">pwrite / paddr[9:2]</text>
+  <text x="95" y="162" text-anchor="middle">pwdata[31:0]</text>
+  <text x="95" y="196" text-anchor="middle" fill="#37474f">apb_wr = psel&amp;penable</text>
+  <text x="95" y="214" text-anchor="middle" fill="#37474f">&amp;pwrite</text>
+  <text x="95" y="244" text-anchor="middle" fill="#37474f">prdata / pready</text>
+
+  <!-- address decode -->
+  <rect x="215" y="70" width="170" height="120" rx="6" fill="#fff8e1" stroke="#f9a825" stroke-width="2"/>
+  <text x="300" y="95" text-anchor="middle" font-weight="bold" fill="#e65100">地址译码 hwr_*</text>
+  <text x="300" y="120" text-anchor="middle">paddr[9:2]==REG_k</text>
+  <text x="300" y="140" text-anchor="middle">&amp;&amp; apb_wr</text>
+  <text x="300" y="166" text-anchor="middle" fill="#b71c1c">FuSa 区: &amp;&amp; passwd==</text>
+  <text x="300" y="183" text-anchor="middle" fill="#b71c1c">32'h95f2d303</text>
+
+  <!-- attribute data path -->
+  <rect x="215" y="215" width="170" height="85" rx="6" fill="#fff8e1" stroke="#f9a825" stroke-width="2"/>
+  <text x="300" y="240" text-anchor="middle" font-weight="bold" fill="#e65100">属性逻辑 reg_data_*</text>
+  <text x="300" y="262" text-anchor="middle">res/w1s/w1c/w0s/w0c</text>
+  <text x="300" y="280" text-anchor="middle">wt/rc/wr/hw → 每位次态</text>
+
+  <path d="M170,130 L215,130" stroke="#37474f" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <path d="M300,190 L300,215" stroke="#37474f" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+
+  <!-- per-register bank -->
+  <rect x="430" y="60" width="500" height="360" rx="8" fill="#f1f8e9" stroke="#558b2f" stroke-width="2"/>
+  <text x="680" y="85" text-anchor="middle" font-weight="bold" font-size="15" fill="#33691e">每个寄存器 i (generate 循环 × 143)</text>
+
+  <rect x="450" y="105" width="140" height="70" rx="5" fill="#ffffff" stroke="#558b2f" stroke-width="1.5"/>
+  <text x="520" y="130" text-anchor="middle" font-weight="bold">parity_enc</text>
+  <text x="520" y="150" text-anchor="middle" fill="#37474f">数据每 8 位</text>
+  <text x="520" y="166" text-anchor="middle" fill="#37474f">→ 1 位偶校验 ×4</text>
+
+  <rect x="620" y="105" width="150" height="50" rx="5" fill="#ffffff" stroke="#558b2f" stroke-width="1.5"/>
+  <text x="695" y="127" text-anchor="middle" font-weight="bold">reg_enc_data[i]</text>
+  <text x="695" y="145" text-anchor="middle" fill="#37474f">数据 flop 32b</text>
+  <rect x="620" y="165" width="150" height="50" rx="5" fill="#ffffff" stroke="#c62828" stroke-width="1.5"/>
+  <text x="695" y="187" text-anchor="middle" font-weight="bold" fill="#b71c1c">reg_enc_parity[i]</text>
+  <text x="695" y="205" text-anchor="middle" fill="#37474f">校验 flop 4b</text>
+
+  <rect x="785" y="105" width="150" height="110" rx="5" fill="#ffffff" stroke="#558b2f" stroke-width="1.5"/>
+  <text x="860" y="130" text-anchor="middle" font-weight="bold">parity_dec</text>
+  <text x="860" y="152" text-anchor="middle" fill="#37474f">重算 8b 偶校验</text>
+  <text x="860" y="170" text-anchor="middle" fill="#37474f">与存储位比较</text>
+  <text x="860" y="190" text-anchor="middle" fill="#b71c1c" font-size="12">parity_dec_error[i]</text>
+
+  <rect x="450" y="235" width="320" height="52" rx="5" fill="#fffde7" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="610" y="257" text-anchor="middle" font-weight="bold">reg_parity_update[i]  (写使能)</text>
+  <text x="610" y="275" text-anchor="middle" fill="#37474f">写使能 | FI 写 | invert_2cycle</text>
+
+  <rect x="450" y="305" width="465" height="95" rx="5" fill="#ffebee" stroke="#c62828" stroke-width="1.5"/>
+  <text x="682" y="328" text-anchor="middle" font-weight="bold" fill="#b71c1c">注错路径 (自测/FI)</text>
+  <text x="682" y="350" text-anchor="middle">FI[3:0] → 校验位异或 (FI 使能&amp;写)</text>
+  <text x="682" y="370" text-anchor="middle">parity_invert 上升沿 → 2 周期校验位取反</text>
+  <text x="682" y="388" text-anchor="middle">decoder_enable=0 → 不检查</text>
+
+  <path d="M385,255 L450,255" stroke="#37474f" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <path d="M590,140 L620,130" stroke="#37474f" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <path d="M590,155 L620,190" stroke="#c62828" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <path d="M770,130 L800,140" stroke="#37474f" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <path d="M770,190 L800,185" stroke="#c62828" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <!-- decode output -->
+  <rect x="965" y="105" width="215" height="110" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+  <text x="1072" y="130" text-anchor="middle" font-weight="bold" fill="#1b5e20">reg_dec_data_out[i]</text>
+  <text x="1072" y="152" text-anchor="middle">→ 功能输出端口 (按位域拆分)</text>
+  <text x="1072" y="170" text-anchor="middle">MGCR / *_cfg* / PLL / GMAC...</text>
+  <text x="1072" y="192" text-anchor="middle" fill="#37474f">读 mux 也读解码后数据</text>
+  <path d="M915,150 L965,150" stroke="#2e7d32" stroke-width="2" fill="none" marker-end="url(#arg)"/>
+
+  <!-- aggregation -->
+  <rect x="470" y="470" width="260" height="85" rx="6" fill="#ffebee" stroke="#c62828" stroke-width="2"/>
+  <text x="600" y="495" text-anchor="middle" font-weight="bold" fill="#b71c1c">报错聚合</text>
+  <text x="600" y="517" text-anchor="middle">error_or = |dec_error[142:0]</text>
+  <text x="600" y="537" text-anchor="middle">error_and = &amp;dec_error (反转期)</text>
+  <path d="M857,215 L857,440 L730,500" stroke="#c62828" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="868" y="330" fill="#b71c1c">×143</text>
+
+  <rect x="800" y="470" width="190" height="85" rx="6" fill="#ffebee" stroke="#c62828" stroke-width="2"/>
+  <text x="895" y="495" text-anchor="middle" font-weight="bold" fill="#b71c1c">parity_err_status</text>
+  <text x="895" y="515" text-anchor="middle">错误置 1 (优先于清除)</text>
+  <text x="895" y="533" text-anchor="middle">SW 写 1 清除 / SetReg 注入</text>
+  <path d="M730,512 L800,512" stroke="#c62828" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <rect x="1030" y="470" width="150" height="85" rx="6" fill="#ffebee" stroke="#c62828" stroke-width="2"/>
+  <text x="1105" y="495" text-anchor="middle" font-weight="bold" fill="#b71c1c">mission_int</text>
+  <text x="1105" y="515" text-anchor="middle">~parity_err_mask</text>
+  <text x="1105" y="533" text-anchor="middle">&amp; parity_err_status</text>
+  <path d="M990,512 L1030,512" stroke="#c62828" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="1105" y="578" text-anchor="middle" fill="#b71c1c">→ 送 ESM/中断</text>
+
+  <!-- FuSa block -->
+  <rect x="20" y="470" width="400" height="260" rx="8" fill="#fce4ec" stroke="#ad1457" stroke-width="2"/>
+  <text x="220" y="495" text-anchor="middle" font-weight="bold" font-size="15" fill="#880e4f">标准 FuSa 块 (ECC_OFFSET=0x280 自动追加)</text>
+  <text x="40" y="525" fill="#37474f">0x280 PASSWORD   写 0x95f2d303 解锁</text>
+  <text x="40" y="548" fill="#37474f">0x284 FUSA_CTRL  decoder_en / FI_en</text>
+  <text x="40" y="566" fill="#37474f">                 FI[3:0] / parity_invert</text>
+  <text x="40" y="589" fill="#37474f">0x288 StatusSet0  写 1 → 注入</text>
+  <text x="40" y="612" fill="#37474f">0x28C Status0     读状态/写 1 清除</text>
+  <text x="40" y="635" fill="#37474f">0x290 Mask0       屏蔽 mission_int</text>
+  <text x="40" y="670" fill="#c62828" font-weight="bold">所有 FuSa 寄存器(除 PASSWORD)写入都受 passwd 门控</text>
+  <text x="40" y="690" fill="#37474f">PASSWORD / Set* / Status* 不进 parity bank (名字规则识别)</text>
+  <text x="40" y="710" fill="#37474f">FUSA_CTRL / Mask* 进 bank, 自身也受奇偶保护</text>
+
+  <path d="M220,470 L220,420 L430,300" stroke="#ad1457" stroke-width="1.5" stroke-dasharray="5,4" fill="none" marker-end="url(#ar)"/>
+  <text x="250" y="440" fill="#ad1457">控制注错/解码使能</text>
+
+  <!-- legend -->
+  <rect x="470" y="600" width="710" height="130" rx="6" fill="#fafafa" stroke="#9e9e9e"/>
+  <text x="485" y="622" font-weight="bold">图例与要点</text>
+  <text x="485" y="645" fill="#2e7d32">绿色 = 功能数据通路 (经解码输出，行为与原寄存器一致)</text>
+  <text x="485" y="665" fill="#c62828">红色 = 奇偶检测/错误上报通路 (FuSa 新增)</text>
+  <text x="485" y="685" fill="#37474f">校验粒度: 每 8 位数据 1 位偶校验, 32 位寄存器配 4 位校验 (PARITY_WD=4)</text>
+  <text x="485" y="705" fill="#37474f">写入时同拍编码存入; 读出/输出时实时解码比较, 任一单比特翻转 (数据或校验) 即报错</text>
+  <text x="485" y="722" fill="#b71c1c">注意: 保护的是存储 flop, RO 状态输入 (fc_done 等) 不在 bank 内, 不受奇偶保护</text>
+</svg>

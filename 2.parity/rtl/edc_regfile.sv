@@ -29,7 +29,7 @@
 //     - EN/FORCE/IRQEN 的 mbus 图像 = mod 影子同步镜像 (单一事实源在
 //       mod 影子; 被丢弃的写哪里都不生效, 读回显示旧值, 可观察)
 //
-//   mod_clk 域 (复位见下, 不是 axi_rstn!):
+//   mod_clk 域 (复位 = mod_rstn, 见下复位方案):
 //     - cfg 影子 (reg_wrap): inj_en_q / inj_force_q / irqen_q,
 //       req_edge 译码载入 -> 输出给 chk/GEN 引擎 (已同步到 mod 域)
 //     - sticky err_st/fault_st: 站点 err (site_err, mod 域原生) 置位,
@@ -37,13 +37,10 @@
 //       编码使能掩蔽 (en 开 = 注错场景 -> 只 err 不 fault;
 //       en 关 = organic -> err+fault)
 //
-//   复位方案 (FuSa 关键语义):
-//     mbus 域寄存器复位于 mbus_rstn; mod 域寄存器一律复位于
-//     rst_sync(mbus_rstn -> mod_clk) (异步断言/同步释放), **不用 axi_rstn**
-//     -> AXI (被监视域) 单独复位时: 站点引擎随 axi_rstn 复位, 但
-//        err/fault sticky 与 cfg 影子全部保留 (故障已记录, 不能丢),
-//        CPU 读回照旧, W1C 后才干净;
-//     -> mbus_rstn 复位: 两域全清 (req_t/ack_t 同归零, 握手对齐).
+//   复位方案 (规则 26): mbus 域寄存器复位于 mbus_rstn (裸用不做同步);
+//     mod 域复位 mod_rstn 由 edc_core 顶层 u_mod_rst 对 mbus_rstn 同步到
+//     mod_clk 后下发 (本模块不再自行例化 rst_sync) —— AXI 单独复位时
+//     err/fault sticky 与 cfg 影子保留 (故障不丢), mbus 复位两域全清.
 //
 //   INJ_POS 不同步 (设计取舍): pos 是准静态位置数据, 软件协议先写 pos
 //   后开 en; en/force 经握手跨域, 开启沿即门控沿, pos 在开启前早已
@@ -139,6 +136,7 @@ module edc_regfile #(
 
    // ---------------- mod (= AXI) 域 ----------------
    input  logic                   mod_clk,       // = axi_clk
+   input  logic                   mod_rstn,      // = edc_core 顶层 u_mod_rst 同步 mbus_rstn 下发
    input  logic [NSITES-1:0]      site_err,      // chk 引擎站点 err (mod 域原生)
    output logic [NSITES-1:0]      inj_en,        // 解码后注错使能 (mod 域影子)
    output logic [NSITES-1:0]      inj_force,     // mod 域影子
@@ -195,20 +193,9 @@ module edc_regfile #(
    assign xsel = (wsel <= WS_FORCE) || ((wsel >= WS_ERR) && (wsel <= WS_REGST));
 
    // =========================================================================
-   // mod 域复位: mbus_rstn 同步到 mod_clk (异步断言/同步释放).
-   // mod 域全部寄存器/同步链/reg_wrap 用它, 不用 axi_rstn ->
-   // AXI 域单独复位时 err/fault sticky 与 cfg 影子保留, CPU W1C 才清.
+   // mod 域复位: mod_rstn 由 edc_core 顶层 u_mod_rst 对 mbus_rstn 同步到
+   // mod_clk 后下发 (规则 26), 本模块只吃同步后的复位, 不再自行例化 rst_sync.
    // =========================================================================
-   logic mod_rstn;
-
-   rst_sync #(
-      .SYNC_LVL_NUM(2)
-   ) u_rst_sync (
-      .clk      (mod_clk  ),
-      .rstn     (mbus_rstn),
-      .scan_mode(1'b0     ),
-      .rstn_s   (mod_rstn )
-   );
 
    // =========================================================================
    // mbus -> mod 握手: 锁存 + req_t toggle (在途稳定), ack 2FF 回同步,
@@ -430,8 +417,8 @@ module edc_regfile #(
    end
 
    //--------------------------------------------------------------------------
-   // 时序进程 (mod): 复位装载 (mod_rstn = mbus_rstn 同步到 mod_clk) 与
-   // rm <= rmin —— axi_rstn 不进本域 (err/fault 状态在 AXI 复位下保留)
+   // 时序进程 (mod): 复位装载 (mod_rstn = 顶层 u_mod_rst 同步 mbus_rstn 到
+   // mod_clk 后的 mod_rstn_s) 与 rm <= rmin
    //--------------------------------------------------------------------------
    always_ff @(posedge mod_clk or negedge mod_rstn) begin : seq_mod
       if (!mod_rstn) begin

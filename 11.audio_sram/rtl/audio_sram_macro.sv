@@ -35,7 +35,7 @@
 // ============================================================================
 module audio_sram_macro #(
    parameter integer DEPTH = 1024,                      // 字数 (2 的幂)
-   localparam integer AW   = $clog2(DEPTH)
+   parameter integer AW    = $clog2(DEPTH)
 )(
    input  logic              clk,
    input  logic              cen,                       // 片选, 低有效 (CEB 极性): 0=访问

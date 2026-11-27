@@ -48,8 +48,19 @@ module edc_gen #(
                             (IDW >= 12) ? 5 :
                             (IDW >= 5)  ? 4 :
                             (IDW >= 2)  ? 3 : 1,
+   parameter integer AXI_DW = 64,        // AXI 数据位宽 (32 | 64)
+   parameter integer EDW  = (AXI_DW >= 58) ? 7 :
+                            (AXI_DW >= 27) ? 6 :
+                            (AXI_DW >= 12) ? 5 :
+                            (AXI_DW >= 5)  ? 4 :
+                            (AXI_DW >= 2)  ? 3 : 1,   // wdata/rdata 站点 EDC 宽 (64->7, 32->6)
+   parameter integer EMW  = ((AXI_DW/8) >= 58) ? 7 :
+                            ((AXI_DW/8) >= 27) ? 6 :
+                            ((AXI_DW/8) >= 12) ? 5 :
+                            ((AXI_DW/8) >= 5)  ? 4 :
+                            ((AXI_DW/8) >= 2)  ? 3 : 1,   // wstrb 站点 EDC 宽 (8->4, 4->3)
    parameter integer AWUW = 18 + EWID,  // 5+5+4+4+EWID
-   parameter integer WUW  = 12          // 7+4+1
+   parameter integer WUW  = EDW + EMW + 1   // EDW+EMW+1
 )(
    input  logic           clk,
    input  logic           rstn,
@@ -83,14 +94,14 @@ module edc_gen #(
    input  logic           m_axi_awready,
 
    // ---------------- AXI4 W ----------------
-   input  logic [63:0]    s_axi_wdata,
-   input  logic [7:0]     s_axi_wstrb,
+   input  logic [AXI_DW-1:0] s_axi_wdata,
+   input  logic [AXI_DW/8-1:0] s_axi_wstrb,
    input  logic           s_axi_wlast,
    input  logic [WUW-1:0] s_axi_wuser,
    input  logic           s_axi_wvalid,
    output logic           s_axi_wready,
-   output logic [63:0]    m_axi_wdata,
-   output logic [7:0]     m_axi_wstrb,
+   output logic [AXI_DW-1:0] m_axi_wdata,
+   output logic [AXI_DW/8-1:0] m_axi_wstrb,
    output logic           m_axi_wlast,
    output logic [WUW-1:0] m_axi_wuser,
    output logic           m_axi_wvalid,
@@ -140,8 +151,8 @@ module edc_gen #(
    localparam integer EW_AL = 5;    // DW=20
    localparam integer EW_A0 = 4;    // DW=11
    localparam integer EW_A1 = 4;    // DW=10
-   localparam integer EW_WD = 7;    // DW=64
-   localparam integer EW_WM = 4;    // DW=8
+   localparam integer EW_WD = EDW;  // DW=AXI_DW
+   localparam integer EW_WM = EMW;  // DW=AXI_DW/8
    localparam integer EW_WL = 1;    // DW=1
 
    // ---------------- user 位偏移 ----------------
@@ -176,8 +187,8 @@ module edc_gen #(
       logic [7:0]       aw_rest_q;    // {awqos, awregion} 未保护, 同拍对齐
       // ---- W 通道 (站点 5-7) ----
       logic             w_vld;
-      logic [63:0]      w_data_q;
-      logic [7:0]       w_mask_q;
+      logic [AXI_DW-1:0] w_data_q;
+      logic [AXI_DW/8-1:0] w_mask_q;
       logic             w_last_q;
       logic [EW_WD-1:0] w_data_edc_q;
       logic [EW_WM-1:0] w_mask_edc_q;
@@ -326,9 +337,9 @@ module edc_gen #(
    // =========================================================================
    // W: 3 个站点
    // =========================================================================
-   logic [63:0] w_data_dat;
+   logic [AXI_DW-1:0] w_data_dat;
    assign w_data_dat = s_axi_wdata;
-   logic [7:0]  w_mask_dat;
+   logic [AXI_DW/8-1:0] w_mask_dat;
    assign w_mask_dat = s_axi_wstrb;
    logic w_last_dat;
    assign w_last_dat = s_axi_wlast;
@@ -351,7 +362,7 @@ module edc_gen #(
    assign m_axi_wuser = {r.w_data_edc_q, r.w_mask_edc_q, r.w_last_edc_q};
 
    edc_site #(
-      .DW  (64  ),
+      .DW  (AXI_DW),
       .MODE(MODE)
    ) u_w_data (
       .i_payload  (MODE == 0 ? w_data_dat   : r.w_data_q    ),
@@ -363,7 +374,7 @@ module edc_gen #(
       .o_err      (w_data_err                               )
    );
    edc_site #(
-      .DW  (8   ),
+      .DW  (AXI_DW/8),
       .MODE(MODE)
    ) u_w_mask (
       .i_payload  (MODE == 0 ? w_mask_dat   : r.w_mask_q    ),

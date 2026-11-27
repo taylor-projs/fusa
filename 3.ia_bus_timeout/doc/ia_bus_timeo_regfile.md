@@ -56,7 +56,7 @@ mbus leaf 协议要点（与 apb2mbus 桥一致）：`ce` 单拍选通；`addr[1
 | 奇偶故障 | out | `reg_par_fault`、`reg_par_fault_n` | mbus_clk 域 ESM 双轨事件（见 §5） |
 | 故障源 | in | `fu_src` | 固定 7 位完整性故障源 `{OTDSAT[6], STAT[5], CMP[4], CNT[3], THRR[2], THRA[1], ENA[0]}`（v1.3 单口 m=0） |
 
-复位 `rstn`：异步断言、低有效（与监控核 `rstn` 同源）。
+复位 `rstn`：低有效，接叶顶层 `ia_bus_timeo_core` 下发的 `axi_reg_rstn`（`u_axi_reg_rst` 将 `mbus_rstn` 同步到 aclk，3 级，异步断言/同步释放）；与监控引擎的 `axi_rstn_s`（源裸 `axi_rstn`）分开，专供 regfile aclk 域。
 
 ---
 
@@ -174,9 +174,9 @@ mbus 零等待语义下写不再阻塞总线：CFG_BUSY=1 期间到达的有效�
 
 ### 4.3 复位
 
-- `mbus_rstn`（mbus_clk）与 `rstn`（aclk）**必须系统级同时断言**（同源、同步释放），否则握手 toggle 状态失配，第一次写可能丢失
-- 这是系统集成约束，文档级约定（TI 安全外设整块复位的做法）；模块内部不做复位 bridging
-- 监控核内部再对 `rstn` 做异步断言 / 3 级同步释放（见 `ia_bus_timeo_core.sv`）
+- 裸 `mbus_rstn`（mbus_clk）与裸 `axi_rstn`（axi_clk）**必须系统级同时断言**，否则握手 toggle 状态失配，第一次写可能丢失；正常整块复位仍按 TI 安全外设整块复位处理
+- 复位同步收编在叶顶层 `ia_bus_timeo_core`（规则 26）：`u_axi_rst` 将 `axi_rstn` 同步为 `axi_rstn_s` 供 `ia_bus_timeo_mon`；`u_axi_reg_rst` 将 `mbus_rstn` 同步为 `axi_reg_rstn`，接本 regfile 的 `rstn`。两者均为 3 级、异步断言/同步释放
+- 本 regfile 不再内部例化 `rst_sync`：mbus 域直接使用 `mbus_rstn`，aclk 域使用 `axi_reg_rstn`，两侧复位同源于 `mbus_rstn`。仅断言 `axi_rstn` 复位监控引擎时，aclk 影子/sticky 故障状态不被清除
 
 ---
 
@@ -300,7 +300,7 @@ SCMCNTRL 的 ENA 字段在**每一次**带 key 的写中都会被监控采样。
 
 1. 动态多比特读（SCMIASTAT/SCMOTD）存在单次采样不一致窗口——观测用，重读解决
 2. 阈值寄存器对 SW 是普通 RW（key 由 regfile 构造性提供）；配置空间权限由 SoC MPU/总线层隔离
-3. mbus_clk 与 aclk 复位必须同源同释——系统集成约束
+3. 整块复位时裸 `mbus_rstn` 与裸 `axi_rstn` 必须系统级同时断言；regfile 的 mbus/aclk 两侧同由 `mbus_rstn` 复位（aclk 侧经顶层同步），监控引擎另用 `axi_rstn_s`——系统集成约束
 4. 共模故障（同一数据的两份副本同时同值翻转）不由本层覆盖，由周期 SELFTEST + 启动端到端事务测试兜底
 
 ---
@@ -366,4 +366,4 @@ Elaboration 检查（编译期 `$error`）：`IDX > 255`、`OTD_W*2 > 32`、`FU_
 - 各 core 自带的 ESM 双轨输出仍直出可用（独立冗余通道，集成可选）
 - core 的 `reg_par_fault` 不并入 STA_ERR/STA_FAULT（与超时 fault 不同失效模式，独立查询通道），只走 STA_PARCORE 聚合
 - 聚合器 sticky 无功能使能门控（观测恒使能，fail-visible）；sticky 位在 reg_wrap 内已双副本自愈，无内部计数器，不需 Q/Q_n 副本（同 10.dup_ctrl 论证）
-- 复位：core 与聚合器同为异步低有效 `rstn`，mbus 域同源同释（§4.3 约束对聚合器同样适用）
+- 复位：聚合器为单 mbus 域，直接使用异步低有效 `mbus_rstn`；各 core 的 mbus 域与之同源同释。core 内部按 §4.3 由双 `rst_sync` 分离 mon/regfile axi 域复位，整块复位时仍须同时断言裸 `axi_rstn`

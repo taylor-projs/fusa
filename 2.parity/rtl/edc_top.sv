@@ -120,13 +120,13 @@ module edc_top #(
    output logic                  rail_fault_n
 );
 
-`ifndef SYNTHESIS
+// synopsys translate_off
    initial begin
       if ((NUM_CORE < 1) || (NUM_CORE > 32)) begin
          $fatal(1, "edc_top: NUM_CORE must be 1..32");
       end
    end
-`endif
+// synopsys translate_on
 
    localparam logic [31:0] ID_VAL = 32'hEDC0_2000 | (32'(IDX) & 32'h0000_00FF);
 

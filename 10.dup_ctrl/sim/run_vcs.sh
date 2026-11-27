@@ -33,9 +33,8 @@ cat > "$OUT/cov.cfg" <<EOF
 +tree $TOP.dut
 EOF
 
-# 不收 cond: parity XOR 树让条件覆盖向量爆到 2^N 被 VCS 截断(VCM-TRIMVEC),
-# 分数无意义且拖慢仿真. 需要时自行加回 "+cond"
-CM="-cm line+fsm+tgl+branch"
+# 收集 line/cond/fsm/toggle/branch; raw 与结构排除后报告均自动生成
+CM="-cm line+cond+fsm+tgl+branch"
 
 if [ "$1" = "verdi" ]; then
    if [ ! -f "$OUT/$TOP.fsdb" ]; then echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; fi
@@ -86,10 +85,23 @@ if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    exit 1
 fi
 
-echo "== coverage summary (raw) =="
-urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
-grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
-   echo "(summary in $OUT/urg_report/, or view in GUI)"
+echo "== coverage dashboard (raw) =="
+urg -dir simv.vdb -report urg_report -format both > urg_raw.log 2>&1
+cat urg_report/dashboard.txt
+
+# CHECKSUM 必须来自本次编译; 四种 metric 全量刷新, 生成器只接受已归类结构洞
+for metric in line cond branch tgl; do
+   rm -rf "dump_$metric"
+   urg -dir simv.vdb -dump full_exclusions "$metric" -report "dump_$metric" \
+       > "dump_$metric.log" 2>&1
+done
+EXCL_OUT="$SIM" python3 "$SIM/gen_dc_excl.py" urg_report > exclusion_gen.log 2>&1
+printf '%s\n' "$SIM/tgl_struct_excl.el" "$SIM/misc_struct_excl.el" > excl_files.lst
+
+echo "== coverage dashboard (structural exclusions applied) =="
+urg -dir simv.vdb -elfilelist excl_files.lst -excl_strict \
+    -report urg_report_excl -format both > urg_excl.log 2>&1
+cat urg_report_excl/dashboard.txt
 
 echo "== done =="
 echo "   波形:   bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

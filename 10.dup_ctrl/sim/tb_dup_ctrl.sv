@@ -65,6 +65,8 @@
 //       不落地), CFG_BUSY poll 到 0 后 W1C 清 + 恢复写被接受
 //   T18 FLT_SELFTEST keyed 源级注入: STA_FAULT[31] + esm_fault 轨
 //       (无 key 忽略; STA_PAR 不含测试位; W1C bit31 清)
+//   T19 总线全宽/地址/译码组合与 4bit image/shadow SEC 激励
+//   T20 reg_wrap 副本失配、写同时自测及 Q/Q_n 锁存副本 FI
 // ============================================================================
 `timescale 1ns/1ps
 
@@ -327,6 +329,11 @@ module tb_dup_ctrl;
    endtask
 
    logic [31:0] rd;
+   // FI force RHS 静态暂存 (禁止自引用/自动变量 RHS)
+   logic        fi_bit;
+   logic [1:0]  fi_data2;
+   logic [3:0]  fi_data4;
+   logic [31:0] fi_data32;
 
    //--------------------------------------------------------------------------
    // 测试主体
@@ -569,18 +576,18 @@ module tb_dup_ctrl;
       run_check = 1'b0;
       scan_mode = 1'b1;                              // DFT 旁路 (P0)
       @(negedge mod_clk);
-      #5 rstn = 1'b0;                                // 异步断言 (两域共源)
-      #1 chk1("mod_rstn scan assert", dut.u_dup_ctrl_regfile.mod_rstn, 1'b0);
+      #5 rstn = 1'b0;                                // 异步断言 (mbus 裸复位)
+      #1 chk1("mod_rstn scan assert", dut.mod_rstn_s, 1'b0);
       chk1("esm_err rst", esm_err, 1'b0);
       chk1("fi_o rst", (fi_o == 2'b00), 1'b1);
       chk1("reg_par_fault rst", reg_par_fault, 1'b0);
       err_drv(1'b0);                                 // 复位期间撤源
       @(negedge mod_clk);
       #5 rstn = 1'b1;                                // 旁路下释放: 即时透传
-      #1 chk1("mod_rstn scan release", dut.u_dup_ctrl_regfile.mod_rstn, 1'b1);
+      #1 chk1("mod_rstn scan release", dut.mod_rstn_s, 1'b1);
       scan_mode = 1'b0;                              // 回功能模式 (同步释放)
       repeat (4) @(negedge mod_clk);
-      chk1("mod_rstn released", dut.u_dup_ctrl_regfile.mod_rstn, 1'b1);
+      chk1("mod_rstn released", dut.mod_rstn_s, 1'b1);
       repeat (3) @(negedge clk);
       run_check = 1'b1;
       mbus_rd(A_EN,  rd);   chk32("EN after rst",   rd, 32'h0000_000F);
@@ -697,6 +704,287 @@ module tb_dup_ctrl;
       mbus_wr(A_EN, 32'h0000_000F);                  // 不忙时恢复写被接受
       wait_cmd();
       mbus_rd(A_EN, rd);   chk32("EN restored", rd, 32'h0000_000F);
+
+      //================ T19 总线与 SEC 覆盖率闭环 ======================
+      $display("-- T19 full-width bus/address and SEC closure");
+      // CFG_FI 只消费低 2 bit, 但在途锁存完整保留 wdata[31:0]
+      mbus_wr(A_FI, 32'hFFFF_FFFF);
+      wait_cmd();
+      chk1("in-flight full-width pattern",
+           (dut.u_dup_ctrl_regfile.r_mb.wdata_q === 32'hFFFF_FFFF), 1'b1);
+      mbus_wr(A_FI, 32'h0000_0000);
+      wait_cmd();
+      // 非 IEN/REGST/FLT 地址上的 key/合法码/data31 组合
+      mbus_wr(A_FI, 32'h0000_00AF);
+      wait_cmd();
+      mbus_wr(A_FI, 32'h0000_000A);
+      wait_cmd();
+      mbus_wr(A_FI, 32'h8000_0000);
+      wait_cmd();
+      mbus_wr(A_FI, 32'h0000_0000);
+      wait_cmd();
+      mbus_wr(A_FLT, 32'h0000_0000);         // wsel=8 且 data31=0
+      wait_cmd();
+      mbus_wr(16'h0024, 32'hDEAD_BEEF);      // ce_wr=1, addr_ok=0
+      mbus_wr(16'h0100, 32'h0000_00A5);      // 错实例好奇偶写
+      // ce=0/wr=1 是合法空闲总线状态
+      @(negedge clk);
+      ce    = 1'b0;
+      wr    = 1'b1;
+      addr  = 16'h0;
+      wdata = 32'h0;
+      par   = 1'b0;
+      @(negedge clk);
+      wr = 1'b0;
+      // 地址低位和全部实例高位输入翻转
+      mbus_rd(16'h0001, rd);
+      mbus_rd(16'h0002, rd);
+      mbus_rd(16'h0003, rd);
+      for (int k = 0; k < 8; k++) begin
+         mbus_rd((16'h0100 << k), rd);
+      end
+      chk32("wrong-instance address sweep", rd, 32'h0);
+
+      // image 侧 dec4 最近邻纠错与 fix 输出 (整向量 force + firing proof)
+      @(negedge clk);
+      fi_data32 = 32'h0000_000E;
+      force dut.u_dup_ctrl_regfile.u_w_en.r.data_q = fi_data32;
+      repeat (2) @(negedge clk);
+      chk1("EN image SEC fix", dut.u_dup_ctrl_regfile.en_dec_i.fix, 1'b1);
+      mbus_rd(A_EN, rd);
+      chk32("EN image SEC firing", rd, 32'h0000_000E);
+      release dut.u_dup_ctrl_regfile.u_w_en.r.data_q;
+      mbus_wr(A_EN, 32'h0000_000F);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge clk);
+      fi_data32 = 32'h0000_0001;
+      force dut.u_dup_ctrl_regfile.u_w_ien.r.data_q = fi_data32;
+      repeat (2) @(negedge clk);
+      chk1("IEN image SEC fix", dut.u_dup_ctrl_regfile.ien_dec_i.fix, 1'b1);
+      mbus_rd(A_IEN, rd);
+      chk32("IEN image SEC firing", rd, 32'h0000_0001);
+      release dut.u_dup_ctrl_regfile.u_w_ien.r.data_q;
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+
+      // mod 影子使用点解码虽不写回, fix 输出本身仍须实际翻转
+      @(negedge mod_clk);
+      fi_data4 = 4'hE;
+      force dut.u_dup_ctrl_regfile.u_c_ena.r.data_q = fi_data4;
+      repeat (2) @(negedge mod_clk);
+      chk1("ENA shadow SEC fix", dut.u_dup_ctrl_regfile.ena_dec.fix, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_c_ena.r.data_q;
+      mbus_wr(A_EN, 32'h0000_000F);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      fi_data4 = 4'h1;
+      force dut.u_dup_ctrl_regfile.u_c_ien.r.data_q = fi_data4;
+      repeat (2) @(negedge mod_clk);
+      chk1("IEN shadow SEC fix", dut.u_dup_ctrl_regfile.ien_dec.fix, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_c_ien.r.data_q;
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+      mbus_rd(A_PAR, rd);
+      chk32("SEC stimulus healed", rd, 32'h0000_0002);
+
+      //================ T20 副本与写同时自测 FI ========================
+      $display("-- T20 duplicate-rail and write-selftest closure");
+      // par_lq 任意副本失配会 heal-to-SET 两 lane; 保持 force 可覆盖两比较位
+      @(negedge clk);
+      fi_data2 = 2'b10;
+      force dut.u_dup_ctrl_regfile.r_mb.par_lq_n = fi_data2;
+      repeat (3) @(negedge clk);
+      chk1("PAR lanes duplicate FI",
+           (dut.u_dup_ctrl_regfile.par_l_dup_f != 2'b00), 1'b1);
+      release dut.u_dup_ctrl_regfile.r_mb.par_lq_n;
+      mbus_rd(A_PAR, rd);
+      chk32("PAR lanes duplicate status", rd & 32'h0000_0083, 32'h0000_0081);
+      mbus_wr(A_PAR, 32'h0000_0081);
+      wait_cmd();
+
+      // FLT_SELFTEST 锁存副本失配 -> heal-to-SET
+      @(negedge clk);
+      fi_bit = 1'b0;
+      force dut.u_dup_ctrl_regfile.r_mb.flt_tst_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      mbus_rd(A_FLT, rd);
+      chk32("FLT latch duplicate FI", rd, 32'h8000_0000);
+      release dut.u_dup_ctrl_regfile.r_mb.flt_tst_q_n;
+      mbus_wr(A_FLT, 32'h8000_0000);
+      wait_cmd();
+
+      // 十个 reg_wrap 实例逐一覆盖 dup_err -> sticky flt -> W1C
+      @(negedge clk);
+      fi_bit = 1'b0;
+      force dut.u_dup_ctrl_regfile.u_w_en.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("EN image duplicate FI", dut.u_dup_ctrl_regfile.u_w_en.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_w_en.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_ien.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("IEN image duplicate FI", dut.u_dup_ctrl_regfile.u_w_ien.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_w_ien.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_fi.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("FI image duplicate FI", dut.u_dup_ctrl_regfile.u_w_fi.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_w_fi.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0010);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_err_st.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge mod_clk);
+      chk1("ERR sticky duplicate FI", dut.u_dup_ctrl_regfile.u_err_st.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_err_st.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0020);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_err_s2.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("ERR image duplicate FI", dut.u_dup_ctrl_regfile.u_err_s2.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_err_s2.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0020);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_raw_s2.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("RAW image duplicate FI", dut.u_dup_ctrl_regfile.u_raw_s2.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_raw_s2.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0040);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_cmd.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("CMD wrap duplicate FI", dut.u_dup_ctrl_regfile.u_w_cmd.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_w_cmd.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0100);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_ena.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge mod_clk);
+      chk1("ENA shadow duplicate FI", dut.u_dup_ctrl_regfile.u_c_ena.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_c_ena.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_ien.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge mod_clk);
+      chk1("IEN shadow duplicate FI", dut.u_dup_ctrl_regfile.u_c_ien.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_c_ien.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_fi.r.flt_q_n = fi_bit;
+      repeat (2) @(negedge mod_clk);
+      chk1("FI shadow duplicate FI", dut.u_dup_ctrl_regfile.u_c_fi.flt, 1'b1);
+      release dut.u_dup_ctrl_regfile.u_c_fi.r.flt_q_n;
+      mbus_wr(A_PAR, 32'h0000_0010);
+      wait_cmd();
+
+      // wr && selftest_key 同拍: image 写当拍或 shadow req_edge 拍注入
+      @(negedge clk);
+      fi_bit = 1'b1;
+      force dut.u_dup_ctrl_regfile.u_w_en.selftest_key = fi_bit;
+      mbus_wr(A_EN, 32'h0000_000F);
+      release dut.u_dup_ctrl_regfile.u_w_en.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("EN image write-selftest", dut.u_dup_ctrl_regfile.u_w_en.flt, 1'b1);
+      mbus_wr(A_EN, 32'h0000_000F);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_ien.selftest_key = fi_bit;
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      release dut.u_dup_ctrl_regfile.u_w_ien.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("IEN image write-selftest", dut.u_dup_ctrl_regfile.u_w_ien.flt, 1'b1);
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_fi.selftest_key = fi_bit;
+      mbus_wr(A_FI, 32'h0000_0000);
+      release dut.u_dup_ctrl_regfile.u_w_fi.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("FI image write-selftest", dut.u_dup_ctrl_regfile.u_w_fi.flt, 1'b1);
+      mbus_wr(A_FI, 32'h0000_0000);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0010);
+      wait_cmd();
+
+      @(negedge clk);
+      force dut.u_dup_ctrl_regfile.u_w_cmd.selftest_key = fi_bit;
+      mbus_wr(A_PAR, 32'h0000_0100);
+      release dut.u_dup_ctrl_regfile.u_w_cmd.selftest_key;
+      repeat (2) @(negedge clk);
+      chk1("CMD wrap write-selftest", dut.u_dup_ctrl_regfile.u_w_cmd.flt, 1'b1);
+      mbus_wr(A_PAR, 32'h0000_0100);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_ena.selftest_key = fi_bit;
+      mbus_wr(A_EN, 32'h0000_000F);
+      wait_cmd();
+      release dut.u_dup_ctrl_regfile.u_c_ena.selftest_key;
+      chk1("ENA shadow write-selftest", dut.u_dup_ctrl_regfile.u_c_ena.flt, 1'b1);
+      mbus_wr(A_EN, 32'h0000_000F);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0004);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_ien.selftest_key = fi_bit;
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      wait_cmd();
+      release dut.u_dup_ctrl_regfile.u_c_ien.selftest_key;
+      chk1("IEN shadow write-selftest", dut.u_dup_ctrl_regfile.u_c_ien.flt, 1'b1);
+      mbus_wr(A_IEN, 32'h0000_00A0);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0008);
+      wait_cmd();
+
+      @(negedge mod_clk);
+      force dut.u_dup_ctrl_regfile.u_c_fi.selftest_key = fi_bit;
+      mbus_wr(A_FI, 32'h0000_0000);
+      wait_cmd();
+      release dut.u_dup_ctrl_regfile.u_c_fi.selftest_key;
+      chk1("FI shadow write-selftest", dut.u_dup_ctrl_regfile.u_c_fi.flt, 1'b1);
+      mbus_wr(A_FI, 32'h0000_0000);
+      wait_cmd();
+      mbus_wr(A_PAR, 32'h0000_0010);
+      wait_cmd();
+      mbus_rd(A_PAR, rd);
+      chk32("all duplicate/write-selftest FI healed", rd, 32'h0000_0002);
+      mbus_rd(A_FLT, rd);
+      chk32("FLT quiet after closure", rd, 32'h0000_0000);
 
       //================ 汇总 ================================
       repeat (4) @(negedge clk);

@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 510" font-family="'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 16px; font-weight: bold; fill: #0F172A; }
+      .ph    { font-size: 11px; font-weight: bold; fill: #1E3A8A; }
+      .sig   { font-size: 10.5px; fill: #334155; }
+      .val   { font-size: 9px; fill: #0F172A; }
+      .note  { font-size: 10px; fill: #475569; }
+      .red   { font-size: 10px; font-weight: bold; fill: #DC2626; }
+      .clk   { fill: none; stroke: #0F172A; stroke-width: 1.4; }
+      .sigline { fill: none; stroke: #0F172A; stroke-width: 1.5; }
+      .pulse { fill: none; stroke: #DC2626; stroke-width: 2; }
+      .stair { fill: none; stroke: #1D4ED8; stroke-width: 2; }
+      .grid  { stroke: #E2E8F0; stroke-width: 1; }
+      .pbox  { fill: #F8FAFC; stroke: #CBD5E1; }
+      .phsep { stroke: #CBD5E1; stroke-width: 1; stroke-dasharray: 3 3; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="510" fill="#FFFFFF"/>
+  <text x="640" y="28" class="title" text-anchor="middle">DEAD 检测全流程 — 默认不使能 → SW 使能 → 延迟后钟到 → 停钟 DEAD (单通道)</text>
+
+  <rect x="20" y="42" width="1240" height="450" rx="8" class="pbox"/>
+
+  <!-- ============ 阶段带 ============ -->
+  <text x="290" y="62" class="ph" text-anchor="middle">① 默认不使能 (EN=0)</text>
+  <text x="510" y="62" class="ph" text-anchor="middle">② SW 使能 (EN=1)</text>
+  <text x="760" y="62" class="ph" text-anchor="middle">③ 延迟后钟到 → 布防 → 运行</text>
+  <text x="1040" y="62" class="ph" text-anchor="middle">④ 停钟 → DEAD</text>
+  <line x1="400" y1="68" x2="400" y2="480" class="phsep"/>
+  <line x1="620" y1="68" x2="620" y2="480" class="phsep"/>
+  <line x1="900" y1="68" x2="900" y2="480" class="phsep"/>
+  <line x1="180" y1="78" x2="1180" y2="78" class="grid"/>
+
+  <!-- clk_ref -->
+  <text x="168" y="104" class="sig" text-anchor="end">clk_ref</text>
+  <path class="clk" d="M180 94 V110 H220 V94 H260 V110 H300 V94 H340 V110 H380 V94 H420 V110 H460 V94 H500 V110 H540 V94 H580 V110 H620 V94 H660 V110 H700 V94 H740 V110 H780 V94 H820 V110 H860 V94 H900 V110 H940 V94 H980 V110 H1020 V94 H1060 V110 H1100 V94 H1140 V110 H1180"/>
+
+  <!-- en_v -->
+  <text x="168" y="134" class="sig" text-anchor="end">en_v</text>
+  <polyline class="sigline" points="180,140 180,128 400,128 400,114 1180,114"/>
+  <text text-anchor="start" x="200" y="124" class="val">0 (disarm=1)</text>
+  <text text-anchor="start" x="410" y="110" class="val">1 (disarm=0)</text>
+
+  <!-- clk_dut -->
+  <text x="168" y="164" class="sig" text-anchor="end">clk_dut</text>
+  <path class="clk" d="M180 174 H620 V154 H690 V174 H760 V154 H830 V174 H900 V154 H1180 V154"/>
+  <text text-anchor="start" x="230" y="170" class="val">gated (无钟)</text>
+  <text text-anchor="start" x="470" y="170" class="red">仍 gated: 使能后钟还没来</text>
+  <text text-anchor="start" x="650" y="150" class="val">起振</text>
+  <text text-anchor="start" x="920" y="150" class="red">停钟</text>
+
+  <!-- edge_det -->
+  <text x="168" y="194" class="sig" text-anchor="end">edge_det</text>
+  <polyline class="pulse" points="180,200 180,182 188,182 188,200 660,200 660,182 668,182 668,200 730,200 730,182 738,182 738,200 800,200 800,182 808,182 808,200 870,200 870,182 878,182 878,200 940,200 940,182 948,182 948,200 980,200 1180,200"/>
+
+  <!-- armed -->
+  <text x="168" y="224" class="sig" text-anchor="end">armed</text>
+  <polyline class="sigline" points="180,230 180,218 660,218 660,204 1180,204"/>
+  <text text-anchor="start" x="520" y="214" class="val">①② 无钟不布防</text>
+  <text text-anchor="start" x="670" y="200" class="val">首沿布防 (A1)</text>
+
+  <!-- noedge_cnt -->
+  <text x="168" y="274" class="sig" text-anchor="end">noedge_cnt</text>
+  <polyline class="stair" points="180,268 980,268 1020,268 1020,254 1060,254 1060,240 1100,240 1100,226 1140,226 1140,212"/>
+  <line x1="1140" y1="212" x2="1160" y2="150" stroke="#1D4ED8" stroke-width="2" stroke-dasharray="4 3"/>
+  <polyline class="stair" points="1160,150 1160,268 1180,268"/>
+  <text x="1150" y="186" class="val" text-anchor="middle">…→ndead</text>
+  <text x="1160" y="142" class="red" text-anchor="middle">==ndead</text>
+  <text text-anchor="start" x="850" y="284" class="note">①②③ 无沿/有沿清 0 冻结; ④ 每 refclk 无沿 +1</text>
+
+  <!-- dead_lvl -->
+  <text x="168" y="324" class="sig" text-anchor="end">dead_lvl</text>
+  <polyline class="pulse" points="180,330 180,312 1160,312 1160,330 1178,330 1178,312 1180,312"/>
+  <text x="1160" y="304" class="red" text-anchor="middle">dead_a|dead_b 命中</text>
+
+  <!-- dead_q / SRCSTAT -->
+  <text x="168" y="374" class="sig" text-anchor="end">dead_q / SRCSTAT</text>
+  <polyline class="sigline" points="180,380 180,368 1160,368 1160,354 1180,354"/>
+  <text text-anchor="start" x="900" y="350" class="val">粘滞: W1C + TST_CLR 才清</text>
+
+  <!-- esm_err -->
+  <text x="168" y="424" class="sig" text-anchor="end">esm_err</text>
+  <polyline class="sigline" points="180,430 180,418 1160,418 1160,404 1180,404"/>
+
+  <!-- 脚注 -->
+  <text text-anchor="start" x="200" y="462" class="note">② 使能 ≠ 布防: EN=1 后钟仍 gated, armed 恒 0 / noedge 冻结 → 不报 DEAD (不会误判停钟)</text>
+  <text text-anchor="start" x="200" y="480" class="note">③ 钟到首沿才 armed; ④ 停钟才计数, ndead 拍判 DEAD → dead_q 粘滞 → esm_err; 计数回卷周期重发 (re-issue)</text>
+</svg>

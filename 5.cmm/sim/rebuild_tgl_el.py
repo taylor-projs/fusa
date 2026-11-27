@@ -17,7 +17,7 @@
 #     warning (stale hierarchy)
 import re, sys, os
 
-SIM = "/home/eda/work/cmm/sim"
+SIM = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------- parsing --
 ROW_RE     = re.compile(r'^Toggle\s+(?:(0to1|1to0)\s+)?(\S+?)((?:\s+\[[^\]]+\])*)\s+"([^"]*)"')

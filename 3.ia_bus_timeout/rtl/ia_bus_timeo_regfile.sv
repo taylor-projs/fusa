@@ -174,15 +174,16 @@
 //              periodic SW readback is not single-shot, so this is safe).
 //   All synchronizer chains instantiate the standard sync cell wraps
 //   (fusa 单一源 common_modules/sync_2dff.sv / sync_dff.sv - FuSa-wide CDC rule);
-//   the aclk domain reset rstn is active-low, same polarity as the cell
-//   rstn port (直连, 无需本地反相).
+//   the aclk domain reset rstn is the synchronized active-low reset from
+//   ia_bus_timeo_core (rule 26), directly connected to the local sync cells.
 //
 // RESET:
-//   mbus_rstn (mbus_clk domain, async assert) and rstn (aclk domain, async
-//   assert) MUST be asserted together at system level so the CDC toggle
-//   handshake starts aligned. An mbus-only reset while aclk runs would
-//   de-synchronize the handshake - system-level constraint, documented
-//   here (cf. TI: safety peripherals are reset as one block).
+//   mbus_rstn (mbus_clk domain, async assert) and the core's raw axi_rstn
+//   MUST be asserted together at system level so the CDC toggle handshake
+//   starts aligned. The rstn input here is axi_rstn after synchronization
+//   to aclk in ia_bus_timeo_core (rule 26). An mbus-only reset while aclk
+//   runs would de-synchronize the handshake - system-level constraint,
+//   documented here (cf. TI: safety peripherals are reset as one block).
 //
 // SW USAGE NOTES (TI semantics preserved):
 //   - restart counters : write SCMCNTRL = 0x1A0 (KEY=0xA, ENA=0xF
@@ -217,7 +218,7 @@ module ia_bus_timeo_regfile #(
 
     // ---- monitor domain (aclk) ---------------------------------------------
     input  logic                     aclk,
-    input  logic                     rstn,           // async, active-low
+    input  logic                     rstn,           // axi 域复位 (top u_axi_reg_rst 同步 mbus_rstn 下发)
 
     // ---- to monitor (aclk domain) ------------------------------------------
     output logic                     cfg_wr,         // 1-aclk-cycle load pulse
@@ -268,6 +269,7 @@ module ia_bus_timeo_regfile #(
     localparam logic [31:0] ID_VAL = 32'h4941_0002;
 
     // elaboration checks: everything must fit into 32-bit RDATA
+    // synopsys translate_off
     generate
         if (IDX > 255) begin : chk_idx
             $error("IDX must fit into addr[15:8]");
@@ -276,6 +278,7 @@ module ia_bus_timeo_regfile #(
             $error("NUM_IA*OTD_W must be <= 32 (SCMOTD width)");
         end
     endgenerate
+    // synopsys translate_on
 
     //--------------------------------------------------------------------------
     // mbus leaf decode (zero-wait, no wait/error channel; word-aligned,
@@ -484,9 +487,9 @@ module ia_bus_timeo_regfile #(
 
     //--------------------------------------------------------------------------
     // aclk domain: request 2-flop sync + registered edge detect (metastable
-    // glitch-tolerant), decode, apply, ack toggle - sync cell wraps; the
-    // aclk reset rstn is active-low, same polarity as the cell rstn port
-    // (直连; async assert / sync release both preserved)
+    // glitch-tolerant), decode, apply, ack toggle - sync cell wraps; rstn
+    // has already been synchronized to aclk by ia_bus_timeo_core (rule 26)
+    // and is consumed directly by the local flops and cells.
     //--------------------------------------------------------------------------
     logic req_t_s2, req_t_d;
     sync_2dff #(.WIDTH(1)) u_req_sync (
@@ -506,9 +509,9 @@ module ia_bus_timeo_regfile #(
 
     // SCMCNTRL local key check + enable codeword check (double gate: the
     // monitor re-checks both - defense in depth)
-    logic scmcntrl_key_ok;
+    logic  scmcntrl_key_ok;
+    logic  ena_codeword   ;
     assign scmcntrl_key_ok = (r_mb.wdata_q[7:4] == 4'b1010);
-    logic ena_codeword;
     assign ena_codeword = (r_mb.wdata_q[3:0] == 4'b1111) || (r_mb.wdata_q[3:0] == 4'b0000);
 
     //--------------------------------------------------------------------------

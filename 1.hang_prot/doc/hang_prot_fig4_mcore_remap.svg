@@ -22,7 +22,7 @@
   <line x1="450" y1="84" x2="450" y2="102" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
 
   <rect x="280" y="104" width="340" height="44" rx="8" class="strip"/>
-  <text x="450" y="131" class="bt11" text-anchor="middle">全匹配 MCORE_MASTER_IDS[k] ?</text>
+  <text x="450" y="131" class="bt11" text-anchor="middle">字段匹配 DIST_CLS_MASTER_IDS[k] ?</text>
 
   <line x1="370" y1="148" x2="300" y2="178" stroke="#475569" stroke-width="1.5" marker-end="url(#aS)"/>
   <text x="322" y="166" class="txt" text-anchor="middle">是</text>
@@ -31,8 +31,8 @@
 
   <rect x="160" y="180" width="400" height="96" rx="8" class="box"/>
   <text x="180" y="206" class="bt">AR 转发</text>
-  <text x="180" y="230" class="txt">mcore k → MCORE_REMAP_IDS[k]  (类 k+1)</text>
-  <text x="180" y="254" class="txt">其他 → AR_ID_REMAP  (类 0)</text>
+  <text x="180" y="230" class="txt">匹配 k → DIST_CLS_REMAP_IDS[k]  (类 k)</text>
+  <text x="180" y="254" class="txt">其他 → AR_ID_REMAP  (类 N_DIST_CLS)</text>
 
   <rect x="620" y="180" width="250" height="100" rx="6" class="strip"/>
   <text x="632" y="202" class="bt11">leaf 视角:</text>
@@ -47,6 +47,6 @@
   <rect x="160" y="320" width="180" height="44" rx="6" class="box"/>
   <text x="250" y="348" class="bt" text-anchor="middle">ar_fifo[0] (共享)</text>
   <rect x="380" y="320" width="220" height="44" rx="6" class="box"/>
-  <text x="490" y="348" class="bt" text-anchor="middle">ar_fifo[k+1] (每 mcore)</text>
+  <text x="490" y="348" class="bt" text-anchor="middle">ar_fifo[k] (每类一条)</text>
   <text x="630" y="348" class="txt">← 每类一条记分板</text>
 </svg>

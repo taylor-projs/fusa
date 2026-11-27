@@ -26,11 +26,11 @@
 #       only while the rails disagree, (1,0) combo unreachable
 import re, os
 
-SIM = "/home/eda/work/cmm/sim"
+SIM = os.path.dirname(os.path.abspath(__file__))
 
 ENLO12 = ["u_enlo", "u_enhi", "u_gctrl", "u_force", "u_clo", "u_chi",
           "u_cdead"] + ["g_cwrap[%d].u_cwrap" % i for i in range(5)]
-ERRIMG4 = ["u_errimg", "u_srcimg", "u_fusrcimg", "u_fustatimg"]
+ERRIMG4 = ["u_errimg", "u_srcimg", "u_fusrcimg", "u_fustatimg", "u_armedimg"]
 
 def parse_dump(path):
     """scopes -> {key: {checksum, hdr, rows:[(lineno_or_None, raw)]}}
@@ -86,7 +86,8 @@ for base in ENLO12:
 for base in ERRIMG4:
     k = "I:tb_cmm_top.dut.u_cmm_regfile." + base
     r = grab(inst_dump_line, k,
-             lambda a, r: r.startswith("Block") and '"v.par_q = (~r.par_q);"' in r)
+             lambda a, r: r.startswith("Block") and
+             ('"v.par_q = (~r.par_q);"' in r or '"if (selftest_key)"' in r))
     if r:
         linesup.append(block_of(inst_dump_line, k, r))
     r = grab(inst_dump_br, k,

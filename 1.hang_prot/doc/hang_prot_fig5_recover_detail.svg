@@ -46,11 +46,11 @@
   <text x="1000" y="126" class="txt" text-anchor="middle">s_arready</text>
   <text x="890" y="150" class="sm">s_arid = AR_ID_REMAP|cls</text>
   <text x="890" y="164" class="sm">(v3.2: cls=全id匹配mcore,</text>
-  <text x="890" y="178" class="sm">MCORE_REMAP_IDS[k] / AR_ID_REMAP)</text>
+  <text x="890" y="178" class="sm">DIST_CLS_REMAP_IDS[k] / AR_ID_REMAP)</text>
 
   <!-- AR FIFO -->
   <rect x="430" y="190" width="260" height="78" rx="6" class="strip"/>
-  <text x="560" y="210" class="bt11" text-anchor="middle">AR FIFO (OTD_MAX) ×N_CLS条</text>
+  <text x="560" y="210" class="bt11" text-anchor="middle">AR FIFO (OTD_MAX) ×(N_DIST_CLS+1)条</text>
   <text x="446" y="230" class="sm">ar_wr / ar_rp[cls]</text>
   <text x="446" y="248" class="sm">rbeat_cnt[cls]</text>
   <line x1="430" y1="226" x2="140" y2="226" stroke="#475569" stroke-width="2" marker-end="url(#aS)"/>

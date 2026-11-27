@@ -343,6 +343,21 @@ module tb_reset_checker;
         repeat (8) @(posedge mbus_clk);
         chk(esm_err == 1'b0, "T16 EN=0 blocks err");
 
+        // Hold EN=0 beyond saturation: filt_fire needs cfg_en=0, viol=1,
+        // and each of the (sat_a|sat_b|cnt_dup) result polarities.
+        @(negedge mbus_clk);
+        reset_p = 1'b0;
+        reset_m = 1'b1;
+        repeat (40) @(posedge mbus_clk);
+        mb_rd(A_STAT, rd);
+        chk(rd[3] == 1'b1 && esm_err == 1'b0,
+            "T16b EN=0 saturated divergence remains masked");
+
+        @(negedge mbus_clk);
+        reset_p = 1'b0;
+        reset_m = 1'b0;
+        repeat (3) @(posedge mbus_clk);
+
         mb_rd(A_EV, rd);
         chk(rd == 32'h0, "T17 EN=0 blocks events");
 
@@ -950,6 +965,34 @@ module tb_reset_checker;
         mb_rd(A_CTRL, rd);
         chk(rd[3:0] == 4'b0001, "T106 back to NORMAL");
         repeat (2) @(posedge mbus_clk);
+
+        //---------------------------------------------------------------------
+        // Phase 20: condition-vector closure for independent write qualifiers.
+        // These writes are legal/illegal on purpose and leave all state clean.
+        //---------------------------------------------------------------------
+        mb_wr(A_EV, KEY | 32'h0000_0001);     // non-CTRL, key_ok, mode_ok
+        mb_wr(A_EV, KEY | 32'h0000_0003);     // non-CTRL, key_ok, !mode_ok
+        mb_wr(A_EV, 32'h0000_000A);           // non-REGST, house-key value
+        mb_wr(A_CTRL, 32'h0000_0003);         // CTRL, !key_ok, !mode_ok
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0001, "T107 unkeyed illegal CTRL still rejected");
+        mb_wr(A_REGPAR, 32'h0000_0040);
+        mb_wr_badpar(A_CTRL, KEY | 32'h0000_0003); // !wr_ok with key/mode true
+        mb_rd(A_CTRL, rd);
+        chk(rd[3:0] == 4'b0001, "T108 bad-parity illegal CTRL still rejected");
+        mb_wr(A_REGPAR, 32'h0000_0020);
+
+        // The command wrap duplicate is reachable by FI just like the other
+        // three wraps; cover it instead of carrying the historical exclusion.
+        force dut.u_reset_checker_regfile.u_w_cmd.r.flt_q_n = 1'b0;
+        repeat (2) @(posedge mbus_clk);
+        release dut.u_reset_checker_regfile.u_w_cmd.r.flt_q_n;
+        repeat (1) @(posedge mbus_clk);
+        mb_rd(A_REGPAR, rd);
+        chk(rd[5] == 1'b1, "T109 cmd wrap duplicate heal sets PERR3");
+        mb_wr(A_REGPAR, 32'h0000_0020);
+        mb_rd(A_REGPAR, rd);
+        chk(rd == 32'h0000_0002, "T110 cmd wrap duplicate W1C clean");
 
         chk(rpar_bad == 0, "rpar leaf contract (mbus_rpar === ^mbus_rdata)");
 

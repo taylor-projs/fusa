@@ -20,12 +20,13 @@
 //   v3 架构 (2026-11-08 用户钦定, 统一跨域寄存器面标准 —— 方法采
 //   ia_bus_timeo_regfile, 同 edc_regfile 钦定先例): **全部 CDC / 寄存器 /
 //   err 粘滞捕获收编在 u_dup_ctrl_regfile 双域寄存器文件内** (mbus +
-//   mod_clk), 本模块只剩端口壳 —— 详见 dup_ctrl_regfile 文件头与
-//   doc/design_spec.md §4.
+//   mod_clk), 本模块只剩端口壳 + mod 域复位同步 (规则 26) —— 详见
+//   dup_ctrl_regfile 文件头与 doc/design_spec.md §4.
 //
-//   时钟域: mbus (clk, SW 寄存器面) + mod_clk (err 捕获/影子域), 复位
-//   共源 rstn 异步断言, mod 域释放经 regfile 内 rst_sync 对齐 mod_clk
-//   (scan_mode DFT 旁路, 本顶层透传).
+//   时钟域: mbus (clk, SW 寄存器面) + mod_clk (err 捕获/影子域). mbus 域
+//   rstn 裸用不做同步; mod 域复位 = mbus_rstn 在本顶层经 rst_sync 对齐
+//   mod_clk, 同步后的 mod_rstn_s 下发 regfile (故障保留, scan_mode DFT 旁路,
+//   规则 26).
 //
 //   ESM 双轨 (mbus 域, 2026-11-13 全仓三轨统一): esm_err/_n (DCLS
 //   检错 = 监控职责错误), esm_fault/_n (监视器自身故障: 在途命令
@@ -37,7 +38,7 @@ module dup_ctrl_top #(
    parameter integer ERR_SYNC_STAGE = 3      // 跨域同步链级数: 2 | 3
 )(
    input  logic        clk,        // mbus 时钟 (寄存器面)
-   input  logic        rstn,       // 异步低有效 (mbus + mod 两域共源)
+   input  logic        rstn,       // 异步低有效 (mbus 域裸复位, 不做同步)
    input  logic        scan_mode,  // DFT: mod 域复位同步器旁路
    input  logic        mod_clk,    // dup wrapper 比较时钟 (err 捕获域)
 
@@ -64,13 +65,28 @@ module dup_ctrl_top #(
    output logic        reg_par_fault_n
 );
 
+   //--------------------------------------------------------------------------
+   // mod 域复位同步 (规则 26): mbus_rstn 在本顶层同步到 mod_clk 后下发
+   //   regfile (故障保留: mod 域单独复位时 sticky/影子不清)
+   //--------------------------------------------------------------------------
+   logic mod_rstn_s;
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_mod_rst (
+      .clk      (mod_clk   ),
+      .rstn     (rstn      ),
+      .scan_mode(scan_mode ),
+      .rstn_s   (mod_rstn_s)
+   );
+
    dup_ctrl_regfile #(
       .IDX           (IDX           ),
       .ERR_SYNC_STAGE(ERR_SYNC_STAGE)
    ) u_dup_ctrl_regfile (
       .clk            (clk            ),
       .rstn           (rstn           ),
-      .scan_mode      (scan_mode      ),
       .ce             (ce             ),
       .wr             (wr             ),
       .addr           (addr           ),
@@ -79,6 +95,7 @@ module dup_ctrl_top #(
       .rdata          (rdata          ),
       .rpar           (rpar           ),
       .mod_clk        (mod_clk        ),
+      .mod_rstn       (mod_rstn_s     ),
       .err_i          (err_i          ),
       .fi_o           (fi_o           ),
       .esm_err        (esm_err        ),

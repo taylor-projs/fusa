@@ -93,8 +93,9 @@
 //   DP_FSM | 在途奇偶 PERR6/PERR7 | 忙丢 | 自测位, 查询面 STA_FAULT);
 //   reg_par_fault = 寄存器面奇偶 (存储型 PERR 组, 不含在途).
 //
-// 复位: rstn 异步断言两域共源; axi 域释放经 regfile 内 rst_sync 对齐
-//   axi_clk, 输出 axi_rstn 供 top 喂 core/macro (axi 域单一复位源).
+// 复位: rstn (mbus 域) 裸复位不做同步; axi 域复位 axi_rstn 由设计 top
+//   的 u_axi_reg_rst 同步 mbus_rstn 到 axi_clk 后下发 (规则 26, 本模块
+//   不再自行例化 rst_sync) —— axi 域单独复位时 sticky/影子保留 (故障不丢).
 // ============================================================================
 module axi2sram_ctrl_regfile #(
    parameter integer IDX        = 0,     // mbus 实例号 (addr[15:8])
@@ -102,8 +103,7 @@ module axi2sram_ctrl_regfile #(
    parameter integer SYNC_STAGE = 3      // 跨域同步链级数: 2 | 3
 )(
    input  logic        clk,        // mbus 时钟 (SW 寄存器面)
-   input  logic        rstn,       // 异步低有效 (mbus + axi 两域共源)
-   input  logic        scan_mode,  // DFT: rst_sync 旁路 (拉到设计 top)
+   input  logic        rstn,       // 异步低有效 (mbus 域裸复位, 不做同步)
 
    // ---------------- mbus ----------------
    input  logic        ce,
@@ -116,7 +116,7 @@ module axi2sram_ctrl_regfile #(
 
    // ---------------- 引擎侧 (axi_clk 域) ----------------
    input  logic        axi_clk,    // AXI 从口/引擎/宏时钟 (独立)
-   output logic        axi_rstn,   // axi 域复位 (rst_sync 释放, 喂 core/macro)
+   input  logic        axi_rstn,   // axi 域复位 (top u_axi_reg_rst 同步 mbus_rstn 下发)
 
    // cfg -> core (axi 域影子解码)
    output logic        mon_en,     // 监控使能 (4bit 码解码, 非法默认开)
@@ -161,11 +161,13 @@ module axi2sram_ctrl_regfile #(
    //--------------------------------------------------------------------------
    // 参数约束
    //--------------------------------------------------------------------------
+   // synopsys translate_off
    initial begin
       if (LAW > 21) begin
          $fatal(1, "axi2sram_ctrl_regfile: LAW=%0d > 21 unsupported (STA_LAT)", LAW);
       end
    end
+   // synopsys translate_on
 
    //--------------------------------------------------------------------------
    // 4bit 编码使能解码 (d=4: 最近邻纠 1bit, 平局按默认方向)
@@ -205,19 +207,9 @@ module axi2sram_ctrl_regfile #(
       end
    endfunction
 
-   //--------------------------------------------------------------------------
-   // axi 域复位: rstn 异步断言直通, 释放经 2FF 对齐 axi_clk;
-   // 输出同时供 top 喂 core/macro (整个 axi 域单一复位源)
-   //--------------------------------------------------------------------------
-   rst_sync #(
-      .SYNC_LVL_NUM(2   ),
-      .DEF_VAL     (1'b0)
-   ) u_axi_rst (
-      .clk      (axi_clk  ),
-      .rstn     (rstn     ),
-      .scan_mode(scan_mode),
-      .rstn_s   (axi_rstn )
-   );
+   // axi 域复位 axi_rstn 由设计 top 的 u_axi_reg_rst 同步 mbus_rstn 下发
+   //   (规则 26: 复位同步收编在单设计 top, 本模块只吃同步后的复位, 不再
+   //   自行例化 rst_sync)
 
    //--------------------------------------------------------------------------
    // mbus 叶译码 (零等待; wsel = addr[6:2], v4.0 加宽 5 位纳 0x38/0x3C 快照)

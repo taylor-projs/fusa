@@ -168,6 +168,7 @@ module tb_axi2sram_ctrl;
    ) dut (
       .mbus_clk       (clk            ),
       .mbus_rstn      (rstn           ),
+      .axi_rstn       (rstn           ),
       .scan_mode      (scan_mode      ),
       .ce             (ce             ),
       .wr             (wr             ),
@@ -1202,6 +1203,23 @@ module tb_axi2sram_ctrl;
    logic [1:0]   rsp;
    bit           rlast;
    logic         t23_tmp;      // force 注错静态暂存 (自引用 force = no-op 坑)
+   logic [1:0]   t25_tmp2;     // T25 两位 Q/Q_n 注错暂存
+   logic [8:0]   t25_pos;      // T25 ECC 注错位置循环值
+
+   // T25 逐 reg_wrap 副本失配 FI: force 跨一个 posedge, release 后等副本
+   // 回贴再检查 dup_err 已消失且 flt 粘滞保持 (不使用动态层次句柄).
+`define T25_DUP_FI(PATH, CLK, TAG) \
+      begin \
+         @(negedge CLK); \
+         t23_tmp = PATH.r.flt_q_n; \
+         force PATH.r.flt_q_n = ~t23_tmp; \
+         @(posedge CLK); \
+         @(negedge CLK); \
+         release PATH.r.flt_q_n; \
+         repeat (2) @(posedge CLK); \
+         chk1({"T25 dup clear ", TAG}, PATH.dup_err, 1'b0); \
+         chk1({"T25 dup sticky ", TAG}, PATH.flt, 1'b1); \
+      end
 
    // T23 复位自愈: 重新复位 + 等初始化引擎扫完 (扫片写零 → refmem 同步清)
    task automatic t23_reset();
@@ -1231,14 +1249,14 @@ module tb_axi2sram_ctrl;
       rstn = 1'b0;
       scan_mode = 1'b1;
       repeat (4) @(negedge axi_clk);
-      chk1("T0 rstn=0 axi_rstn", dut.axi_rstn, 1'b0);
+      chk1("T0 rstn=0 axi_rstn", dut.axi_rstn_s, 1'b0);
       chk1("T0 rstn=0 awready", axi_awready, 1'b0);
       chk1("T0 rstn=0 arready", axi_arready, 1'b0);
       chk1("T0 rstn=0 rvalid", axi_rvalid, 1'b0);
       chk1("T0 rstn=0 bvalid", axi_bvalid, 1'b0);
       rstn = 1'b1;
       @(negedge axi_clk);
-      chk1("T0 scan bypass release", dut.axi_rstn, 1'b1);
+      chk1("T0 scan bypass release", dut.axi_rstn_s, 1'b1);
       // 回到正常模式重新复位 (初始化引擎随 axi 域复位重启)
       rstn = 1'b0;
       scan_mode = 1'b0;
@@ -2716,6 +2734,372 @@ module tb_axi2sram_ctrl;
       refmem[8'h46][8*4 +: 8] = tpat(16'h46)[8*4 +: 8];
       rd1((13'h0046 << 5) + 13'd0);
       rd1(13'h0047 << 5);
+
+      // ---------------- T25: line/cond/branch 收口 (真实激励优先) ----------------
+      // a) 读 mux/译码条件: WO/配置读回、无效 key/nibble、W1C 零写与
+      //    REGST 越界/保留组; 另补 ce=0/wr=1 总线静置组合.
+      $display("== T25a register decode condition sweep ==");
+      mbus_rd(RA_I1, rd);
+      chk32("T25a INJ1 read mux", rd[3:0], 32'h0);
+      mbus_rd(RA_I2, rd);
+      chk32("T25a INJ2 read mux", rd[3:0], 32'h0);
+      mbus_rd(RA_REGST, rd);
+      chk32("T25a WO REGST reads zero", rd, 32'h0);
+      @(negedge clk);
+      ce = 1'b0;
+      wr = 1'b1;
+      @(negedge clk);
+      wr = 1'b0;
+      mbus_wr(RA_I1, 32'h0000_000F);           // 错 key + 合法 nibble
+      cmd_wait();
+      mbus_wr(RA_I1, 32'h0000_00A5);           // 正 key + 非法 nibble
+      cmd_wait();
+      mbus_wr(RA_I2, 32'h0000_000F);
+      cmd_wait();
+      mbus_wr(RA_I2, 32'h0000_00A5);
+      cmd_wait();
+      mbus_wr(RA_CDC, 32'h0);                  // W1C 数据 0 侧
+      cmd_wait();
+      mbus_wr(RA_STA, 32'h0);
+      cmd_wait();
+      mbus_wr(RA_REGST, (32'd7 << 8) | 32'h1A); // 保留组 7
+      cmd_wait();
+      mbus_wr(RA_REGST, (32'd10 << 8) | 32'h1A);// 越界组 10
+      cmd_wait();
+      mbus_wr(RA_REGST, 32'h0000_0040);         // 无 key DP_SELFTEST 拒绝
+      cmd_wait();
+
+      // b) ECC 注错掩码: 总偶位 266、2 幂汉明位 256、无效 0/267;
+      //    关闭监控时双错仍译码但事件静默; 三 ECC 位翻转形成 syn_p=1
+      //    且 syn_h>265 的 DERR 分类臂.
+      $display("== T25b ECC position/classification sweep ==");
+      for (k = 0; k < 4; k++) begin
+         case (k)
+            0: t25_pos = 9'd266;
+            1: t25_pos = 9'd256;
+            2: t25_pos = 9'd0;
+            default: t25_pos = 9'd267;
+         endcase
+         mbus_wr(RA_I1, inj_val(t25_pos, 4'b1111));
+         cmd_wait();
+         wr1((13'h0050 + k) << 5, tpat(16'h50 + k), 32'hFFFF_FFFF);
+         mbus_wr(RA_I1, inj_val(t25_pos, 4'b0000));
+         cmd_wait();
+         rd1((13'h0050 + k) << 5);
+      end
+      mbus_wr(RA_STA, 32'hF);
+      cmd_wait();
+      mbus_wr(RA_EN, 32'h0);
+      cmd_wait();
+      mbus_wr(RA_I1, inj_val(9'd5, 4'b1111));
+      mbus_wr(RA_I2, inj_val(9'd9, 4'b1111));
+      cmd_wait();
+      wr1(13'h0054 << 5, tpat(16'h54), 32'hFFFF_FFFF);
+      mbus_wr(RA_I1, inj_val(9'd5, 4'b0000));
+      mbus_wr(RA_I2, inj_val(9'd9, 4'b0000));
+      cmd_wait();
+      rd1(13'h0054 << 5, 1'b0);
+      sta_wait();
+      mbus_rd(RA_STA, rd);
+      chk32("T25b DERR silent when monitor off", rd[1:0], 32'h0);
+      mbus_wr(RA_EN, 32'hF);
+      cmd_wait();
+      wr1(13'h0054 << 5, tpat(16'h54), 32'hFFFF_FFFF);
+      wr1(13'h0055 << 5, tpat(16'h55), 32'hFFFF_FFFF);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(8'h55, 265);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(8'h55, 264);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(8'h55, 263);
+      rd1(13'h0055 << 5);
+      sta_wait();
+      mbus_rd(RA_STA, rd);
+      chk1("T25b triple-ECC high-syndrome DERR", rd[1], 1'b1);
+      wr1(13'h0055 << 5, tpat(16'h55), 32'hFFFF_FFFF);
+      mbus_wr(RA_STA, 32'hF);
+      cmd_wait();
+
+      // c) 计数器饱和与 Q/Q_n 自愈, mbus 锁存副本和 FLT_TEST 副本.
+      $display("== T25c counter saturation and duplicate rails ==");
+      mbus_wr(RA_CC, 32'hFFFF);
+      cmd_wait();
+      mbus_wr(RA_DC, 32'hFFFF);
+      cmd_wait();
+      mbus_wr(RA_I1, inj_val(9'd12, 4'b1111));
+      cmd_wait();
+      wr1(13'h0056 << 5, tpat(16'h56), 32'hFFFF_FFFF);
+      mbus_wr(RA_I1, inj_val(9'd12, 4'b0000));
+      cmd_wait();
+      rd1(13'h0056 << 5);
+      sta_wait();
+      mbus_rd(RA_CC, rd);
+      chk32("T25c CERR counter saturated", rd, 32'hFFFF);
+      mbus_wr(RA_I1, inj_val(9'd5, 4'b1111));
+      mbus_wr(RA_I2, inj_val(9'd9, 4'b1111));
+      cmd_wait();
+      wr1(13'h0057 << 5, tpat(16'h57), 32'hFFFF_FFFF);
+      mbus_wr(RA_I1, inj_val(9'd5, 4'b0000));
+      mbus_wr(RA_I2, inj_val(9'd9, 4'b0000));
+      cmd_wait();
+      rd1(13'h0057 << 5, 1'b0);
+      sta_wait();
+      mbus_rd(RA_DC, rd);
+      chk32("T25c DERR counter saturated", rd, 32'hFFFF);
+      @(negedge axi_clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.r_cnt.ccnt_n[0];
+      force dut.u_axi2sram_ctrl_regfile.r_cnt.ccnt_n[0] = ~t23_tmp;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_regfile.r_cnt.ccnt_n[0];
+      repeat (3) @(posedge axi_clk);
+      sta_wait();
+      mbus_rd(RA_CC, rd);
+      chk32("T25c CERR duplicate self-heal", rd, 32'h0);
+      mbus_rd(RA_FLT, rd);
+      chk1("T25c CNT_DUP CERR sticky", rd[0], 1'b1);
+      mbus_wr(RA_FLT, 32'h1);
+      cmd_wait();
+      @(negedge axi_clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.r_cnt.dcnt_n[0];
+      force dut.u_axi2sram_ctrl_regfile.r_cnt.dcnt_n[0] = ~t23_tmp;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_regfile.r_cnt.dcnt_n[0];
+      repeat (3) @(posedge axi_clk);
+      sta_wait();
+      mbus_rd(RA_DC, rd);
+      chk32("T25c DERR duplicate self-heal", rd, 32'h0);
+      mbus_wr(RA_FLT, 32'h1);
+      cmd_wait();
+      for (k = 0; k < 2; k++) begin
+         @(negedge clk);
+         t25_tmp2 = dut.u_axi2sram_ctrl_regfile.r_mb.par_lq_n;
+         force dut.u_axi2sram_ctrl_regfile.r_mb.par_lq_n = t25_tmp2 ^ (2'b01 << k);
+         @(posedge clk);
+         @(negedge clk);
+         release dut.u_axi2sram_ctrl_regfile.r_mb.par_lq_n;
+         repeat (2) @(posedge clk);
+         mbus_rd(RA_PAR, rd);
+         chk32("T25c PAR latch duplicate heal-to-set", rd & 32'h201, 32'h201);
+         mbus_wr(RA_PAR, 32'h201);
+         cmd_wait();
+      end
+      @(negedge clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.r_mb.flt_tst_q_n;
+      force dut.u_axi2sram_ctrl_regfile.r_mb.flt_tst_q_n = ~t23_tmp;
+      @(posedge clk);
+      @(negedge clk);
+      release dut.u_axi2sram_ctrl_regfile.r_mb.flt_tst_q_n;
+      repeat (2) @(posedge clk);
+      mbus_rd(RA_FLT, rd);
+      chk32("T25c FLT_TEST duplicate heal-to-set", rd[31], 32'h1);
+      mbus_wr(RA_FLT, 32'h8000_0000);
+      cmd_wait();
+
+      // d) 编码使能 image/shadow 纠 1bit + 2bit 平局默认方向.
+      $display("== T25d coded-enable correction/default FI ==");
+      mbus_wr(RA_I1, inj_val(9'd12, 4'b0000));
+      cmd_wait();
+      mbus_wr(RA_I2, inj_val(9'd12, 4'b0000));
+      cmd_wait();
+      @(negedge clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.u_w_i1.r.data_q[0];
+      force dut.u_axi2sram_ctrl_regfile.u_w_i1.r.data_q[0] = ~t23_tmp;
+      @(posedge clk);
+      @(negedge clk);
+      release dut.u_axi2sram_ctrl_regfile.u_w_i1.r.data_q[0];
+      repeat (2) @(posedge clk);
+      mbus_rd(RA_I1, rd);
+      chk32("T25d INJ1 image corrected", rd, inj_val(9'd12, 4'b0000));
+      @(negedge clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.u_w_i2.r.data_q[0];
+      force dut.u_axi2sram_ctrl_regfile.u_w_i2.r.data_q[0] = ~t23_tmp;
+      @(posedge clk);
+      @(negedge clk);
+      release dut.u_axi2sram_ctrl_regfile.u_w_i2.r.data_q[0];
+      repeat (2) @(posedge clk);
+      mbus_rd(RA_I2, rd);
+      chk32("T25d INJ2 image corrected", rd, inj_val(9'd12, 4'b0000));
+      @(negedge axi_clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.u_c_i1.r.data_q[0];
+      force dut.u_axi2sram_ctrl_regfile.u_c_i1.r.data_q[0] = ~t23_tmp;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      chk1("T25d INJ1 shadow fix arm", dut.u_axi2sram_ctrl_regfile.i1_dec_s.fix, 1'b1);
+      release dut.u_axi2sram_ctrl_regfile.u_c_i1.r.data_q[0];
+      repeat (2) @(posedge axi_clk);
+      @(negedge axi_clk);
+      t23_tmp = dut.u_axi2sram_ctrl_regfile.u_c_i2.r.data_q[0];
+      force dut.u_axi2sram_ctrl_regfile.u_c_i2.r.data_q[0] = ~t23_tmp;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      chk1("T25d INJ2 shadow fix arm", dut.u_axi2sram_ctrl_regfile.i2_dec_s.fix, 1'b1);
+      release dut.u_axi2sram_ctrl_regfile.u_c_i2.r.data_q[0];
+      repeat (2) @(posedge axi_clk);
+      @(negedge axi_clk);
+      t25_tmp2 = dut.u_axi2sram_ctrl_regfile.u_c_en.r.data_q[1:0];
+      force dut.u_axi2sram_ctrl_regfile.u_c_en.r.data_q[1:0] = ~t25_tmp2;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      chk1("T25d EN two-bit tie defaults on", dut.u_axi2sram_ctrl_regfile.en_dec_s.on, 1'b1);
+      chk1("T25d EN two-bit tie no correction", dut.u_axi2sram_ctrl_regfile.en_dec_s.fix, 1'b0);
+      release dut.u_axi2sram_ctrl_regfile.u_c_en.r.data_q[1:0];
+      repeat (2) @(posedge axi_clk);
+      mbus_wr(RA_PAR, 32'h0000_0FFF);
+      cmd_wait();
+
+      // e) 全部 16 个 reg_wrap 实例的 flt Q/Q_n 失配臂, 不以排除掩盖.
+      t23_reset();
+      $display("== T25e every reg_wrap duplicate-rail FI ==");
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_c_en,   axi_clk, "c_en")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_c_i1,   axi_clk, "c_i1")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_c_i2,   axi_clk, "c_i2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_c_byp,  axi_clk, "c_byp")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_st_err, axi_clk, "st_err")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_st_flt, axi_clk, "st_flt")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_st_lat, axi_clk, "st_lat")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_err_s2, clk,     "err_s2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_flt_s2, clk,     "flt_s2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_lat_s2, clk,     "lat_s2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_init_s2,clk,     "init_s2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_w_en,   clk,     "w_en")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_w_i1,   clk,     "w_i1")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_w_i2,   clk,     "w_i2")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_w_ctrl, clk,     "w_ctrl")
+`T25_DUP_FI(dut.u_axi2sram_ctrl_regfile.u_w_cmd,  clk,     "w_cmd")
+      t23_reset();
+
+      // f) 同拍 AW/W 直派、独占多拍/排队失败、RMW 边界与三类毒化.
+      $display("== T25f dispatch/exclusive/RMW corners ==");
+      fork
+         axi_aw(4'h1, 13'h0040 << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+         axi_w(tpat(16'h40), 32'h1, 1'b1);
+      join
+      axi_b(rsp);
+      chk32("T25f idle-to-RMW bresp", rsp, R_OKAY);
+      refmem[8'h40][7:0] = tpat(16'h40)[7:0];
+      rd1(13'h0040 << 5);
+      axi_aw(4'h1, 13'h0041 << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+      axi_ar(4'h2, 13'h0042 << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+      axi_w(tpat(16'h41), 32'h2, 1'b1);
+      axi_b(rsp);
+      chk32("T25f RMWW-to-RD bresp", rsp, R_OKAY);
+      axi_r(rdat, rsp, rlast);
+      chk32("T25f RMWW-to-RD rresp", rsp, R_OKAY);
+      refmem[8'h41][15:8] = tpat(16'h41)[15:8];
+      rd1(13'h0041 << 5);
+      axi_ar(4'h5, 13'h0043 << 5, 8'd1, 3'd5, 2'b01, 1'b1);
+      for (j = 0; j < 2; j++) begin
+         axi_r(rdat, rsp, rlast);
+         chk32("T25f multibeat exclusive read", rsp, R_EXOKAY);
+      end
+      exw1(13'h0043 << 5, tpat(16'h43), 1'b1);
+      @(negedge axi_clk);
+      axi_bready = 1'b0;
+      axi_aw(4'h2, 13'h0045 << 5, 8'd1, 3'd5, 2'b01, 1'b0);
+      axi_w(tpat(16'h45), 32'hFFFF_FFFF, 1'b0);
+      axi_aw(4'h5, 13'h0049 << 5, 8'd0, 3'd5, 2'b01, 1'b1);
+      axi_w(tpat(16'h46), 32'hFFFF_FFFF, 1'b1); // 前一正常突发的末拍
+      axi_w(tpat(16'h49), 32'hFFFF_FFFF, 1'b1); // 排队独占写拍
+      @(negedge axi_clk);
+      axi_bready = 1'b1;
+      axi_b(rsp);
+      chk32("T25f queued normal write bresp", rsp, R_OKAY);
+      axi_b(rsp);
+      chk32("T25f queued exclusive failure in S_WR", rsp, R_OKAY);
+      refmem[8'h45] = tpat(16'h45);
+      refmem[8'h46] = tpat(16'h46);
+      rd1(13'h0049 << 5);
+      fork
+         axi_aw(4'h5, 13'h004A << 5, 8'd0, 3'd5, 2'b01, 1'b1);
+         axi_w(tpat(16'h4A), 32'hFFFF_FFFF, 1'b1);
+      join
+      axi_b(rsp);
+      chk32("T25f dispatch exclusive failure", rsp, R_OKAY);
+      exrd(13'h004B << 5);
+      fork
+         axi_aw(4'h5, 13'h004B << 5, 8'd0, 3'd5, 2'b01, 1'b1);
+         axi_w(tpat(16'h4B), 32'hFFFF_FFFF, 1'b1);
+      join
+      axi_b(rsp);
+      chk32("T25f dispatch exclusive full write", rsp, R_EXOKAY);
+      refmem[8'h4B] = tpat(16'h4B);
+      exrd(13'h004C << 5);
+      fork
+         axi_aw(4'h5, 13'h004C << 5, 8'd0, 3'd5, 2'b01, 1'b1);
+         axi_w(tpat(16'h4C), 32'h4, 1'b1);
+      join
+      axi_b(rsp);
+      chk32("T25f exclusive RMW clears monitor", rsp, R_EXOKAY);
+      refmem[8'h4C][23:16] = tpat(16'h4C)[23:16];
+      rd1(13'h004C << 5);
+      fork
+         axi_aw(4'h1, 13'h004D << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+         axi_w(tpat(16'h4D), 32'h0, 1'b1);
+      join
+      axi_b(rsp);
+      chk32("T25f dispatch empty write", rsp, R_OKAY);
+
+      $display("== T25g poison dispatch and RMW-window FI ==");
+      axi_w(tpat(16'h4E), 32'hFFFF_FFFF, 1'b1);
+      axi_aw(4'h4, 13'h004E << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+      t23_tmp = dut.u_axi2sram_ctrl_core.u_cmdq.q[1];
+      force dut.u_axi2sram_ctrl_core.u_cmdq.q[1] = ~t23_tmp;
+      axi_b(rsp);
+      chk32("T25g dispatch poison write", rsp, R_SLVERR);
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_core.u_cmdq.q[1];
+      rd1(13'h004E << 5);
+      axi_w(tpat(16'hFF), 32'hFFFF_FFFF, 1'b1);
+      t23_tmp = dut.u_axi2sram_ctrl_core.u_wskip.q[5];
+      force dut.u_axi2sram_ctrl_core.u_wskip.q[5] = ~t23_tmp;
+      axi_aw(4'h4, 13'h00FF << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+      axi_b(rsp);
+      chk32("T25g dispatch poison W beat", rsp, R_SLVERR);
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_core.u_wskip.q[5];
+      sta_wait();
+      mbus_rd(RA_SNW, rd);
+      chk32("T25g SNAP_W all implemented low bits", rd, 32'h1FF);
+      axi_ar(4'h4, (13'h0050 << 5) + 13'd3, 8'd1, 3'd0, 2'b01, 1'b0);
+      t23_tmp = dut.u_axi2sram_ctrl_core.u_cmdq.q[1];
+      force dut.u_axi2sram_ctrl_core.u_cmdq.q[1] = ~t23_tmp;
+      for (j = 0; j < 2; j++) begin
+         axi_r(rdat, rsp, rlast);
+         chk32("T25g poison read SLVERR", rsp, R_SLVERR);
+      end
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_core.u_cmdq.q[1];
+      sta_wait();
+      mbus_rd(RA_SNC, rd);
+      chk32("T25g SNAP_CMD resp/address low bits",
+            ((rd[1:0] == 2'b10) && (rd[4:2] == 3'b011)) ? 32'h1 : 32'h0, 32'h1);
+      @(negedge axi_clk);
+      axi_bready = 1'b0;
+      axi_aw(4'h1, 13'h0051 << 5, 8'd0, 3'd5, 2'b01, 1'b0);
+      axi_w(tpat(16'h51), 32'h4, 1'b1);
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      chk1("T25g RMW window reached",
+           dut.u_axi2sram_ctrl_core.r.st == 5'b01000, 1'b1);
+      t23_tmp = dut.u_axi2sram_ctrl_core.u_wskip.q[5];
+      force dut.u_axi2sram_ctrl_core.u_wskip.q[5] = ~t23_tmp;
+      @(posedge axi_clk);
+      @(negedge axi_clk);
+      release dut.u_axi2sram_ctrl_core.u_wskip.q[5];
+      axi_b(rsp);
+      chk32("T25g RMW-window poison bresp", rsp, R_SLVERR);
+      @(negedge axi_clk);
+      axi_bready = 1'b1;
+      repeat (2) @(negedge axi_clk);
+      refmem[8'h51][23:16] = tpat(16'h51)[23:16];
+      rd1(13'h0051 << 5);
+
+      // h) 宏 SEU 背门四个非法目标保护臂; run_vcs.sh 精确期待四条诊断.
+      $display("== T25h macro illegal-target guards ==");
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(-1, 0);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(DEPTH, 0);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(0, -1);
+      dut.u_mcu_sram_wrapper.u_axi2sram_ctrl_macro.seu_flip(0, 266);
+      t23_reset();
 
       // ---------------- 收尾 ----------------
       if (rpar_bad != 0) begin

@@ -67,9 +67,12 @@ CDC 全部收编在 regfile 内 (规则 23):
 - **忙丢显性化**: mbus 零等待不停等 —— busy 时到达的合法写丢弃 +
   `WR_DROPPED` 粘滞 (STA_CDC[1] W1C), `CFG_BUSY` (STA_CDC[0]) 可 poll;
   sram_clk 停摆期间写被丢且 busy 挂起可见。
-- **复位**: `mbus_rstn` 异步断言两域共源; sram 域释放经 regfile 内
-  rst_sync 对齐 sram_clk, 输出 `sram_rstn` 喂 core/macro (sram 域单一
-  复位源); `scan_mode` 拉到 top (DFT 旁路)。
+- **复位** (规则 26): 同步器收编在 top, 双 `rst_sync` 分路; `mbus_rstn`
+  在 mbus 域裸用。`sram_rstn` 经 `u_sram_rst` 同步到 `sram_clk`, 输出
+  `sram_rstn_s` 喂 core 引擎; `mbus_rstn` 另经 `u_sram_reg_rst` 同步到
+  `sram_clk`, 输出 `sram_reg_rstn` 喂 regfile sram 域, regfile 内不再
+  例化 `rst_sync`。`sram_rstn` 单独复位时 regfile sticky/影子保留
+  (故障不丢); `scan_mode` 拉到 top (两路 DFT 旁路)。
 
 ## 3. 编码 (33,32) 单校验位偶奇偶 (v3.1 地址折入)
 
@@ -165,8 +168,8 @@ mbus 读出面 ~2 拍同步延迟。
    目标); REGST 逐组注错 (image+shadow 两域同施) + PAR_SELFTEST
    自测锁存 + rpar=^rdata 读回程校验。
 4. **CDC 加固** (规则 23): ia 握手两域同施 / 在途奇偶双件 / 忙丢显性化
-   (WR_DROPPED + CFG_BUSY poll) / 影子双门复检 / rst_sync 域复位单一源
-   / scan_mode 旁路拉到 top。
+   (WR_DROPPED + CFG_BUSY poll) / 影子双门复检 / top 双 rst_sync 分路
+   (规则 26, §2) / scan_mode 旁路拉到 top。
 5. **ESM 三对双轨** (规则 13+25): esm_err (监控职责错误: |STA_ERR =
    PERR_DET | PERR_ORG 有机检出), esm_fault (监视器自身故障: CNT_DUP |
    在途命令奇偶 PERR5 | 写锁存 lane PERR6 | 忙丢 | FLT_TEST 自测位,

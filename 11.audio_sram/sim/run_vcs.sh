@@ -1,22 +1,24 @@
 #!/bin/bash
-# audio_sram — VCS 编译仿真 + Verdi 查看 (在 Linux VM 内运行)
-# 前提: 已 source Synopsys 环境变量 (VCS/Verdi 在 PATH 上, NOVAS_HOME 已设)
-# 用法: bash run_vcs.sh          # 编译 + 仿真 (fsdb + 覆盖率 vdb) + 结果自检
-#       bash run_vcs.sh verdi    # 只起 Verdi 打开已有 fsdb
-#       bash run_vcs.sh cov      # 起 Verdi coverage GUI 查看覆盖率
-set -e
+# audio_sram: one-command VCS regression + raw/structural-exclusion coverage.
+# Usage in the VCS/Verdi VM:
+#   bash run_vcs.sh         clean build + 256 checks + raw/exclusion dashboards
+#   bash run_vcs.sh verdi   open the existing FSDB
+#   bash run_vcs.sh cov     open the existing VDB in Verdi coverage GUI
+#   bash run_vcs.sh clean   remove obj_vcs
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RTL="$ROOT/rtl"
 SIM="$ROOT/sim"
-# 产物在 sim/obj_vcs (要求 11.audio_sram 位于 VM 本地文件系统).
-# 若从 VMware 共享目录(hgfs)直接跑, hgfs 不支持符号链接,
-# 用 VCS_OUT=/本地路径 覆盖
 OUT="${VCS_OUT:-$SIM/obj_vcs}"
 TOP=tb_audio_sram
+
+if [ "${1:-}" = "clean" ]; then
+   rm -rf "$OUT"
+   exit 0
+fi
 mkdir -p "$OUT"
 
-# filelist (公共单元走 fusa 根 common_modules/ 单一源; v2 双域补同步/复位单元)
 cat > "$OUT/filelist.f" <<EOF
 $ROOT/../common_modules/reg_wrap.sv
 $ROOT/../common_modules/sync_2dff.sv
@@ -29,23 +31,22 @@ $RTL/audio_sram_top.sv
 $SIM/tb_audio_sram.sv
 EOF
 
-# 覆盖率只统计 DUT (tb_audio_sram.dut), 排除测试台
+# Synthesis-target DUT only.  audio_sram_macro is a simulation model, not an
+# RTL synthesis/coverage target; its external behavior is checked through the
+# core/integration tests but its internal lines/toggles are not scored.
 cat > "$OUT/cov.cfg" <<EOF
 -tree $TOP
 +tree $TOP.dut
+-tree $TOP.dut.u_audio_sram_macro
 EOF
+CM="-cm line+cond+fsm+tgl+branch"
 
-# 不收 cond: parity/XOR 树让条件覆盖向量爆到 2^N 被 VCS 截断(VCM-TRIMVEC),
-# 分数无意义且拖慢仿真. 需要时自行加回 "+cond"
-CM="-cm line+fsm+tgl+branch"
-
-if [ "$1" = "verdi" ]; then
+if [ "${1:-}" = "verdi" ]; then
    if [ ! -f "$OUT/$TOP.fsdb" ]; then echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; fi
    shift
    exec verdi -sverilog -f "$OUT/filelist.f" -top $TOP -ssf "$OUT/$TOP.fsdb" "$@"
 fi
-
-if [ "$1" = "cov" ]; then
+if [ "${1:-}" = "cov" ]; then
    if ! ls "$OUT/simv.vdb/snps/coverage/db/testdata"/* >/dev/null 2>&1; then
       echo "no coverage testdata in $OUT/simv.vdb -- run 'bash run_vcs.sh' first"
       exit 1
@@ -54,8 +55,11 @@ if [ "$1" = "cov" ]; then
    exec verdi -cov -covdir "$OUT/simv.vdb" "$@"
 fi
 
-echo "== vcs compile (with coverage) =="
-rm -rf "$OUT/simv.vdb"
+# Fresh products on every default invocation: no stale VDB, binary or urg data.
+rm -rf "$OUT/csrc" "$OUT/simv" "$OUT/simv.daidir" "$OUT/simv.kdb" \
+       "$OUT/simv.vdb" "$OUT/urg_report" "$OUT/urg_report_excl"
+
+echo "== vcs compile (line+cond+fsm+tgl+branch) =="
 vcs -full64 -sverilog +v2k \
     -timescale=1ns/1ps \
     -debug_access+all -kdb -lca \
@@ -67,31 +71,36 @@ vcs -full64 -sverilog +v2k \
 
 echo "== simulate (collect coverage) =="
 cd "$OUT"
-./simv $CM -cm_name run1 -l sim.log
+setarch "$(uname -m)" -R ./simv $CM -cm_name run1 -l sim.log +vcs+flush+all
 
-# ---- 结果自检 (SVA/TB $display 不进退出码, 必须查文本) ----
+# SVA failures/TB $display do not reliably set the simulator exit status.
 if grep -qE "FAIL|RAIL-FAIL|SEU-FI illegal|failed at|Error-" sim.log; then
    echo "ERROR: failures found in sim.log:"
    grep -nE "FAIL|RAIL-FAIL|SEU-FI illegal|failed at|Error-" sim.log | head -40
    exit 1
 fi
-if ! grep -q "^TB PASS: all checks passed" sim.log; then
-   echo "ERROR: TB PASS line not found -- TB likely hung or crashed."
-   echo "check: tail -40 $OUT/sim.log"
-   tail -40 sim.log || true
+if ! grep -q "^TB PASS: all checks passed (256 checks, rails clean)" sim.log; then
+   echo "ERROR: expected 256-check TB PASS line not found."
+   tail -40 sim.log
    exit 1
 fi
-echo "== self-check OK: $(grep -c '^  PASS' sim.log) checks passed =="
-
+echo "== self-check OK: 256 checks, rails clean =="
 if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    echo "ERROR: simv finished but no coverage testdata was written."
    exit 1
 fi
 
-echo "== coverage summary (raw) =="
-urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
-grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
-   echo "(summary in $OUT/urg_report/, or view in GUI)"
+urg -dir simv.vdb -report urg_report -format both -log urg.log
+# Multiple .el files require -elfilelist.  -excl_strict makes stale entries
+# (objects since covered by stimulus) a hard error so they get retired.
+printf '%s\n' "$SIM/tgl_struct_excl.el" "$SIM/misc_struct_excl.el" > elfilelist.txt
+urg -dir simv.vdb -elfilelist elfilelist.txt -excl_strict \
+    -report urg_report_excl -format both -log urg_excl.log
+
+echo "== RAW coverage (urg_report/dashboard.txt) =="
+grep -A 20 "Total Coverage" urg_report/dashboard.txt
+echo "== STRUCTURAL EXCLUSIONS APPLIED (urg_report_excl/dashboard.txt) =="
+grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt
 
 echo "== done =="
 echo "   波形:   bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

@@ -149,6 +149,7 @@ module tb_audio_sram;
    ) dut (
       .mbus_clk       (clk            ),
       .mbus_rstn      (rstn           ),
+      .sram_rstn      (rstn           ),
       .scan_mode      (scan_mode      ),
       .ce             (ce             ),
       .wr             (wr             ),
@@ -158,12 +159,12 @@ module tb_audio_sram;
       .rdata          (rdata          ),
       .rpar           (rpar           ),
       .sram_clk       (sram_clk       ),
-      .s_req          (s_req          ),
-      .s_wen          (s_wen          ),
-      .s_addr         (s_addr         ),
-      .s_wdata        (s_wdata        ),
-      .s_rdata        (s_rdata        ),
-      .s_rvalid       (s_rvalid       ),
+      .si_csn         (~s_req         ),
+      .si_wen         (s_wen          ),
+      .si_addr        (s_addr         ),
+      .si_wdata       (s_wdata        ),
+      .si_rdata       (s_rdata        ),
+      .si_rvalid      (s_rvalid       ),
       .esm_err        (esm_err        ),
       .esm_err_n      (esm_err_n      ),
       .esm_fault      (esm_fault      ),
@@ -348,6 +349,73 @@ module tb_audio_sram;
       end
    endfunction
 
+   // Coverage-stimulus helpers.  Every force is held across a sampling edge;
+   // no force right-hand side references an automatic task variable.
+   logic       fi_bit;
+   logic [1:0] fi_pair;
+
+   task automatic clear_perr(input logic [31:0] mask,
+                             input string       tag);
+      begin
+         sta_wait();
+         mbus_rd(RA_PAR, rd);
+         chk1($sformatf("%s PERR set", tag), ((rd & mask) == mask), 1'b1);
+         mbus_wr(RA_PAR, mask);
+         cmd_wait();
+         sta_wait();
+         mbus_rd(RA_PAR, rd);
+         chk32($sformatf("%s PERR clear", tag), rd, 32'h0000_0002);
+      end
+   endtask
+
+   // which: 0 EN / 1 INJ / 2 ERR image / 3 FLT image / 4 LAT image / 5 CMD.
+   task automatic dup_mbus_fi(input int which);
+      begin
+         @(negedge clk);
+         case (which)
+            0: force dut.u_audio_sram_regfile.u_w_en.r.flt_q_n   = 1'b0;
+            1: force dut.u_audio_sram_regfile.u_w_inj.r.flt_q_n  = 1'b0;
+            2: force dut.u_audio_sram_regfile.u_err_s2.r.flt_q_n = 1'b0;
+            3: force dut.u_audio_sram_regfile.u_flt_s2.r.flt_q_n = 1'b0;
+            4: force dut.u_audio_sram_regfile.u_lat_s2.r.flt_q_n = 1'b0;
+            5: force dut.u_audio_sram_regfile.u_w_cmd.r.flt_q_n  = 1'b0;
+         endcase
+         repeat (2) @(negedge clk);
+         case (which)
+            0: release dut.u_audio_sram_regfile.u_w_en.r.flt_q_n;
+            1: release dut.u_audio_sram_regfile.u_w_inj.r.flt_q_n;
+            2: release dut.u_audio_sram_regfile.u_err_s2.r.flt_q_n;
+            3: release dut.u_audio_sram_regfile.u_flt_s2.r.flt_q_n;
+            4: release dut.u_audio_sram_regfile.u_lat_s2.r.flt_q_n;
+            5: release dut.u_audio_sram_regfile.u_w_cmd.r.flt_q_n;
+         endcase
+         clear_perr(32'h1 << (which + 2), $sformatf("T24 mbus dup%0d", which));
+      end
+   endtask
+
+   // which: 0 EN shadow / 1 INJ shadow / 2 ERR sticky / 3 FLT sticky / 4 LAT.
+   task automatic dup_sram_fi(input int which);
+      begin
+         @(negedge sram_clk);
+         case (which)
+            0: force dut.u_audio_sram_regfile.u_c_en.r.flt_q_n   = 1'b0;
+            1: force dut.u_audio_sram_regfile.u_c_inj.r.flt_q_n  = 1'b0;
+            2: force dut.u_audio_sram_regfile.u_st_err.r.flt_q_n = 1'b0;
+            3: force dut.u_audio_sram_regfile.u_st_flt.r.flt_q_n = 1'b0;
+            4: force dut.u_audio_sram_regfile.u_st_lat.r.flt_q_n = 1'b0;
+         endcase
+         repeat (2) @(negedge sram_clk);
+         case (which)
+            0: release dut.u_audio_sram_regfile.u_c_en.r.flt_q_n;
+            1: release dut.u_audio_sram_regfile.u_c_inj.r.flt_q_n;
+            2: release dut.u_audio_sram_regfile.u_st_err.r.flt_q_n;
+            3: release dut.u_audio_sram_regfile.u_st_flt.r.flt_q_n;
+            4: release dut.u_audio_sram_regfile.u_st_lat.r.flt_q_n;
+         endcase
+         clear_perr(32'h1 << (which + 2), $sformatf("T24 sram dup%0d", which));
+      end
+   endtask
+
    //--------------------------------------------------------------------------
    // 主流程
    //--------------------------------------------------------------------------
@@ -358,20 +426,20 @@ module tb_audio_sram;
       //=====================================================================
       $display("T0: reset polarity + rst_sync scan bypass");
       //=====================================================================
-      chk1("sram_rstn asserted", dut.sram_rstn, 1'b0);
+      chk1("sram_rstn asserted", dut.sram_rstn_s, 1'b0);
       scan_mode = 1'b1;
       @(negedge clk);
       rstn = 1'b1;                       // scan 旁路: 立即释放
       repeat (2) @(negedge clk);
-      chk1("sram_rstn released (scan bypass)", dut.sram_rstn, 1'b1);
+      chk1("sram_rstn released (scan bypass)", dut.sram_rstn_s, 1'b1);
       scan_mode = 1'b0;
       rstn = 1'b0;                       // 异步断言
       repeat (2) @(negedge clk);
-      chk1("sram_rstn asserted async", dut.sram_rstn, 1'b0);
+      chk1("sram_rstn asserted async", dut.sram_rstn_s, 1'b0);
       rstn = 1'b1;                       // 同步释放: 不等 sram 边沿不释放
-      chk1("sram_rstn holds for sync release", dut.sram_rstn, 1'b0);
+      chk1("sram_rstn holds for sync release", dut.sram_rstn_s, 1'b0);
       repeat (10) @(negedge sram_clk);
-      chk1("sram_rstn released (sync)", dut.sram_rstn, 1'b1);
+      chk1("sram_rstn released (sync)", dut.sram_rstn_s, 1'b1);
       repeat (2) @(negedge clk);
       run_check = 1'b1;
 
@@ -1029,6 +1097,243 @@ module tb_audio_sram;
       chk32("final STA_FAULT clean", rd, 32'h0);
       mbus_rd(RA_PAR, rd);
       chk32("final STA_PAR clean", rd, 32'h0000_0002);
+      //=====================================================================
+      $display("T19: bus/address/data condition and toggle sweep");
+      //=====================================================================
+      // Wrong-instance reads make every instance-select address bit toggle.
+      for (int i = 8; i < 16; i++) begin
+         mbus_rd((16'h0100 | (16'h1 << i)), rd);
+         chk32($sformatf("T19 wrong instance addr bit%0d", i), rd, 32'h0);
+      end
+      // REGST with a bad key is side-effect free but still exercises wr_fire
+      // and the in-flight payload latch.  Cover every wdata bit in both dirs.
+      mbus_wr(RA_REGST, 32'h0000_0000);
+      cmd_wait();
+      mbus_wr(RA_REGST, 32'hFFFF_FFFF);
+      cmd_wait();
+      for (int i = 0; i < 32; i++) begin
+         mbus_wr(RA_REGST, (32'h1 << i));
+         cmd_wait();
+      end
+      for (int i = 0; i < 32; i++) begin
+         mbus_wr(RA_REGST, ~(32'h1 << i));
+         cmd_wait();
+      end
+      // ce=0/wr=1 is a legal idle bus state and must not launch a command.
+      @(negedge clk);
+      ce    = 1'b0;
+      wr    = 1'b1;
+      addr  = RA_EN;
+      wdata = 32'h0;
+      par   = ^{RA_EN, 1'b1, 32'h0};
+      @(negedge clk);
+      wr = 1'b0;
+      mbus_rd(RA_EN, rd);
+      chk32("T19 ce0/wr1 idle has no effect", rd, 32'h0000_000F);
+      // Own RO write and wrong-instance non-RO write close wr_ok qualifiers.
+      mbus_wr(RA_ID, 32'hFFFF_FFFF);
+      mbus_rd(RA_ID, rd);
+      chk32("T19 own RO write ignored", rd, 32'h5AFE_A002);
+      mbus_wr(16'h0100, 32'hFFFF_FFFF);
+      mbus_rd(RA_EN, rd);
+      chk32("T19 wrong-instance non-RO write ignored", rd, 32'h0000_000F);
+      // Independent qualifier vectors for inj_accept/regst/cdc_w1c/err_w1c.
+      mbus_wr(RA_STA, 32'h0000_0000);
+      cmd_wait();
+      mbus_wr(RA_STA, 32'h0000_00AA);
+      cmd_wait();
+      mbus_wr(RA_STA, 32'h0000_00AF);
+      cmd_wait();
+      mbus_wr(RA_CDC, 32'h0000_0000);
+      cmd_wait();
+      mbus_rd(RA_STA, rd);
+      chk32("T19 qualifier writes leave ERR clean", rd, 32'h0);
+
+      //=====================================================================
+      $display("T20: exhaustive CFG_INJ position value domain");
+      //=====================================================================
+      for (int p = 0; p <= 64; p++) begin
+         mbus_wr(RA_INJ, inj_word(p[6:0], 4'hF));
+         cmd_wait();
+      end
+      mbus_rd(RA_INJ, rd);
+      chk32("T20 pos64 stored (out-of-range no flip)", rd,
+            inj_word(7'd64, 4'hF));
+      mbus_wr(RA_INJ, inj_word(7'd0, 4'h0));
+      cmd_wait();
+      mbus_rd(RA_INJ, rd);
+      chk32("T20 injection off after position sweep", rd,
+            inj_word(7'd0, 4'h0));
+
+      //=====================================================================
+      $display("T21: counter saturation and maximum failing address");
+      //=====================================================================
+      mbus_wr(RA_CNT, 32'h0000_FFFF);
+      cmd_wait();
+      sta_wait();
+      mbus_rd(RA_CNT, rd);
+      chk32("T21 counter preload FFFF", rd, 32'h0000_FFFF);
+      mbus_wr(RA_INJ, inj_word(7'd1, 4'hF));
+      cmd_wait();
+      sram_write(10'h3FF, 32'h1234_5678);
+      sram_read(10'h3FF, rd);
+      chk32("T21 injected read at 3FF", rd, 32'h1234_5679);
+      sta_wait();
+      mbus_rd(RA_CNT, rd);
+      chk32("T21 counter saturates at FFFF", rd, 32'h0000_FFFF);
+      mbus_rd(RA_LAT, rd);
+      chk32("T21 STA_LAT all address bits set", rd, 32'h0003_FF00);
+      mbus_wr(RA_INJ, inj_word(7'd1, 4'h0));
+      cmd_wait();
+      sram_write(10'h3FF, 32'h1234_5678);
+      sram_read(10'h3FF, rd);
+      chk32("T21 rewrite heals row 3FF", rd, 32'h1234_5678);
+      mbus_wr(RA_STA, 32'h0000_0003);
+      cmd_wait();
+      mbus_wr(RA_CNT, 32'h0000_0000);
+      cmd_wait();
+      sta_wait();
+      mbus_rd(RA_CNT, rd);
+      chk32("T21 counter cleared after saturation", rd, 32'h0);
+
+      //=====================================================================
+      $display("T22: dec4 off-code single-bit correction in both domains");
+      //=====================================================================
+      // EN shadow, 0000 -> 0001: decode OFF + fix, then SW rewrite heals.
+      mbus_wr(RA_EN, 32'h0000_0000);
+      cmd_wait();
+      force dut.u_audio_sram_regfile.u_c_en.r.data_q[0] = 1'b1;
+      repeat (2) @(negedge sram_clk);
+      chk1("T22 EN shadow off-code fix", dut.u_audio_sram_regfile.en_dec_s.fix,
+           1'b1);
+      chk1("T22 EN shadow off-code stays off", dut.mon_en, 1'b0);
+      release dut.u_audio_sram_regfile.u_c_en.r.data_q[0];
+      mbus_wr(RA_EN, 32'h0000_000F);
+      cmd_wait();
+      clear_perr(32'h0000_0004, "T22 EN shadow");
+
+      // EN image performs the corresponding correction writeback to 0000.
+      mbus_wr(RA_EN, 32'h0000_0000);
+      cmd_wait();
+      force dut.u_audio_sram_regfile.u_w_en.r.data_q[0] = 1'b1;
+      repeat (2) @(negedge clk);
+      mbus_rd(RA_EN, rd);
+      chk32("T22 EN image off-code firing proof", rd, 32'h0000_0001);
+      chk1("T22 EN image off-code fix", dut.u_audio_sram_regfile.en_dec_i.fix,
+           1'b1);
+      release dut.u_audio_sram_regfile.u_w_en.r.data_q[0];
+      repeat (3) @(negedge clk);
+      mbus_rd(RA_EN, rd);
+      chk32("T22 EN image corrected to 0000", rd, 32'h0000_0000);
+      mbus_wr(RA_EN, 32'h0000_000F);
+      cmd_wait();
+      clear_perr(32'h0000_0004, "T22 EN image");
+
+      // INJ shadow, 0000 -> 0001: decode OFF + fix (no shadow writeback).
+      mbus_wr(RA_INJ, inj_word(7'd0, 4'h0));
+      cmd_wait();
+      force dut.u_audio_sram_regfile.u_c_inj.r.data_q[0] = 1'b1;
+      repeat (2) @(negedge sram_clk);
+      chk1("T22 INJ shadow off-code fix", dut.u_audio_sram_regfile.inj_dec_s.fix,
+           1'b1);
+      chk1("T22 INJ shadow off-code stays off", dut.inj_on, 1'b0);
+      release dut.u_audio_sram_regfile.u_c_inj.r.data_q[0];
+      mbus_wr(RA_INJ, inj_word(7'd0, 4'h0));
+      cmd_wait();
+      clear_perr(32'h0000_0008, "T22 INJ shadow");
+
+      // INJ image off-code fix drives inj_wr without inj_accept.
+      force dut.u_audio_sram_regfile.u_w_inj.r.data_q[0] = 1'b1;
+      repeat (2) @(negedge clk);
+      mbus_rd(RA_INJ, rd);
+      chk32("T22 INJ image off-code firing proof", rd, 32'h0000_0001);
+      chk1("T22 INJ image off-code fix", dut.u_audio_sram_regfile.inj_dec_i.fix,
+           1'b1);
+      release dut.u_audio_sram_regfile.u_w_inj.r.data_q[0];
+      repeat (3) @(negedge clk);
+      mbus_rd(RA_INJ, rd);
+      chk32("T22 INJ image corrected to 0000", rd, 32'h0000_0000);
+      clear_perr(32'h0000_0008, "T22 INJ image");
+
+      //=====================================================================
+      $display("T23: in-flight parity and local duplicate FI");
+      //=====================================================================
+      // Stop sram_clk to hold the command busy window, then corrupt wpar_q.
+      repeat (4) @(negedge sram_clk);
+      sram_clk_en = 1'b0;
+      mbus_wr(RA_INJ, inj_word(7'd1, 4'hF));
+      repeat (2) @(negedge clk);
+      fi_bit = ~dut.u_audio_sram_regfile.r_mb.wpar_q;
+      force dut.u_audio_sram_regfile.r_mb.wpar_q = fi_bit;
+      repeat (2) @(negedge clk);
+      chk1("T23 WLT parity live", dut.u_audio_sram_regfile.wpar_err, 1'b1);
+      chk1("T23 WLT lane sticky", dut.u_audio_sram_regfile.r_mb.par_lq[1], 1'b1);
+      release dut.u_audio_sram_regfile.r_mb.wpar_q;
+      sram_clk_en = 1'b1;
+      cmd_wait();
+      mbus_rd(RA_FLT, rd);
+      chk32("T23 WLT mirror in STA_FAULT", rd, 32'h0000_0004);
+      clear_perr(32'h0000_0100, "T23 WLT");
+      mbus_rd(RA_FLT, rd);
+      chk32("T23 WLT mirror cleared", rd, 32'h0000_0000);
+
+      // Both par_lq inverted lanes are simultaneously corrupted to prove the
+      // vector duplicate compare and heal-to-SET behavior.
+      @(negedge clk);
+      fi_pair = dut.u_audio_sram_regfile.r_mb.par_lq;
+      force dut.u_audio_sram_regfile.r_mb.par_lq_n = fi_pair;
+      #1;
+      chk1("T23 par_l duplicate mismatch fires",
+           (|dut.u_audio_sram_regfile.par_l_dup_f), 1'b1);
+      repeat (2) @(negedge clk);
+      release dut.u_audio_sram_regfile.r_mb.par_lq_n;
+      clear_perr(32'h0000_0101, "T23 par_l duplicate");
+
+      // FLT_TEST duplicate mismatch takes the normal heal/W1C path.
+      @(negedge clk);
+      fi_bit = dut.u_audio_sram_regfile.r_mb.flt_tst_q;
+      force dut.u_audio_sram_regfile.r_mb.flt_tst_q_n = fi_bit;
+      #1;
+      chk1("T23 FLT_TEST duplicate mismatch fires",
+           (dut.u_audio_sram_regfile.r_mb.flt_tst_q_n !=
+            ~dut.u_audio_sram_regfile.r_mb.flt_tst_q), 1'b1);
+      repeat (2) @(negedge clk);
+      release dut.u_audio_sram_regfile.r_mb.flt_tst_q_n;
+      mbus_rd(RA_FLT, rd);
+      chk32("T23 FLT_TEST duplicate sets bit31", rd, 32'h8000_0000);
+      mbus_wr(RA_FLT, 32'h8000_0000);
+      cmd_wait();
+      mbus_rd(RA_FLT, rd);
+      chk32("T23 FLT_TEST duplicate cleared", rd, 32'h0000_0000);
+
+      //=====================================================================
+      $display("T24: every reg_wrap inverted-duplicate FI");
+      //=====================================================================
+      for (int i = 0; i < 6; i++) begin
+         dup_mbus_fi(i);
+      end
+      for (int i = 0; i < 5; i++) begin
+         dup_sram_fi(i);
+      end
+      mbus_rd(RA_PAR, rd);
+      chk32("T24 all duplicate faults cleaned", rd, 32'h0000_0002);
+
+      //=====================================================================
+      $display("T25: full reset re-assertion closes reset-chain toggles");
+      //=====================================================================
+      @(negedge clk);
+      rstn = 1'b0;
+      repeat (3) @(negedge sram_clk);
+      chk1("T25 sram reset async re-assert", dut.sram_rstn_s, 1'b0);
+      rstn = 1'b1;
+      repeat (10) @(negedge sram_clk);
+      chk1("T25 sram reset synchronous release", dut.sram_rstn_s, 1'b1);
+      repeat (2) @(negedge clk);
+      mbus_rd(RA_EN, rd);
+      chk32("T25 CFG_EN reset again", rd, 32'h0000_000F);
+      mbus_rd(RA_PAR, rd);
+      chk32("T25 STA_PAR reset again", rd, 32'h0000_0002);
+
       repeat (10) @(negedge clk);
       chk1("rpar leaf contract (^rdata)", (rpar_bad == 0), 1'b1);
       chk1("rails clean all run", (rail_errs == 0), 1'b1);

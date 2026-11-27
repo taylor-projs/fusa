@@ -99,9 +99,9 @@
 | `rtl/edc_gen.sv` | AW / W / AR 请求通道内联引擎（13 站点，+1 拍，TB 参考端点用库） |
 | `rtl/edc_chk_req.sv` | AW / W / AR 请求通道 tap 检查器（13 站点，零延迟挂线） |
 | `rtl/edc_chk_rsp.sv` | B / R 响应通道 tap 检查器（5 站点，零延迟挂线） |
-| `rtl/edc_regfile.sv` | 24MHz mbus 寄存器文件（cfg + sta + RW1C + 命令 toggle），纯 mbus 域 |
-|`$ROOT/../common_modules/reg_wrap.sv` | 寄存器奇偶保护单元（存储 + 偶校验 + 自测注错 + 自愈粘滞） |
-| `rtl/edc_core.sv` | 单 AXI 接口旁路 IP：edc_regfile + CDC + GEN/CHK 引擎按 SIDE 装配 + ESM（SIDE 参数：0=NIC 入口 1=NIC 出口 2=观测） |
+| `rtl/edc_regfile.sv` | 双时钟域寄存器文件（mbus 24MHz + mod_clk=axi_clk；cfg + sta + RW1C + 命令 toggle），mod 域复位由 `edc_core` 下发 |
+| `$ROOT/../common_modules/reg_wrap.sv` | 寄存器奇偶保护单元（存储 + 偶校验 + 自测注错 + 自愈粘滞） |
+| `rtl/edc_core.sv` | 单 AXI 接口旁路 IP：edc_regfile + CDC + 双 rst_sync 复位收编 + GEN/CHK 引擎按 SIDE 装配 + ESM（SIDE 参数：0=NIC 入口 1=NIC 出口 2=观测） |
 | `$ROOT/../6.apb2mbus/rtl/apb2mbus.sv` | APB3 → mbus 桥（含 APB ↔ 24MHz 异步握手，统一引用 6.apb2mbus） |
 | `rtl/edc_top.sv` | fault 聚合器（独立 mbus 叶端：per-core sticky/RAW + 输入轨互补校验 + ESM 双轨） |
 | `doc/edc_regfile.md` | apb2mbus 交互时序图 + edc_regfile 寄存器逐条说明 |
@@ -140,12 +140,12 @@
 - bit `DW+j`（`DW+j < 64`）：翻转校验位 j；
 - `einj_force_err[128-DW-PW]`：强制 syndrome 报错（与 INJ_EN 配合使用）。
 
-64 bit 数据站点（W wdata / R rdata）的 `DW+EDCW = 71 > 64`，只支持数据位
+64 bit 数据站点（W wdata / R rdata）的 `DW+EDCW = 71 > 64`（AXI_DW=32 时 32+6=38 ≤ 64，校验位也可 pos 注入），只支持数据位
 注错；该站点的“任意错误”注入用 `CFG_INJ_FORCE` 完成。
 
 ## 5. 站点划分
 
-AXI 接口参数：**数据 64 bit、地址 40 bit**。一个 AXI4 端口共 **18 个站点**，
+AXI 接口参数：**数据位宽 `AXI_DW` 参数化（32 | 64，默认 64）、地址 40 bit**（2026-11-27：`edc_core` / `edc_gen` / `edc_chk_req` / `edc_chk_rsp` / `edc_nic_wrap` 统一加 `AXI_DW`，`wstrb` = `AXI_DW/8`，站点 EDC 位宽 `EDW`(wdata/rdata) = 64→7 / 32→6，`EMW`(wstrb) = 8B→4 / 4B→3，`WUW` = `EDW+EMW+1`，`RUW` = `EDW+3+EWID`，非 32/64 elaboration 期 `$fatal`；`tb_edc_dw` 对 32/64 各做 wdata/wstrb/wlast/rdata/user-EDC 全位单比特翻转扫面，`bash run_vcs.sh dw`）。一个 AXI4 端口共 **18 个站点**，
 gen 13 个 + chk 5 个，分组与 EDC 向量一致：
 
 ```
@@ -192,8 +192,8 @@ awuser/aruser (AWUW = 18 + EWID, IDW=4 时为 21):
    { awaddr_hi_edc[4:0], awaddr_lo_edc[4:0], awattri0_edc[3:0],
      awattri1_edc[3:0], awid_edc[EWID-1:0] }
 
-wuser (WUW = 12):
-   { wdata_edc[6:0], wmask_edc[3:0], wlast_edc[0] }
+wuser (WUW = EDW + EMW + 1; 64 位 = 12, 32 位 = 10):
+   { wdata_edc[EDW-1:0], wmask_edc[EMW-1:0], wlast_edc[0] }
 
 buser (BUW = 3 + EWID, IDW=4 时为 6):
    { battri_edc[2:0], bid_edc[EWID-1:0] }
@@ -315,8 +315,12 @@ rdat 2FF (s1/s2) -> prdata
   以及 req 边沿检测/影子装载/sticky 置位清除/ack 回转（mod 域）；
   结构与 `ia_bus_timeo_regfile` 相同（一次一条 toggle 握手，
   2026-11-08 二次钦定）；
-- `edc_core`：只例化 regfile 与 gen/chk 站点引擎（引擎随 `axi_rstn`
-  复位；regfile mod 域不复位于 axi_rstn，见 §8.7）。
+- `edc_core`：例化 regfile、gen/chk 站点引擎与两路复位同步器（规则 26）。
+  `u_axi_rst` 将 `axi_rstn` 同步到 `axi_clk` 得到 `axi_rstn_s`，供 CHK
+  站点引擎复位；`u_mod_rst` 将 `mbus_rstn` 同步到 `axi_clk` 得到
+  `mod_rstn_s`，经 regfile 的 `mod_rstn` 端口下发（故障保留，见 §8.5）。
+  `scan_mode` 在本叶顶层对外，旁路两路 `rst_sync`；下层不再自行例化
+  `rst_sync`。
 
 ### 8.1 寄存器映射（每实例 256B，位于 edc_regfile）
 
@@ -396,15 +400,20 @@ cdc_busy = (req_t != ack_s2)
 
 ### 8.5 复位语义（FuSa 关键）
 
-- **mbus 域**寄存器复位于 `mbus_rstn`；
-- **mod 域**寄存器（同步链/影子/sticky）一律复位于
-  `rst_sync(mbus_rstn → mod_clk)`（异步断言/同步释放），**不接
-  axi_rstn**；mbus_rstn 复位时 req_t/ack_t 同归零，握手天然对齐；
-- 因此 **AXI（被监视域）单独复位时**：站点引擎随 `axi_rstn` 复位
+- **复位同步收编在 `edc_core` 叶顶层**（规则 26），下层不再自行例化
+  `rst_sync`；`scan_mode` 在本顶层对外，供 DFT 同时旁路两路复位同步器；
+- **mbus 域**寄存器直接复位于 `mbus_rstn`，不在 mbus_clk 域做复位同步；
+- **CHK 站点引擎**复位于 `u_axi_rst` 的输出 `axi_rstn_s`
+  （`axi_rstn → axi_clk`，异步断言/同步释放）；
+- **regfile mod 域**寄存器（同步链/影子/sticky）一律复位于 `u_mod_rst`
+  的输出 `mod_rstn_s`（`mbus_rstn → axi_clk`，异步断言/同步释放），经
+  `mod_rstn` 输入端口下发，**不接 `axi_rstn_s`**；`edc_regfile` 内部的
+  原 `u_rst_sync` 已删除；
+- 因此 **AXI（被监视域）单独复位时**：站点引擎随 `axi_rstn_s` 复位
   （监视器重新对齐），但 err/fault sticky 与 cfg 影子**全部保留**——
-  故障已记录不能丢，CPU 读回照旧，W1C 后才干净；
+  故障已记录不能丢，CPU 读回照旧，sticky 需 W1C 后才干净；
 - **mbus_rstn 复位**时 regfile 两域全清（mod 域经同步复位，无亚稳
-  窗口）。用例：tb_edc_side S12。
+  窗口），req_t/ack_t 同归零，握手天然对齐。用例：tb_edc_side S12。
 
 ### 8.6 双轨语义
 
@@ -495,7 +504,7 @@ reg_wrap (每寄存器, mbus 域或 AXI 域):
 ## 9. 顶层集成（edc_top）
 
 参数：`NM`（master 端口数）、`NS`（slave 端口数）、`IDW`（AXI ID 位宽），
-实例总数 `NP = NM + NS`。另有 `EWID/AWUW/WUW/BUW/RUW` 宽度参数，由 `IDW`
+实例总数 `NP = NM + NS`。另有 `AXI_DW`（数据位宽 32 | 64）与 `EWID/AWUW/WUW/BUW/RUW` 宽度参数，由 `IDW` / `AXI_DW`
 按阶梯自动推导。主端口实例 `SIDE=0`（SI），从端口实例 `SIDE=1`（MI）。
 
 端口命名（第一个字母是 IP 的 s/m 侧，第二个字母是端口类型）：
@@ -637,7 +646,7 @@ tap 总线并把 GEN 出的 req user（`awuser_o/wuser_o/aruser_o`）驱动上
 | S9 | 寄存器奇偶自测双核（PERR0 自愈 / PERR7 跨域 / PAR_SELFTEST 锁存 / 错 key）+ agg STA_PARCORE 联动 |
 | S10 | agg 联动：源在线 W1C 清不掉，撤源 → core W1C → agg W1C → 0 |
 | S11 | 40 混合事务随机压力（随机回压发生器 + 随机间隔），全程干净 |
-| S12 | 复位语义：AXI 域单独复位 sticky/影子保留（W1C 才干净、影子存续注错再触发）；mbus 复位经 rst_sync 两域全清 |
+| S12 | 复位语义：AXI 域单独复位时 CHK 引擎经 `u_axi_rst` 复位，regfile sticky/影子保留（sticky W1C 才干净、影子存续注错再触发）；mbus 复位直接清 mbus 域并经 `u_mod_rst` 清 mod 域，regfile 两域全清 |
 | S13 | 结论：OR 网未选中驱 0、双轨互补、`TB PASS` |
 
 ### 10.3 波形与运行（VM VCS）

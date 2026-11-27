@@ -2,7 +2,7 @@
 
 **模块族**：`hang_prot_core`（监控核）/ `hang_prot_recover`（出向恢复桥）/ `hang_prot_bdry_in`（入向边界单元）/ `hang_prot_wskid`（双 slot W skid，两单元共享）/ `hang_prot_mcu2main_top`（单主控顶层）/ `hang_prot_regfile` + `reg_wrap`（mbus leaf 寄存器）
 **参考**：TI Hercules RM57Lx TRM SPNU562A ch.3 SCM / 4.3.5；Safety Manual SPNU575；ARM AXI4（AMBA 4）；IEC 61508:2010 SIL2
-**文档版本**：v3.7（v3.7：`dum_cls` 两级优先——恢复/隔离期 dummy 引擎**先续完被切断的类**（`ar_occ≠0 && rbeat_cnt≠0`）再选最低未清类，m 侧 R 流保持 AXI4 无交织（拍间可间隔、不得插入他事务拍）；出向 recover 同构修法，TB-A P32 / TB-B P30 定向场景 + 两 TB 收集器全程无交织互锁，§3.6/D20 同步修正"跨类可交错"的旧论断）；v3.6（v3.6：入向隔离状态寄存器化——bdry_in 导出 `quiesce_exit` 脉冲、main2mcu 接 `block_active`/`quiesce_exit` 进 0x30 STA_RCV，ACTIVE=blk_r 跟随/DONE=quiesce_exit 粘滞，出入向 SW 读回契约统一）；v3.5（v3.5：hang_prot_top 并入 hang_prot_mcu2main_top（壳层删除，mcu2main 即完整单元，层次降一层，TB_GEN 直接例化）；v3.4（v3.4：sl_sw_rst_on 寄存器化 0x2C SCMSWRST（key+d=4 码+SEC 单 bit 纠正写回，平局向遏制侧）+ 恢复状态寄存器化 0x30 STA_RCV（ACTIVE 跟随/DONE 粘滞 W1C），双轨输入引脚与 recover_active/done 输出引脚退役；v3.3：v3.2：mcore 感知读类重映射；v3.3：寄存器地图统一 house standard——SCMREGPARSTAT 更名 STA_PAR、自测键拆出 CFG_REGST 0x28、ID 殿后 0xFC，见 §7.1；v3.1：SIL2 FuSa 全机制注入验证）
+**文档版本**：v3.11（v3.11：五通道增 `AxUSER/WUSER/RUSER/BUSER` 参数化边带（顶层 `ARUSER_W/AWUSER_W/WUSER_W/RUSER_W/BUSER_W`，默认 1，最小 1；`recover/bdry_in/wskid` 带 `AWUSER_W/WUSER_W`）——AR 组合直通；AW user 存入 skid 每槽并入 `apar`；W user 存入 `ubuf[slot][beat]` 并入每拍 `wpar`；R/B user 直通（dummy R/B 拍为 0，与 rdata 同口径）；`tb_hang_prot_fn` 用 3/5/7/2/4 位宽随机核对，三 TB 全 PASS，TOGGLE 100.00，el 因 RTL 校验和变化重生成）；v3.10（v3.10：AR/AW 两通道增 AXI4 `AxLOCK[0]/AxCACHE[3:0]/AxQOS[3:0]/AxREGION[3:0]` 透传 payload——AR 路组合直通，AW 路存入 `hang_prot_wskid` 每槽并纳入槽内 AW 奇偶 `apar`（FuSa 覆盖同 awaddr/prot）；顶层 m_*/s_* 口、recover/bdry_in/wskid 端口同步；TB-A/B/GEN 增派生值一致性检查，`tb_hang_prot_fn` 随机字段逐笔核对，全 PASS；`AxUSER` 仍未加）；v3.9（v3.9：入向 `bdry_in` 读类改**字段匹配**，与出向 `recover` 同参数同逻辑——`N_AR_CLASS`/`AR_CLS_LSB` 位域参数退役；`N_MCORE` 全仓改名 `N_DIST_CLS`（语义不变：被匹配类个数，不含 others，≥0，0 = 只有 others 一类（CLS_LSB/CLS_W/DIST_CLS_* 此时不使用，取默认）；DIST_CLS_MASTER_IDS/REMAP_IDS 各 N_DIST_CLS 条，others = 类 N_DIST_CLS，总类数 = N_DIST_CLS+1），`MCORE_MASTER_IDS/REMAP_IDS` 同步改名 `DIST_CLS_MASTER_IDS/REMAP_IDS`；补 `CLS_LSB+CLS_W≤AXI_ID_W` 范围检查；TB-A P1..P32 / TB-B P1..P30（含 others 类）/ TB-GEN P1..P31 全 PASS，§3.6/D20/§10.2 同步）；v3.7（v3.7：`dum_cls` 两级优先——恢复/隔离期 dummy 引擎**先续完被切断的类**（`ar_occ≠0 && rbeat_cnt≠0`）再选最低未清类，m 侧 R 流保持 AXI4 无交织（拍间可间隔、不得插入他事务拍）；出向 recover 同构修法，TB-A P32 / TB-B P30 定向场景 + 两 TB 收集器全程无交织互锁，§3.6/D20 同步修正"跨类可交错"的旧论断）；v3.6（v3.6：入向隔离状态寄存器化——bdry_in 导出 `quiesce_exit` 脉冲、main2mcu 接 `block_active`/`quiesce_exit` 进 0x30 STA_RCV，ACTIVE=blk_r 跟随/DONE=quiesce_exit 粘滞，出入向 SW 读回契约统一）；v3.5（v3.5：hang_prot_top 并入 hang_prot_mcu2main_top（壳层删除，mcu2main 即完整单元，层次降一层，TB_GEN 直接例化）；v3.4（v3.4：sl_sw_rst_on 寄存器化 0x2C SCMSWRST（key+d=4 码+SEC 单 bit 纠正写回，平局向遏制侧）+ 恢复状态寄存器化 0x30 STA_RCV（ACTIVE 跟随/DONE 粘滞 W1C），双轨输入引脚与 recover_active/done 输出引脚退役；v3.3：v3.2：mcore 感知读类重映射；v3.3：寄存器地图统一 house standard——SCMREGPARSTAT 更名 STA_PAR、自测键拆出 CFG_REGST 0x28、ID 殿后 0xFC，见 §7.1；v3.1：SIL2 FuSa 全机制注入验证）
 **写法说明**：本文面向学习与交付——每个设计决策给出"备选方案 → 拒绝理由"，关键流程给出逐周期时序推演。
 
 > **v2 相对 v1 的核心变化**
@@ -43,10 +43,12 @@
 >    检查——1 拍显式检出 → 失配即隔离（fail toward containment）→ 粘滞
 >    双轨故障上报。TB-A P11 / TB-B P9 注错注入验证。
 > 2. **v3.2 mcore 感知读类重映射（§3.6）**：v2.3 的
->    `m_arid[AR_CLS_LSB+:CLSW]` 位域选类改为**全 id 匹配**——
->    `MCORE_MASTER_IDS[k]` 命中的 mcore 各占一类（自己的
->    MCORE_REMAP_IDS[k]），其余 master 共享类 0（AR_ID_REMAP）。
->    N_MCORE 参数化（2/3/…，无需 2 的幂），N_CLS = N_MCORE+1。
+>    `m_arid[AR_CLS_LSB+:CLSW]` 位域选类改为**字段匹配**（v3.8 起；v3.9 入向
+>    `bdry_in` 同构）——NIC master 号字段 `m_arid[CLS_LSB+:CLS_W]` 命中
+>    `DIST_CLS_MASTER_IDS[k]` 的 master 各占一类 k（自己的 DIST_CLS_REMAP_IDS[k]），
+>    其余 master 共享类 N_DIST_CLS（"others"，AR_ID_REMAP）。
+>    **N_DIST_CLS = 被匹配类个数（不含 others，≥0，0 = 只有 others 一类，此时 CLS_LSB/CLS_W/DIST_CLS_* 不使用；v3.9 由 N_MCORE 改名，语义不变），
+>    总类数 = N_DIST_CLS+1**，无需 2 的幂；表各 N_DIST_CLS 条。
 >    TB-A P12 验证（正常路由 + 按类 dummy 排空）。
 > 3. **v3.2 `sl_sw_rst_on` 双轨（§8.5；v3.4 起寄存器化 0x2C，轨对引脚退役）**：ESM 复位保持电平改为互补轨对
 >    `{sl_sw_rst_on, sl_sw_rst_on_n}`——单轨 stuck-0 会静默丢掉复活 main 的通道
@@ -219,21 +221,27 @@ SW:      ESM 中断 → 修 slave → W1C 状态位 → (可选)TO_CLR → 恢�
 DMA 的短读——即使 DDR 4 通道交织下两者是完全独立的访问。这叫跨 master
 HOL（head-of-line blocking）。
 
-**方案（v3.2，mcore 感知）**：mcore 类 master **按完整 m_arid 全匹配识别**
-（参数化列表 `MCORE_MASTER_IDS`，条数 `N_MCORE` 可为 2/3/…，集成而定），
-每个 mcore 独占一个 leaf id；**其余所有 master 共享** `AR_ID_REMAP` 一个 id：
+**方案（v3.2 引入，v3.8 改字段匹配，v3.9 出入向统一）**：被匹配 master 由 NIC 补的
+master 号字段 `m_arid[CLS_LSB +: CLS_W]` 识别（参数化表 `DIST_CLS_MASTER_IDS`，
+共 `N_DIST_CLS` 条，`N_DIST_CLS` = 被匹配类个数（不含 others，总类数 = N_DIST_CLS+1），集成而定；字段值可任意、不连续、
+任意宽度），每个被匹配 master 独占一个 leaf id（其全部 arid 折叠成一个转发
+id）；**其余所有 master 共享** `AR_ID_REMAP` 一个 id（others = 类 N_DIST_CLS）。
+出向 `recover` 与入向 `bdry_in` 用**同一套参数、同一段匹配逻辑**：
 
 ![读多类重映射](hang_prot_fig4_mcore_remap.svg)
 
-*图 4: 读多类重映射（v3.2 mcore 感知）——m_arid 全匹配 MCORE_MASTER_IDS[k] 命中走 MCORE_REMAP_IDS[k]（类 k+1），否则共享 AR_ID_REMAP（类 0）；每类一条 ar_fifo 记分板*
+*图 4: 读多类重映射（字段匹配）——m_arid[CLS_LSB+:CLS_W] 匹配 DIST_CLS_MASTER_IDS[k] 命中走 DIST_CLS_REMAP_IDS[k]（类 k），否则共享 AR_ID_REMAP（类 N_DIST_CLS = others）；每类一条 ar_fifo 记分板*
 
-- **线上类编码不变**：转发 id 低 CLSW 位 = 类号（CLSW = clog2(N_MCORE+1)；
-  类 0 = 共享类，类 k+1 = mcore k）。约束（综合期参数检查）：
-  `AR_ID_REMAP` 低 CLSW 位为 0；`MCORE_REMAP_IDS[k]` 低 CLSW 位 = k+1
-  （保证各 mcore 转发 id 互异且路由域成立）；`MCORE_MASTER_IDS` 表项唯一。
-  v3.2 之前用 `m_arid[AR_CLS_LSB +: CLSW]` 位域切片选类（要求 NIC 把源
-  master 编进 id 位域）——全匹配识别对 NIC 零编码要求，且 mcore 数量
-  无需 2 的幂。
+- **线上类编码**：转发 id 低 CLSW 位 = 类号（CLSW = clog2(N_DIST_CLS+1)；
+  类 k = 被匹配 master k，类 N_DIST_CLS = others 共享类）。约束（综合期
+  参数检查，出入向两单元相同）：`AR_ID_REMAP` 低 CLSW 位 = N_DIST_CLS；
+  `DIST_CLS_REMAP_IDS[k]` 低 CLSW 位 = k（保证各类转发 id 互异且路由域成立）；
+  `DIST_CLS_MASTER_IDS` 表项唯一；`CLS_W ≥ 1` 且 `CLS_LSB+CLS_W ≤ AXI_ID_W`。
+  入向 `bdry_in` v2.3~v3.8 曾用 `m_arid[AR_CLS_LSB +: CLSW]` 位域切片
+  选类（`N_AR_CLASS`/`AR_CLS_LSB`，须 2 的幂、NIC 须把 master 号编成连续
+  位域，表外 master 会别名到某类，且无 `AR_CLS_LSB+CLSW ≤ AXI_ID_W` 检查），
+  v3.9 已退役、改用字段匹配：字段值任意（如 4/6/7/9 填 `CLS_W=4` +
+  `DIST_CLS_MASTER_IDS={4'd9,4'd7,4'd6,4'd4}`），表外 master 进 others，不别名。
 - **保序论证不变，只是范围缩小到类内**：leaf 对**同类 id** 按请求序返回 →
   每类 FIFO 头 = 该类下一笔应还的事务。跨类完成顺序任意合法。共享类内
   多个 master 的事务按请求序在该类内完成——与 v2 单 id 行为一致。
@@ -260,9 +268,10 @@ HOL（head-of-line blocking）。
 - **入向单元（bdry_in）不受影响**：其 m 侧是单 main master 流，仍用
   v2.3 的位域类方案（参数独立）；mcore 识别仅用于出向（island NIC 侧）。
 
-**集成约束（更新，§10.2 汇总）**：集成方给出 `N_MCORE` +
-`MCORE_MASTER_IDS`（各 mcore 在 m_arid 上呈现的 id）+ `MCORE_REMAP_IDS`
-（各 mcore 的转发 id，低 CLSW 位 = k+1）；leaf 对**每个**类 id 都须满足
+**集成约束（更新，§10.2 汇总）**：集成方给出 `N_DIST_CLS`（被匹配类个数，不含 others）+
+`CLS_LSB/CLS_W` + `DIST_CLS_MASTER_IDS`（各匹配 master 的 NIC master 号字段值，
+N_DIST_CLS 条）+ `DIST_CLS_REMAP_IDS`（各类转发 id，低 CLSW 位 = k）+
+`AR_ID_REMAP`（others，低 CLSW 位 = N_DIST_CLS）；leaf 对**每个**类 id 都须满足
 "同 id 保序 + ≥ OTD_MAX outstanding"。
 
 **验证**：TB-A P12——(a) 正常模式 4 笔读（两个非 mcore id 共享类 0、两个
@@ -393,7 +402,7 @@ esm_err = 所有 r2a/r2r sticky 位的 OR，**W1C 之前保持为高**。触发�
 
 ![hang_prot_recover 详细框图](hang_prot_fig5_recover_detail.svg)
 
-*图 5: hang_prot_recover 详细框图——m/s 两侧 5 通道 vld/rdy 全展开：AR FIFO ×N_CLS（按 s_rid 类域选头还原 m_rid）、双 slot W SKID、AW FIFO 三指针、R/B dummy 与 s 侧吸收规则*
+*图 5: hang_prot_recover 详细框图——m/s 两侧 5 通道 vld/rdy 全展开：AR FIFO ×(N_DIST_CLS+1)（按 s_rid 类域选头还原 m_rid）、双 slot W SKID、AW FIFO 三指针、R/B dummy 与 s 侧吸收规则*
 
 **正常模式不再是"纯透传"**（v1 是）——几处永久逻辑：
 1. `s_arid = AR_ID_REMAP|cls`、`s_awid` 恒为重映射常量；`m_rid` 按返回类选该类 FIFO 头还原、`m_bid` 恒为 aw FIFO 头还原；
@@ -565,7 +574,7 @@ AWLEN+1），绝不伪造、绝不截断。
 占空 ~50%（DDR 4 通道交织把写带宽顶满时，这直接砍半边界吞吐）。
 
 **结构**（`hang_prot_wskid.sv`，recover/bdry_in 共享实例化）：2 个 slot
-各持 {AW 负载锁存, wbuf[WSKID_BEATS], sbuf, fill_cnt, beats, ridx}，
+各持 {AW 负载锁存（含 lock/cache/qos/region/awuser，v3.10/v3.11）, wbuf[WSKID_BEATS], sbuf, ubuf（W user）, fill_cnt, beats, ridx}，
 环形三指针：
 
 ```
@@ -847,7 +856,7 @@ mbus leaf 从机（单拍 `ce`、零等待、命令奇偶 `par`、无 wait/error
 
 ### 7.3 软件配置序列 —— 上电初始化（出向 Unit A 场景）
 
-前置：`mbus_rstn` 与 `rstn` 系统级同时断言、同步释放（CDC 握手对齐，§7.5）。
+前置：`mbus_rstn` 与岛域裸 `rstn` 系统级同时断言（CDC 握手对齐，§7.6）；aclk 侧两路复位的释放由顶层双 `rst_sync` 同步（§8.7）。
 
 | 步 | 操作 | 寄存器/值 | 功能说明 |
 |---|---|---|---|
@@ -904,7 +913,7 @@ dummy；死掉的 main 不收，账挂着）。退出**必须**软件 keyed 放�
 - **命令奇偶**：每次 `ce` 检查 `par == ^{addr, wr, wdata}`（与实例号译码无关）；失配 → 写阻断/读门控 + `PERR_CMD`（`STA_PAR[12]`，bit = 2+组10，W1C 即 wrap 重写）。
 - **逐寄存器偶校验**：每个寄存器在自己所在时钟域是独立 `reg_wrap`（存储+偶校验+selftest 注入+自身故障 sticky）；W1C 一次写、两域同清。
 - **配置旁路时序（cfg_wr 寄存一拍）**：`cfg_ena/cfg_key/cfg_req2a_max/cfg_req2r_max` 由 shadow 寄存器驱动，写落地的那一拍 `cfg_wr` 必须**晚一个 aclk**（`cfg_wr_q`）再脉冲——否则监控核在 shadow 的 NBA 更新同一拍采样，拿到的是上一次写的旧值（配置总线滞后一笔写：ENA 关→开序列会把监控核永远留在关态）。与 ia regfile 的 `cfg_wr_q` 做法一致。
-- **复位**：`mbus_rstn` 与 `rstn` 必须系统级同时断言、同源同步释放，否则第一次写可能丢——集成约束。
+- **复位**：`mbus_rstn` 与岛域裸 `rstn` 仍须系统级同时断言（CDC 握手对齐）。两个集成顶层各用双 `rst_sync` 生成 `aclk_rstn`（源 `rstn`，供引擎）与 `aclk_reg_rstn`（源 `mbus_rstn`，供 regfile aclk 域）；regfile 不再内部例化 `rst_sync`，详见 §8.7。
 
 ---
 
@@ -1067,7 +1076,14 @@ ADB400（或等效 CDC/隔离单元）在 main↔island 边界做：时钟域转
 
 ![复位树](hang_prot_fig12_reset_tree.svg)
 
-*图 12: 复位树——island rstn / main rst / sl_sw_rst_on 三分支，presetn+rstn 同源同步释放对齐 regfile CDC*
+*图 12: 复位树——顶层双 `rst_sync` 分离引擎与 regfile aclk 域；main rst / sl_sw_rst_on 服务对端复位重启*
+
+两个集成顶层 `hang_prot_mcu2main_top` / `hang_prot_main2mcu_top` 均按规则 26 在顶层收编复位同步，各例化两个 `rst_sync`（`SYNC_LVL_NUM=3`，异步断言/同步释放）：
+
+- `u_aclk_rst`：岛域裸 `rstn` → `ia_bus_aclk` → `aclk_rstn`，供 `hang_prot_core`、`hang_prot_recover`/`hang_prot_bdry_in` 及其 `hang_prot_wskid` 等引擎；
+- `u_aclk_reg_rst`：`mbus_rstn` → `ia_bus_aclk` → `aclk_reg_rstn`，专供 regfile 的 aclk 域（`hang_prot_regfile.rstn`）。
+
+下层模块不再自行例化 `rst_sync`。regfile 的 mbus 域仍直接使用 `mbus_rstn`，因此其两侧复位同源；仅断言岛域 `rstn` 复位引擎时，regfile aclk 域的影子寄存器与 sticky 故障状态不复位，故障记录得以保留。正常整块复位仍须系统级同时断言 `mbus_rstn` 与 `rstn`，保证 CDC 握手对齐。
 
 岛复位**永不**来自 main 域；QSR_REL 服务序列里 main 复位的拉起/放下都
 在隔离态中完成；main 复位的拉起/放下必须伴随 `sl_sw_rst_on` 窗口（§8.5）。
@@ -1173,7 +1189,7 @@ skid_fault 保持粘滞。
 ### 9.4 v2 新增的存储面（SEU 预算）
 
 ID FIFO：读侧每类 `OTD_MAX × (ID_W + 8)` 位 + 每类指针/拍计数、写侧
-`OTD_MAX × ID_W`（v3.2 默认 N_MCORE=2 → N_CLS=3：≈ 3×8×12 ≈ 300 bit）；
+`OTD_MAX × ID_W`（默认 N_DIST_CLS=2 → 3 类：≈ 3×8×12 ≈ 300 bit）；
 W skid v2.3 双 slot ≈ 2 × 16 × (DATA_W+STRB_W+辅助)
 （默认 32+4 位数据面 ≈ 1.2 Kbit）。
 相比 v1 新增的 SEU 暴露面，失效模式全部是有界的单笔响应 id/len 错或单槽
@@ -1195,7 +1211,7 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 - id 往返：master 用多组不同 id 发请求，校验每个 R/B 的 rid/bid 与其
   发出的 id **逐笔精确对应**（FIFO 还原，不再只是"最后一个 id"）；
 - **mcore 类 remap（v3.2，TB-A P12 已实现）**：非 mcore id 共享转发 id、
-  mcore id（全匹配 MCORE_MASTER_IDS）各用 MCORE_REMAP_IDS[k]；正常模式
+  被匹配 master（字段匹配 DIST_CLS_MASTER_IDS）各用 DIST_CLS_REMAP_IDS[k]；正常模式
   逐 burst 校验还原 rid/次序/拍数；三类同时在途恢复时校验 dummy 引擎
   按类排空、每类还原该笔事务自己的 rid、真实+dummy 总拍数 = len+1；
 - **sl_sw_rst_on 轨对失配（v3.2 FuSa，TB-A P13 已实现）**：翻转单轨 →
@@ -1218,16 +1234,17 @@ P6 写 B 挂死 / P7 半截 W / P8 迟到 R 吸收 / P9 自检注入。
 1. **leaf 端同 id 保序 + 同 id outstanding ≥ OTD_MAX**（IC 能力，主流满足）；
    **多类时对每个类 id 都须满足**（类 id 对 leaf 只是普通 id）；
 2. master 单主（NUM_M=1）；多主需 NIC 先聚合为单口再挂本单元；
-   **读 mcore 类（v3.2）**：集成方给出 N_MCORE + MCORE_MASTER_IDS（各
-   mcore 呈现的 m_arid 值）+ MCORE_REMAP_IDS（转发 id，低 CLSW 位 = k+1，
-   综合期参数检查）；其余 master 共享 AR_ID_REMAP（低 CLSW 位 0）；
-   mcore 数量任意（2/3/…，无需 2 的幂）；
+   **读多类（v3.2 引入 / v3.8 字段匹配 / v3.9 入向统一）**：集成方给出 N_DIST_CLS（被匹配类
+   个数，不含 others）+ CLS_LSB/CLS_W + DIST_CLS_MASTER_IDS（各匹配 master 的 NIC master 号
+   字段值）+ DIST_CLS_REMAP_IDS（转发 id，低 CLSW 位 = k，综合期参数检查）；
+   其余 master 共享 AR_ID_REMAP（低 CLSW 位 = N_DIST_CLS）；类数任意（N_DIST_CLS ≥ 0，0 = 全部 master 共享 AR_ID_REMAP 单类，低 1 位须为 0，
+   无需 2 的幂）；
 3. req2accept 阈值 > 最坏合法等待：满额 FIFO 排空 + 仲裁延迟 + **W skid
    攒齐+补发时间（16 拍缓存的接收与重放 + master 的 W 发送节奏；双 slot
    下排空至多两笔攒齐中 burst，预算翻倍）**；
 4. req2resp 阈值 > slave 最坏合法响应延迟（含 256 拍突发）；
 5. Σ(o.t) ≤ 下游 outstanding 容量（§2.2，误报方向）；
-6. `presetn` 与 `rstn` 同源同步释放（regfile CDC）；
+6. `mbus_rstn` 与岛域裸 `rstn` 系统级同时断言（regfile CDC）；aclk 侧引擎/regfile 两路释放分别经顶层 `u_aclk_rst`/`u_aclk_reg_rst` 同步（§8.7）；
 7. 岛内复位永不来自 main；隔离单元供电/时钟/复位全在岛内；
 8. QSR_REL 时 main 必须在复位且 ADB400 iso 已生效；
 9. master 需容忍 SLVERR（标准要求）；**不再要求**容忍提前 RLAST
@@ -1313,7 +1330,7 @@ rtl/    hang_prot_core.sv        监控核（v1，未改）
 rtl/    hang_prot_wskid.sv      双 slot W skid（v2.3 新增：两单元共享，环形三指针，每槽 one-hot；v3.1 FuSa 载荷奇偶/计数器副本）
 rtl/    hang_prot_recover.sv    出向恢复桥（v3.2：mcore 感知多类 AR remap + 共享双 slot skid + v3.1 FuSa 双轨/条目奇偶）
 rtl/    hang_prot_bdry_in.sv    入向边界单元（v2.3 位域多类 AR remap——main 单主口无 mcore 语义，见 §3.6；共享双 slot skid + QSR 强清 + v3.1 FuSa）
-rtl/    hang_prot_mcu2main_top.sv   单主控顶层（v3.2：N_MCORE/MCORE_MASTER_IDS/MCORE_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + sl_sw_rst_on 透传 + FuSa 边沿双轨）
+rtl/    hang_prot_mcu2main_top.sv   单主控顶层（v3.2/v3.9：N_DIST_CLS/CLS_LSB/CLS_W/DIST_CLS_MASTER_IDS/DIST_CLS_REMAP_IDS/AR_ID_REMAP 参数 + s_rid 类域连接 + sl_sw_rst_on 透传 + FuSa 边沿双轨）
 rtl/    hang_prot_mcu2main_top.sv Unit A 集成顶层（v3.2 mcore 参数透传）
 rtl/    hang_prot_main2mcu_top.sv Unit B 集成顶层（v2.3 + FuSa）
 rtl/    hang_prot_regfile.sv mbus leaf (reg_wrap 单一源在 fusa 根 common_modules/) 寄存器（奇偶保护，含 QSR_REL）

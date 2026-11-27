@@ -43,8 +43,19 @@ module edc_chk_req #(
                             (IDW >= 12) ? 5 :
                             (IDW >= 5)  ? 4 :
                             (IDW >= 2)  ? 3 : 1,
+   parameter integer AXI_DW = 64,        // AXI 数据位宽 (32 | 64)
+   parameter integer EDW  = (AXI_DW >= 58) ? 7 :
+                            (AXI_DW >= 27) ? 6 :
+                            (AXI_DW >= 12) ? 5 :
+                            (AXI_DW >= 5)  ? 4 :
+                            (AXI_DW >= 2)  ? 3 : 1,   // wdata/rdata 站点 EDC 宽 (64->7, 32->6)
+   parameter integer EMW  = ((AXI_DW/8) >= 58) ? 7 :
+                            ((AXI_DW/8) >= 27) ? 6 :
+                            ((AXI_DW/8) >= 12) ? 5 :
+                            ((AXI_DW/8) >= 5)  ? 4 :
+                            ((AXI_DW/8) >= 2)  ? 3 : 1,   // wstrb 站点 EDC 宽 (8->4, 4->3)
    parameter integer AWUW = 18 + EWID,  // {addr_hi, addr_lo, attri0, attri1, id}
-   parameter integer WUW  = 12          // {wdata, wmask, wlast}
+   parameter integer WUW  = EDW + EMW + 1   // {wdata, wmask, wlast}
 )(
    input  logic            clk,
    input  logic            rstn,          // 异步低有效
@@ -63,8 +74,8 @@ module edc_chk_req #(
    input  logic            awready,
 
    // ---------------- AXI4 W tap ----------------
-   input  logic [63:0]     wdata,
-   input  logic [7:0]      wstrb,
+   input  logic [AXI_DW-1:0] wdata,
+   input  logic [AXI_DW/8-1:0] wstrb,
    input  logic            wlast,
    input  logic [WUW-1:0]  wuser,
    input  logic            wvalid,
@@ -101,14 +112,14 @@ module edc_chk_req #(
 
    localparam integer W_O_LAST = 0;
    localparam integer W_O_MASK = W_O_LAST + 1;
-   localparam integer W_O_DATA = W_O_MASK + 4;
+   localparam integer W_O_DATA = W_O_MASK + EMW;
 
    localparam integer EW_AH = 5;   // DW=20 (awaddr_hi/araddr_hi)
    localparam integer EW_AL = 5;   // DW=20 (awaddr_lo/araddr_lo)
    localparam integer EW_A0 = 4;   // DW=11 (attri0)
    localparam integer EW_A1 = 4;   // DW=10 (attri1)
-   localparam integer EW_WD = 7;   // DW=64 (wdata)
-   localparam integer EW_WM = 4;   // DW=8  (wstrb)
+   localparam integer EW_WD = EDW; // DW=AXI_DW (wdata)
+   localparam integer EW_WM = EMW; // DW=AXI_DW/8 (wstrb)
    localparam integer EW_WL = 1;   // DW=1  (wlast)
 
    //--------------------------------------------------------------------------
@@ -131,8 +142,8 @@ module edc_chk_req #(
 
    typedef struct packed {
       logic             vld;
-      logic [63:0]      data;
-      logic [7:0]       mask;
+      logic [AXI_DW-1:0] data;
+      logic [AXI_DW/8-1:0] mask;
       logic             last;
       logic [EW_WD-1:0] edc_data;
       logic [EW_WM-1:0] edc_mask;
@@ -372,7 +383,7 @@ module edc_chk_req #(
    );
 
    edc_site #(
-      .DW  (64),
+      .DW  (AXI_DW),
       .MODE(1 )
    ) u_w_data (
       .i_payload  (r_w.data           ),
@@ -385,7 +396,7 @@ module edc_chk_req #(
    );
 
    edc_site #(
-      .DW  (8 ),
+      .DW  (AXI_DW/8),
       .MODE(1 )
    ) u_w_mask (
       .i_payload  (r_w.mask           ),

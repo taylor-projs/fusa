@@ -1,54 +1,38 @@
 #!/usr/bin/env bash
-# reset_checker simulation: Synopsys VCS build + run, FSDB waves for Verdi.
-# Usage (in the VCS/Verdi VM):  cd sim && ./run_vcs.sh [clean|cov]
-#   (none)  compile + run (109 self-checks) + FSDB + KDB
-#   cov     same, plus code coverage on the DUT (line+cond+fsm+tgl+branch),
-#           urg report into ./urg_report (dashboard.txt = summary)
-#   clean   remove all build products
-#
-# Required env (example):
-#   export VCS_HOME=/tools/synopsys/vcs/R-2020.12
-#   export VERDI_HOME=/tools/synopsys/verdi/R-2020.12
-#   export PATH=$VCS_HOME/bin:$VERDI_HOME/bin:$PATH
-#   export LM_LICENSE_FILE=27000@<licsrv>   # or SNPSLMD_LICENSE_FILE
-set -u
+# reset_checker: one-command VCS regression + raw/structural-exclusion coverage.
+# Usage (in the VCS/Verdi VM):  cd sim && bash run_vcs.sh [cov|clean]
+#   (none)/cov  clean compile + 115 self-checks + FSDB/KDB + both urg dashboards
+#   clean       remove all build/report products
+# Coverage scope: DUT only; line+cond+fsm+tgl+branch.  FSM shows '--' because
+# this design contains no FSM object.
+set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ "${1:-}" = "clean" ]; then
-    rm -rf simv simv.daidir csrc ucli.key vc_hdrs.h *.fsdb *.vcd *.log \
-           simv.vdb urg_report cm_hier.cfg
+    rm -rf simv simv.daidir simv.kdb csrc ucli.key vc_hdrs.h *.fsdb *.vcd \
+           simv.vdb urg_report urg_report_excl dump_tgl dump_line dump_cond \
+           dump_branch cm_hier.cfg elfilelist.txt fullexclude* \
+           holes_inst.txt holes_mod.txt *.log
     exit 0
 fi
 
-: "${VCS_HOME:?set VCS_HOME first (see header)}"
-: "${VERDI_HOME:?set VERDI_HOME first (see header)}"
+: "${VCS_HOME:?set VCS_HOME first}"
+: "${VERDI_HOME:?set VERDI_HOME first}"
 
-COV=0
-if [ "${1:-}" = "cov" ]; then
-    COV=1
-fi
+# Never reuse a stale binary or report.  Coverage is always collected so the
+# default invocation is the complete reproducible flow.
+rm -rf simv simv.daidir simv.kdb csrc simv.vdb urg_report urg_report_excl
 
-# never run a stale binary: wipe the build products before compiling
-rm -rf simv simv.daidir csrc simv.vdb urg_report
-
-CMFLAGS=""
-CMRUN=""
-if [ "$COV" = "1" ]; then
-    # coverage on the DUT subtree only (exclude the testbench itself)
-    cat > cm_hier.cfg <<EOF
+CM="-cm line+cond+fsm+tgl+branch"
+cat > cm_hier.cfg <<EOF
 -tree tb_reset_checker
 +tree tb_reset_checker.dut
 EOF
-    CMFLAGS="-cm line+cond+fsm+tgl+branch -cm_dir simv.vdb -cm_hier cm_hier.cfg"
-    CMRUN="-cm line+cond+fsm+tgl+branch -cm_dir simv.vdb -cm_name rchk_run -cm_log cm_run.log"
-fi
 
-# FSDB: VCS 2021+ dumps $fsdb* natively with -debug_access+all; linking the
-# Verdi PLI (-P novas.tab pli.a) only adds UFTMD "multiply defined" warnings.
 vcs -full64 -sverilog -timescale=1ns/1ps \
     -debug_access+all -kdb -lca \
     +define+DUMP_FSDB \
-    $CMFLAGS \
+    $CM -cm_dir simv.vdb -cm_hier cm_hier.cfg \
     -top tb_reset_checker \
     ../../common_modules/rst_sync.sv \
     ../../common_modules/reg_wrap.sv \
@@ -58,23 +42,33 @@ vcs -full64 -sverilog -timescale=1ns/1ps \
     tb_reset_checker.sv \
     -o simv -l vcs_compile.log
 
-if [ ! -x simv ]; then
-    echo "COMPILE FAILED - see vcs_compile.log"
+# Disable ASLR re-exec, which otherwise drops runtime -cm options on this VM.
+setarch "$(uname -m)" -R ./simv $CM -cm_dir simv.vdb \
+    -cm_name rchk_run -cm_log cm_run.log -l vcs_run.log
+
+if grep -qE "### FAIL|failed at|Error-" vcs_run.log; then
+    echo "REGRESSION FAIL"
+    grep -nE "### FAIL|failed at|Error-" vcs_run.log | head -40
     exit 1
 fi
-
-# setarch -R: disable ASLR for the sim process so VCS never does its
-# save-restore re-exec (which both races the daidir (FCNORW) and drops the
-# -cm* runtime coverage options).
-setarch "$(uname -m)" -R ./simv $CMRUN -l vcs_run.log
-
-grep -q "ALL .* CHECKS PASSED" vcs_run.log \
-    && echo "REGRESSION PASS" || echo "REGRESSION FAIL"
-
-if [ "$COV" = "1" ]; then
-    urg -dir simv.vdb -report urg_report -format both -log urg.log
-    echo "=== coverage summary (urg_report/dashboard.txt) ==="
-    cat urg_report/dashboard.txt 2>/dev/null || true
+if ! grep -q "ALL 115 CHECKS PASSED" vcs_run.log; then
+    echo "REGRESSION FAIL: expected ALL 115 CHECKS PASSED"
+    tail -40 vcs_run.log
+    exit 1
 fi
+echo "REGRESSION PASS: ALL 115 CHECKS PASSED"
 
-echo "waveform: sim/tb_reset_checker.fsdb   (open with ./run_verdi.sh)"
+urg -dir simv.vdb -report urg_report -format both -log urg.log
+
+# Multiple exclusion files must be passed through -elfilelist.  strict mode
+# rejects stale entries that have become covered and must be retired.
+printf '%s\n' "$PWD/tgl_struct_excl.el" "$PWD/misc_struct_excl.el" > elfilelist.txt
+urg -dir simv.vdb -elfilelist elfilelist.txt -excl_strict \
+    -report urg_report_excl -format both -log urg_excl.log
+
+echo "=== RAW coverage (urg_report/dashboard.txt) ==="
+cat urg_report/dashboard.txt
+echo "=== STRUCTURAL EXCLUSIONS APPLIED (urg_report_excl/dashboard.txt) ==="
+cat urg_report_excl/dashboard.txt
+
+echo "waveform: sim/tb_reset_checker.fsdb (open with ./run_verdi.sh)"

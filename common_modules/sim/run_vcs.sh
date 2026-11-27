@@ -1,44 +1,49 @@
 #!/bin/bash
-# common_modules/sim - reg_wrap_secded 单元 VCS 仿真 + Verdi 查看
-# (在 Linux VM 内运行; 前提: 已 source Synopsys 环境变量)
-# 用法: bash run_vcs.sh          # 编译 + 仿真 (fsdb + 覆盖率 vdb) + 结果自检
-#       bash run_vcs.sh verdi    # 只起 Verdi 打开已有 fsdb
-#       bash run_vcs.sh cov      # 起 Verdi coverage GUI 查看覆盖率
-set -e
+# common_modules: one-command unit regression + raw/exclusion coverage.
+# Coverage includes reg_wrap_secded (W=32/W=8), reg_wrap, sync_2dff (2/3 stages),
+# sync_dff and rst_sync.  No common RTL is modified by the verification flow.
+# Usage: bash run_vcs.sh [verdi|cov|clean]
+set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"     # common_modules
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIM="$ROOT/sim"
-# 产物在 sim/obj_vcs (要求 common_modules 位于 VM 本地文件系统).
-# 若从 VMware 共享目录(hgfs)直接跑, hgfs 不支持符号链接,
-# 用 VCS_OUT=/本地路径 覆盖
 OUT="${VCS_OUT:-$SIM/obj_vcs}"
 TOP=tb_reg_wrap_secded
+
+if [ "${1:-}" = "clean" ]; then
+   rm -rf "$OUT"
+   exit 0
+fi
 mkdir -p "$OUT"
 
-# filelist (被测单元直接位于 common_modules/ 根)
 cat > "$OUT/filelist.f" <<EOF
+$ROOT/reg_wrap.sv
 $ROOT/reg_wrap_secded.sv
+$ROOT/sync_2dff.sv
+$ROOT/sync_dff.sv
+$ROOT/rst_sync.sv
 $SIM/tb_reg_wrap_secded.sv
 EOF
 
-# 覆盖率只统计 DUT (dut + dut8), 排除测试台
+# DUT cells only; all other TB processes/drivers are outside the coverage tree.
 cat > "$OUT/cov.cfg" <<EOF
 -tree $TOP
 +tree $TOP.dut
 +tree $TOP.dut8
++tree $TOP.u_reg_wrap
++tree $TOP.u_sync_2dff
++tree $TOP.u_sync_2dff_3stage
++tree $TOP.u_sync_dff
++tree $TOP.u_rst_sync
 EOF
+CM="-cm line+cond+fsm+tgl+branch"
 
-# 不收 cond: 奇偶/XOR 树让条件覆盖向量爆到 2^N 被 VCS 截断(VCM-TRIMVEC),
-# 分数无意义且拖慢仿真. 需要时自行加回 "+cond"
-CM="-cm line+fsm+tgl+branch"
-
-if [ "$1" = "verdi" ]; then
+if [ "${1:-}" = "verdi" ]; then
    if [ ! -f "$OUT/$TOP.fsdb" ]; then echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; fi
    shift
    exec verdi -sverilog -f "$OUT/filelist.f" -top $TOP -ssf "$OUT/$TOP.fsdb" "$@"
 fi
-
-if [ "$1" = "cov" ]; then
+if [ "${1:-}" = "cov" ]; then
    if ! ls "$OUT/simv.vdb/snps/coverage/db/testdata"/* >/dev/null 2>&1; then
       echo "no coverage testdata in $OUT/simv.vdb -- run 'bash run_vcs.sh' first"
       exit 1
@@ -47,8 +52,10 @@ if [ "$1" = "cov" ]; then
    exec verdi -cov -covdir "$OUT/simv.vdb" "$@"
 fi
 
-echo "== vcs compile (with coverage) =="
-rm -rf "$OUT/simv.vdb"
+rm -rf "$OUT/csrc" "$OUT/simv" "$OUT/simv.daidir" "$OUT/simv.kdb" \
+       "$OUT/simv.vdb" "$OUT/urg_report" "$OUT/urg_report_excl"
+
+echo "== vcs compile (all shared cells, five coverage metrics) =="
 vcs -full64 -sverilog +v2k \
     -timescale=1ns/1ps \
     -debug_access+all -kdb -lca \
@@ -60,10 +67,8 @@ vcs -full64 -sverilog +v2k \
 
 echo "== simulate (collect coverage) =="
 cd "$OUT"
-# +vcs+flush+all: $display 即时落盘 (防挂起时缓冲吞掉最后语句)
-./simv $CM -cm_name run1 -l sim.log +vcs+flush+all
+setarch "$(uname -m)" -R ./simv $CM -cm_name run1 -l sim.log +vcs+flush+all
 
-# ---- 结果自检 (SVA/TB $display 不进退出码, 必须查文本) ----
 if grep -qE "FAIL|RAIL-FAIL|ERR:|failed at|Error-" sim.log; then
    echo "ERROR: failures found in sim.log:"
    grep -nE "FAIL|RAIL-FAIL|ERR:|failed at|Error-" sim.log | head -40
@@ -71,21 +76,27 @@ if grep -qE "FAIL|RAIL-FAIL|ERR:|failed at|Error-" sim.log; then
 fi
 if ! grep -q "^TB PASS: all checks passed" sim.log; then
    echo "ERROR: TB PASS line not found -- TB likely hung or crashed."
-   echo "check: tail -40 $OUT/sim.log"
-   tail -40 sim.log || true
+   tail -40 sim.log
    exit 1
 fi
-echo "== self-check OK: $(grep -c '^  PASS' sim.log) checks passed =="
-
+CHECKS="$(grep -c '^  PASS' sim.log)"
+echo "== self-check OK: $CHECKS checks passed =="
 if ! ls simv.vdb/snps/coverage/db/testdata/* >/dev/null 2>&1; then
    echo "ERROR: simv finished but no coverage testdata was written."
    exit 1
 fi
 
-echo "== coverage summary (raw) =="
-urg -dir simv.vdb -report urg_report -format both > /dev/null 2>&1 || true
-grep -A 20 "Total Coverage" urg_report/dashboard.txt 2>/dev/null || \
-   echo "(summary in $OUT/urg_report/, or view in GUI)"
+urg -dir simv.vdb -report urg_report -format both -log urg.log
+# struct_excl.el is intentionally empty: the raw view is already zero-hole.
+# Keeping the second strict urg pass makes that claim explicit and reproducible.
+printf '%s\n' "$SIM/struct_excl.el" > elfilelist.txt
+urg -dir simv.vdb -elfilelist elfilelist.txt -excl_strict \
+    -report urg_report_excl -format both -log urg_excl.log
+
+echo "== RAW coverage (urg_report/dashboard.txt) =="
+grep -A 20 "Total Coverage" urg_report/dashboard.txt
+echo "== EXCLUSIONS APPLIED (empty list; urg_report_excl/dashboard.txt) =="
+grep -A 20 "Total Coverage" urg_report_excl/dashboard.txt
 
 echo "== done =="
 echo "   波形:   bash run_vcs.sh verdi   ($OUT/$TOP.fsdb)"

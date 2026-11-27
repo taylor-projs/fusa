@@ -42,9 +42,11 @@ module rst_sync #(
 );
 
    // 参数检查 (elaboration): 至少 2 级 (一级亚稳吸收 + 一级解析)
+   // synopsys translate_off
    if (SYNC_LVL_NUM < 2) begin : g_param_chk
       $error("rst_sync: SYNC_LVL_NUM must be >= 2 (got %0d)", SYNC_LVL_NUM);
    end
+   // synopsys translate_on
 
 `ifdef FPGA
    // ---------------- FPGA 分支: 行为 RTL + ASYNC_REG ----------------
@@ -71,9 +73,11 @@ module rst_sync #(
    `ifndef SYNC_2DFF_TECH_CELL
       `error "ASIC_SYNCELL defined but SYNC_2DFF_TECH_CELL (tech cell name) not defined"
    `endif
+   // synopsys translate_off
    if (SYNC_LVL_NUM != 2 || DEF_VAL != 1'b0) begin : g_cell_chk
       $error("rst_sync ASIC_SYNCELL: hardened cell is fixed 2-stage/DEF_VAL=0; set SYNC_LVL_NUM=2 DEF_VAL=0");
    end
+   // synopsys translate_on
    logic q_cell;
    `SYNC_2DFF_TECH_CELL u_tech_cell (
       .CK(clk   ),

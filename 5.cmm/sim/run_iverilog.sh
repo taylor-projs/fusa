@@ -10,6 +10,7 @@ OUT=cmm_sim.vvp
 rm -f "$OUT"
 
 iverilog -g2012 -DIVERILOG -o "$OUT" -s tb_cmm_top \
+    ../../common_modules/rst_sync.sv \
     ../../common_modules/sync_dff.sv \
     ../../common_modules/sync_2dff.sv \
     ../../common_modules/reg_wrap.sv \

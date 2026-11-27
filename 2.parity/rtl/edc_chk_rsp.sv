@@ -35,8 +35,14 @@ module edc_chk_rsp #(
                             (IDW >= 12) ? 5 :
                             (IDW >= 5)  ? 4 :
                             (IDW >= 2)  ? 3 : 1,
+   parameter integer AXI_DW = 64,        // AXI 数据位宽 (32 | 64)
+   parameter integer EDW  = (AXI_DW >= 58) ? 7 :
+                            (AXI_DW >= 27) ? 6 :
+                            (AXI_DW >= 12) ? 5 :
+                            (AXI_DW >= 5)  ? 4 :
+                            (AXI_DW >= 2)  ? 3 : 1,   // rdata 站点 EDC 宽 (64->7, 32->6)
    parameter integer BUW  = 3 + EWID,   // {battri, bid}
-   parameter integer RUW  = 10 + EWID   // {rdata, rattri, rid}
+   parameter integer RUW  = EDW + 3 + EWID   // {rdata, rattri, rid}
 )(
    input  logic            clk,
    input  logic            rstn,          // 异步低有效
@@ -50,7 +56,7 @@ module edc_chk_rsp #(
 
    // ---------------- AXI4 R tap ----------------
    input  logic [IDW-1:0]  rid,
-   input  logic [63:0]     rdata,
+   input  logic [AXI_DW-1:0] rdata,
    input  logic [1:0]      rresp,
    input  logic            rlast,
    input  logic [RUW-1:0]  ruser,
@@ -75,7 +81,7 @@ module edc_chk_rsp #(
    localparam integer R_O_RD  = R_O_RAT + 3;
 
    localparam integer EW_BAT = 3;   // DW=2  (bresp)
-   localparam integer EW_RD  = 7;   // DW=64 (rdata)
+   localparam integer EW_RD  = EDW; // DW=AXI_DW (rdata)
    localparam integer EW_RAT = 3;   // DW=3  ({rresp,rlast})
 
    //--------------------------------------------------------------------------
@@ -91,7 +97,7 @@ module edc_chk_rsp #(
 
    typedef struct packed {
       logic             vld;
-      logic [63:0]      data;
+      logic [AXI_DW-1:0] data;
       logic [2:0]       attri;
       logic [IDW-1:0]   id;
       logic [EW_RD-1:0] edc_data;
@@ -210,7 +216,7 @@ module edc_chk_rsp #(
    );
 
    edc_site #(
-      .DW  (64),
+      .DW  (AXI_DW),
       .MODE(1 )
    ) u_r_data (
       .i_payload  (r_r.data             ),

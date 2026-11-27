@@ -33,6 +33,8 @@
 //   T15 drain 期本地可读 (诊断语义): mbus 死亡超时后, 本地 STA 读照常
 //       零等待返回 (不受 drain 屏蔽), 远端访问仍快速失败; 恢复后链路
 //       自愈 + W1C 清
+//   T16 条件覆盖补激励: 孤立 rpar 状态/本地面译码反臂/APB 非法空闲相/
+//       rdy 与看门狗同拍 (rdy 优先, force h_dup FI + firing-proof)
 // ============================================================================
 module tb_apb2mbus;
 
@@ -138,7 +140,7 @@ module tb_apb2mbus;
    integer errors = 0;
    integer checks = 0;
 
-   task chk(input [8*48-1:0] name, input logic cond);
+   task automatic chk(input [8*48-1:0] name, input logic cond);
       begin
          checks = checks + 1;
          if (cond !== 1'b1) begin
@@ -149,7 +151,7 @@ module tb_apb2mbus;
    endtask
 
    // ---------------- APB 主设备访问 (setup/access 两相, 采样 pready) ----------------
-   task apb_acc(input  [15:0] a, input [31:0] d, input logic w,
+   task automatic apb_acc(input  [15:0] a, input [31:0] d, input logic w,
                 output logic err, output logic [31:0] rd, output integer wc);
       logic done;   // done-flag 退出: iverilog 无 task return;
                     // VCS 下 disable task 不回拷 output 参数 (两器行为分歧)
@@ -475,6 +477,53 @@ module tb_apb2mbus;
       chk("T10p post-rst wr ok     ", err === 1'b0);
       apb_acc(16'h0008, 32'h0, 1'b0, err, rd, wc);
       chk("T10q post-rst rd ok     ", (err === 1'b0) && (rd === 32'h5E53_0008));
+
+      // ---- T16: 条件覆盖补激励 (真实总线状态 + 一次组合看门狗 FI) ----
+      // 孤立 rpar=1/hang=0: STA 两个 OR 读出点都必须看到这一组合.
+      apb_acc(16'hFF04, 32'hC, 1'b1, err, rd, wc);
+      apb_acc(16'hFF08, 32'h2A, 1'b1, err, rd, wc);
+      repeat (2) @(posedge apb_clk);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T16a rpar-only STA 0x9  ", (err === 1'b0) && (rd === 32'h9));
+      apb_acc(16'hFF04, 32'h8, 1'b1, err, rd, wc);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T16b rpar-only clear    ", (err === 1'b0) && (rd === 32'h2));
+
+      // loc_wr=1 而 a_sta=0 / a_inj=0 的译码反臂; 数据位本身不得误注错.
+      apb_acc(16'hFF00, 32'h0000_0004, 1'b1, err, rd, wc);
+      chk("T16c local ID write inert", err === 1'b0);
+      apb_acc(16'hFF04, 32'h0000_003A, 1'b1, err, rd, wc);
+      apb_acc(16'hFF04, 32'h0, 1'b0, err, rd, wc);
+      chk("T16d STA not INJ decode  ", (err === 1'b0) && (rd === 32'h2) &&
+                                     (hang_flt === 1'b0) && (rpar_flt === 1'b0));
+
+      // psel=0/penable=1 是 APB 空闲相外的合法输入组合: 不得完成或发起 ce.
+      ce_snap = ce_cnt;
+      @(negedge apb_clk);
+      psel = 1'b0; penable = 1'b1; pwrite = 1'b0; paddr = 16'h0000;
+      @(negedge apb_clk);
+      chk("T16e idle penable ignored", (pready === 1'b0) && (ce_cnt === ce_snap));
+      penable = 1'b0;
+
+      // rdy 与看门狗触发源同拍: rdy 必须优先, to_fire 不得置位.
+      // 在 rdy 已拉高、完成沿尚未到来的 negedge 强制 h_dup, 形成可证明的
+      // wait_ack && rdy && h_dup 组合; 不用长延时凑时钟竞态.
+      fork
+         apb_acc(16'h0000, 32'h0, 1'b0, err, rd, wc);
+         begin
+            @(negedge apb_clk);
+            while (dut.rdy !== 1'b1) begin
+               @(negedge apb_clk);
+            end
+            force dut.h_dup = 1'b1;
+            #1;
+            chk("T16f rdy wins watchdog ", dut.r_apb.wait_ack && dut.rdy &&
+                                           dut.h_dup && !dut.to_fire);
+            @(negedge apb_clk);
+            release dut.h_dup;
+         end
+      join
+      chk("T16g boundary read no err", (err === 1'b0) && (hang_flt === 1'b0));
 
       // ---- T6/T7/T11: 常时检查汇总 ----
       chk("T6 rail complement      ", rail_bad === 0);

@@ -58,6 +58,8 @@
 //   P17 ESM path selftest (PATH_SELFTEST, ESM 单端集成契约): 0x28 keyed
 //       掩码驱动四路 ESM 输出 (置 1/逐通道/释放 双向往复), 无源签名
 //       (通道报 1 而 STA 源全 0), 无 key 整写忽略
+//   P18 五指标条件补激励: 协议同拍/反压/W-before-AW、聚合器译码与
+//       dut1 parity、比较器单臂 FI、ENA=0 源抑制、thr=0 长计数边界
 //   P15 mid-sim reset pulse + re-readback (rstn 1->0, mbus_rstn 1->0)
 //
 // mbus zero-wait note: a config write is fire-and-forget (no pready), it
@@ -605,6 +607,280 @@ module tb_ia_timeo_gen_wrap;
     endtask
 
     //------------------------------------------------------------------------
+    // P18 condition-matrix helpers. All drives are negedge-based and every
+    // forced fault is held across a posedge with a live firing-proof check.
+    //------------------------------------------------------------------------
+    task automatic protocol_cond_sweep;
+        begin
+            // R: non-last beat, RVALID backpressure, simultaneous AR+RLAST,
+            // then an RLAST-only drain. This covers both increment/decrement
+            // boundary guards without relying on a clock race.
+            @(negedge aclk0);
+            x0_arvalid = 1'b1; x0_arready = 1'b1;
+            x0_rvalid = 1'b1; x0_rready = 1'b1; x0_rlast = 1'b0;
+            @(negedge aclk0);
+            x0_arvalid = 1'b0; x0_arready = 1'b0;
+            x0_rready = 1'b0; x0_rlast = 1'b1;
+            @(negedge aclk0);
+            x0_arvalid = 1'b1; x0_arready = 1'b1; x0_rready = 1'b1;
+            @(negedge aclk0);
+            x0_arvalid = 1'b0; x0_arready = 1'b0;
+            @(negedge aclk0);
+            x0_rvalid = 1'b0; x0_rready = 1'b0; x0_rlast = 1'b0;
+
+            // W before AW: non-last beat, W backpressure, then WLAST-only
+            // creates wr_dlv=1 while wr_otd=0. WLAST+B and B-only exercise
+            // the simultaneous-delivery and drain arms.
+            @(negedge aclk0);
+            x0_wvalid = 1'b1; x0_wready = 1'b1; x0_wlast = 1'b0;
+            @(negedge aclk0);
+            x0_wready = 1'b0; x0_wlast = 1'b1;
+            @(negedge aclk0);
+            x0_wready = 1'b1;
+            @(negedge aclk0);
+            x0_bvalid = 1'b1; x0_bready = 1'b1;
+            @(negedge aclk0);
+            x0_wvalid = 1'b0; x0_wready = 1'b0; x0_wlast = 1'b0;
+            @(negedge aclk0);
+            x0_bready = 1'b0;
+            @(negedge aclk0);
+            x0_bvalid = 1'b0;
+
+            // AW-only creates an outstanding write; AW+B holds the ledger,
+            // B-only drains it. BVALID without BREADY covers backpressure.
+            @(negedge aclk0);
+            x0_awvalid = 1'b1; x0_awready = 1'b1;
+            @(negedge aclk0);
+            x0_bvalid = 1'b1; x0_bready = 1'b1;
+            @(negedge aclk0);
+            x0_awvalid = 1'b0; x0_awready = 1'b0;
+            @(negedge aclk0);
+            x0_bvalid = 1'b0; x0_bready = 1'b0;
+            repeat (3) @(negedge aclk0);
+        end
+    endtask
+
+    task automatic comparator_cond_fi;
+        begin
+            // Downstream comparator-output FI: isolate each OR arm without
+            // also asserting the upstream Q/Q_n mismatch term.
+            @(negedge aclk0);
+            force dut0.u_ia_bus_timeo_mon.rd_r2a_to_a = 1'b1;
+            force dut0.u_ia_bus_timeo_mon.rd_r2a_to_b = 1'b0;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.rd_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.rd_r2a_cf) begin
+                $display("ERR: P18 rd_r2a a-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_r2a_to_a;
+            release dut0.u_ia_bus_timeo_mon.rd_r2a_to_b;
+            force dut0.u_ia_bus_timeo_mon.rd_r2a_to_a = 1'b0;
+            force dut0.u_ia_bus_timeo_mon.rd_r2a_to_b = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.rd_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.rd_r2a_cf) begin
+                $display("ERR: P18 rd_r2a b-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_r2a_to_a;
+            release dut0.u_ia_bus_timeo_mon.rd_r2a_to_b;
+
+            force dut0.u_ia_bus_timeo_mon.rd_r2r_to_a = 1'b1;
+            force dut0.u_ia_bus_timeo_mon.rd_r2r_to_b = 1'b0;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.rd_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.rd_r2r_cf) begin
+                $display("ERR: P18 rd_r2r a-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_r2r_to_a;
+            release dut0.u_ia_bus_timeo_mon.rd_r2r_to_b;
+            force dut0.u_ia_bus_timeo_mon.rd_r2r_to_a = 1'b0;
+            force dut0.u_ia_bus_timeo_mon.rd_r2r_to_b = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.rd_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.rd_r2r_cf) begin
+                $display("ERR: P18 rd_r2r b-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_r2r_to_a;
+            release dut0.u_ia_bus_timeo_mon.rd_r2r_to_b;
+
+            force dut0.u_ia_bus_timeo_mon.wr_r2a_to_a = 1'b1;
+            force dut0.u_ia_bus_timeo_mon.wr_r2a_to_b = 1'b0;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2a_cf) begin
+                $display("ERR: P18 wr_r2a a-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_r2a_to_a;
+            release dut0.u_ia_bus_timeo_mon.wr_r2a_to_b;
+            force dut0.u_ia_bus_timeo_mon.wr_r2a_to_a = 1'b0;
+            force dut0.u_ia_bus_timeo_mon.wr_r2a_to_b = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2a_cf) begin
+                $display("ERR: P18 wr_r2a b-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_r2a_to_a;
+            release dut0.u_ia_bus_timeo_mon.wr_r2a_to_b;
+
+            force dut0.u_ia_bus_timeo_mon.wr_r2r_to_a = 1'b1;
+            force dut0.u_ia_bus_timeo_mon.wr_r2r_to_b = 1'b0;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2r_cf) begin
+                $display("ERR: P18 wr_r2r a-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_r2r_to_a;
+            release dut0.u_ia_bus_timeo_mon.wr_r2r_to_b;
+            force dut0.u_ia_bus_timeo_mon.wr_r2r_to_a = 1'b0;
+            force dut0.u_ia_bus_timeo_mon.wr_r2r_to_b = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2r_cf) begin
+                $display("ERR: P18 wr_r2r b-only FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_r2r_to_a;
+            release dut0.u_ia_bus_timeo_mon.wr_r2r_to_b;
+
+            force dut0.u_ia_bus_timeo_mon.wr_dlv_f = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.fu_cnt) begin
+                $display("ERR: P18 isolated wr_dlv_f FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_dlv_f;
+            force dut0.u_ia_bus_timeo_mon.wr_otd_f = 1'b1;
+            @(posedge aclk0); #1;
+            if (!dut0.u_ia_bus_timeo_mon.wr_r2a_to ||
+                !dut0.u_ia_bus_timeo_mon.wr_r2r_to ||
+                !dut0.u_ia_bus_timeo_mon.fu_cnt) begin
+                $display("ERR: P18 isolated wr_otd_f FI did not fire"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_otd_f;
+            repeat (3) @(negedge aclk0);
+        end
+    endtask
+
+    task automatic disabled_mon_cond_fi;
+        begin
+            mb_wr_wait(8'h10, 32'h0000_00A0);
+            @(negedge aclk0);
+            force dut0.u_ia_bus_timeo_mon.rd_cnt_a_f = 1'b1;
+            @(posedge aclk0); #1;
+            if (dut0.u_ia_bus_timeo_mon.rd_r2a_to) begin
+                $display("ERR: P18 disabled rd_r2a source was not masked"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_cnt_a_f;
+            force dut0.u_ia_bus_timeo_mon.rd_cnt_r_f = 1'b1;
+            @(posedge aclk0); #1;
+            if (dut0.u_ia_bus_timeo_mon.rd_r2r_to) begin
+                $display("ERR: P18 disabled rd_r2r source was not masked"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.rd_cnt_r_f;
+            force dut0.u_ia_bus_timeo_mon.wr_dlv_f = 1'b1;
+            @(posedge aclk0); #1;
+            if (dut0.u_ia_bus_timeo_mon.wr_r2a_to ||
+                dut0.u_ia_bus_timeo_mon.wr_r2r_to) begin
+                $display("ERR: P18 disabled write source was not masked"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_mon.wr_dlv_f;
+
+            // Integrity faults themselves are deliberately not ENA-gated;
+            // only timeout/saturation events are masked. Clear these direct
+            // FI sources before checking saturation-only suppression.
+            repeat (4) @(negedge mbus_clk);
+            mb_rd(8'h1C, rd_val);
+            if (rd_val[0] !== 1'b1) begin
+                $display("ERR: P18 integrity FI did not latch with ENA=0"); errors++;
+            end
+            mb_wr_wait(8'h20, 32'h7F);
+            mb_wr_wait(8'h1C, 32'h1);
+
+            // A real saturation source while ENA=0 covers the outer gate;
+            // drain the capped ledgers before re-enabling the monitor.
+            ar_burst(9); rd_drain(8);
+            aw_burst(9); wl_burst(9); b_drain(9);
+            mb_wr_wait(8'h10, 32'h0000_01A0);
+            repeat (5) @(negedge mbus_clk);
+            mb_rd(8'h1C, rd_val);
+            if (rd_val[0] !== 1'b0) begin
+                $display("ERR: P18 disabled monitor latched a fault"); errors++;
+            end
+            mb_wr_wait(8'h10, 32'h0000_00AF);
+        end
+    endtask
+
+    task automatic zero_threshold_long_counts;
+        begin
+            // thr=0 and count=16'hFFFF make the final compare term true while
+            // the threshold-nonzero term is false. All four windows still
+            // wrap naturally; no timeout may be generated at threshold zero.
+            mb_wr_wait(8'h14, 32'h0);
+            mb_wr_wait(8'h18, 32'h0);
+            fork
+                begin ar_hang(65545); x0_arvalid = 1'b0; end
+                begin aw_hang(65545); x0_awvalid = 1'b0; end
+            join
+            fork
+                begin r_hang(65545); end
+                begin b_hang(65545); end
+            join
+            rd_drain(1); b_drain(1);
+            repeat (6) @(negedge mbus_clk);
+            mb_rd(8'h00, rd_val);
+            if (rd_val[1:0] !== 2'b00) begin
+                $display("ERR: P18 zero-threshold r2a fired"); errors++;
+            end
+            mb_rd(8'h04, rd_val);
+            if (rd_val[1:0] !== 2'b00) begin
+                $display("ERR: P18 zero-threshold r2r fired"); errors++;
+            end
+            mb_wr_wait(8'h14, 32'd15);
+            mb_wr_wait(8'h18, 32'd255);
+        end
+    endtask
+
+    task automatic saturation_cond_sweep;
+        begin
+            // At OTD_MAX a simultaneous add+retire must take neither the
+            // increment nor decrement arm, and must not assert saturation.
+            ar_burst(8);
+            @(negedge aclk0);
+            x0_arvalid = 1'b1; x0_arready = 1'b1;
+            x0_rvalid = 1'b1; x0_rready = 1'b1; x0_rlast = 1'b1;
+            @(negedge aclk0);
+            x0_arvalid = 1'b0; x0_arready = 1'b0;
+            x0_rvalid = 1'b0; x0_rready = 1'b0; x0_rlast = 1'b0;
+            rd_drain(8);
+
+            aw_burst(8); wl_burst(8);
+            @(negedge aclk0);
+            x0_awvalid = 1'b1; x0_awready = 1'b1;
+            x0_wvalid = 1'b1; x0_wready = 1'b1; x0_wlast = 1'b1;
+            x0_bvalid = 1'b1; x0_bready = 1'b1;
+            @(negedge aclk0);
+            x0_awvalid = 1'b0; x0_awready = 1'b0;
+            x0_wvalid = 1'b0; x0_wready = 1'b0; x0_wlast = 1'b0;
+            x0_bvalid = 1'b0; x0_bready = 1'b0;
+            b_drain(8);
+            repeat (3) @(negedge aclk0);
+        end
+    endtask
+
+    //------------------------------------------------------------------------
     // Functional coverage: hand-rolled bins (portable across simulators;
     // SV covergroups are simulator-specific - for Questa/Xcelium/VCS the
     // equivalent covergroup code can be re-added in this section)
@@ -617,6 +893,7 @@ module tb_ia_timeo_gen_wrap;
     integer cov_w1c_race = 0, cov_to_clear_pend = 0;
     integer cov_multi_fire = 0;
     integer cov_rpar_bad = 0, cov_orbad = 0, cov_rail_bad = 0;
+    integer cov_cfg_invalid = 0;
 
     // fire watchers (aclk0)
     always @(posedge aclk0) begin
@@ -719,6 +996,8 @@ module tb_ia_timeo_gen_wrap;
         if (dut0.u_ia_bus_timeo_mon.rd_otd_sat)  sat_rd = sat_rd + 1;
         if (dut0.u_ia_bus_timeo_mon.wr_otd_sat)  sat_wr = sat_wr + 1;
         if (dut0.u_ia_bus_timeo_mon.dlv_otd_sat) sat_dlv = sat_dlv + 1;
+        if (dut0.u_ia_bus_timeo_mon.cfg_ok && !dut0.u_ia_bus_timeo_mon.ena_wr_ok)
+            cov_cfg_invalid = cov_cfg_invalid + 1;
     end
 
     always @(posedge aclk1) begin
@@ -773,22 +1052,22 @@ module tb_ia_timeo_gen_wrap;
         repeat (10) @(negedge aclk0);
 
         // ---- P0: DFT scan_mode bypass of the core reset synchronizer ------
-        // (rst_sync output mux: scan_mode=1 -> rstn_s follows raw rstn directly)
+        // (rst_sync output mux: scan_mode=1 -> axi_rstn_s follows raw axi_rstn directly)
         scan_mode = 1;
         rstn0 = 0; rstn1 = 0;
         #1;                                   // settle, no clock edge needed
-        if (dut0.u_ia_bus_timeo_mon.rstn_s !== 1'b0) begin
+        if (dut0.axi_rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate (dut0)", $time); errors++;
         end
-        if (dut1.u_ia_bus_timeo_mon.rstn_s !== 1'b0) begin
+        if (dut1.axi_rstn_s !== 1'b0) begin
             $display("[%0t] ERR: P0 scan assert not immediate (dut1)", $time); errors++;
         end
         rstn0 = 1; rstn1 = 1;
         #1;
-        if (dut0.u_ia_bus_timeo_mon.rstn_s !== 1'b1) begin
+        if (dut0.axi_rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate (dut0)", $time); errors++;
         end
-        if (dut1.u_ia_bus_timeo_mon.rstn_s !== 1'b1) begin
+        if (dut1.axi_rstn_s !== 1'b1) begin
             $display("[%0t] ERR: P0 scan release not immediate (dut1)", $time); errors++;
         end
         scan_mode = 0;
@@ -1739,6 +2018,149 @@ module tb_ia_timeo_gen_wrap;
             mb_rd_i(2, 8'h28, msk);
             if (msk !== 32'h0) begin $display("ERR: P17 mask not 0 after release"); errors++; end
             else $display("P17 path selftest: OK (drive/per-ch/release, source-free)");
+        end
+
+        // ---- P18: five-metric condition stimulus ------------------------------
+        $display("\n--- P18: condition matrix ---");
+        begin : p18
+            // ce=0/wr=1 is an idle-bus input combination and must be inert.
+            @(negedge mbus_clk);
+            mbus_ce = 1'b0; mbus_wr = 1'b1; mbus_addr = 16'h0; mbus_wdata = 32'h0;
+            mbus_par = 1'b0;
+            @(negedge mbus_clk);
+            mbus_wr = 1'b0;
+
+            // Selected aggregator bad-parity read: sel=1/par_ok=0, read 0.
+            // Every leaf checks broadcast parity, so service all leaf sources
+            // before clearing the aggregator's per-core sticky bits.
+            mb_rd_badpar_i(2, 8'h00, rd_val);
+            if (rd_val !== 32'h0) begin
+                $display("ERR: P18 agg bad-parity read not gated"); errors++;
+            end
+            mb_wr_wait(8'h24, 32'h1000);
+            mb_wr_wait_i(1, 8'h24, 32'h1000);
+            mb_wr_i(2, 8'h18, 32'h10);
+            repeat (10) @(negedge mbus_clk);
+            mb_wr_i(2, 8'h04, 32'h3);
+            repeat (4) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h04, rd_val);
+            if (rd_val !== 32'h0) begin
+                $display("ERR: P18 agg bad-parity STA_FAULT cleanup (%h)", rd_val); errors++;
+            end
+            mb_rd_i(2, 8'h18, rd_val);
+            if (rd_val !== 32'h2) begin
+                $display("ERR: P18 agg bad-parity STA_PAR cleanup (%h)", rd_val); errors++;
+            end
+
+            // REGST wrong key and valid key with out-of-range REGSEL are both
+            // no-ops; the latter has regst_ok=1/reg_selftest=0.
+            mb_wr_i(2, 8'h1C, 32'h0000_0F15);
+            mb_wr_i(2, 8'h1C, 32'h0000_0F1A);
+            repeat (3) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h18, rd_val);
+            if (rd_val !== 32'h2) begin
+                $display("ERR: P18 agg REGST negative decode not inert (%h)", rd_val); errors++;
+            end
+
+            // Aggregator PAR latch duplicate mismatch with par_selftest=0.
+            @(negedge mbus_clk);
+            force u_agg.plr.q_n = 1'b0;
+            repeat (2) @(posedge mbus_clk);
+            #1;
+            if (u_agg.plr.q !== 1'b1 || u_agg.par_selftest !== 1'b0) begin
+                $display("ERR: P18 agg PAR latch FI did not heal-to-SET"); errors++;
+            end
+            @(negedge mbus_clk);
+            release u_agg.plr.q_n;
+            mb_wr_i(2, 8'h18, 32'h1);
+            repeat (3) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h18, rd_val);
+            if (rd_val !== 32'h2) begin
+                $display("ERR: P18 agg PAR latch W1C failed (%h)", rd_val); errors++;
+            end
+
+            // Exercise the previously unused dut1 parity input lane through
+            // the real source -> RAWPAR -> STA_PARCORE -> W1C chain.
+            mb_wr_wait_i(1, 8'h28, 32'h0000_002A);
+            repeat (10) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h14, rd_val);
+            if (rd_val[1] !== 1'b1) begin
+                $display("ERR: P18 dut1 RAWPAR lane not live"); errors++;
+            end
+            mb_rd_i(2, 8'h10, rd_val);
+            if (rd_val[1] !== 1'b1) begin
+                $display("ERR: P18 dut1 STA_PARCORE lane not set"); errors++;
+            end
+            mb_wr_wait_i(1, 8'h24, 32'h1);
+            repeat (10) @(negedge mbus_clk);
+            mb_wr_i(2, 8'h10, 32'h2);
+            repeat (4) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h10, rd_val);
+            if (rd_val !== 32'h0) begin
+                $display("ERR: P18 dut1 STA_PARCORE clear failed (%h)", rd_val); errors++;
+            end
+
+            // Protocol boundary matrix. TH1=1 also makes the W-before-AW
+            // wr_otd=0/wr_dlv=1 response-condition combination observable.
+            mb_wr_wait(8'h18, 32'd1);
+            protocol_cond_sweep();
+            saturation_cond_sweep();
+            mb_rd(8'h0C, rd_val);
+            if (rd_val[7:0] !== 8'h0) begin
+                $display("ERR: P18 protocol matrix ledgers not drained (%h)", rd_val); errors++;
+            end
+            mb_wr_wait(8'h00, 32'h3);
+            mb_wr_wait(8'h04, 32'h3);
+            mb_wr_wait(8'h20, 32'h7F);
+            mb_wr_wait(8'h1C, 32'h1);
+            mb_wr_wait(8'h18, 32'd255);
+
+            comparator_cond_fi();
+            mb_wr_wait(8'h00, 32'h3);
+            mb_wr_wait(8'h04, 32'h3);
+            mb_wr_wait(8'h20, 32'h7F);
+            mb_wr_wait(8'h1C, 32'h1);
+
+            // Wrong key with a VALID ENA codeword is a separate shadow-decode
+            // negative arm (all earlier bad-key patterns used invalid ENA).
+            mb_wr_wait(8'h10, 32'h0000_001F);
+            mb_rd(8'h10, rd_val);
+            if (rd_val[3:0] !== 4'b1111) begin
+                $display("ERR: P18 valid-ENA wrong-key write took effect"); errors++;
+            end
+
+            // SEU-held ambiguous ENA shadow presents an invalid codeword while
+            // a threshold write asserts cfg_wr. The monitor must reject ENA
+            // write-decode; the same TH0 value covers key'd non-CNTRL decodes.
+            @(negedge aclk0);
+            force dut0.u_ia_bus_timeo_regfile.u_c_ena.r.data_q = 4'b0101;
+            mb_wr_wait(8'h14, 32'h0000_05A0);
+            if (cov_cfg_invalid == 0) begin
+                $display("ERR: P18 invalid-ENA cfg_ok condition never fired"); errors++;
+            end
+            @(negedge aclk0);
+            release dut0.u_ia_bus_timeo_regfile.u_c_ena.r.data_q;
+            mb_wr_wait(8'h10, 32'h0000_00AF);
+            mb_wr_wait(8'h24, 32'h40);      // clear shadow ENA PERR after rewrite
+            mb_wr_wait(8'h14, 32'd15);
+            repeat (10) @(negedge mbus_clk);
+            mb_wr_i(2, 8'h10, 32'h1);       // then clear agg STA_PARCORE[0]
+            mb_wr_wait(8'h20, 32'h0);       // wsel=8 with an all-zero W1C mask
+            mb_wr_wait(8'h20, 32'h7F);
+            mb_wr_wait(8'h1C, 32'h1);
+
+            disabled_mon_cond_fi();
+            zero_threshold_long_counts();
+            mb_wr_wait(8'h00, 32'h3);
+            mb_wr_wait(8'h04, 32'h3);
+            mb_wr_wait(8'h20, 32'h7F);
+            mb_wr_wait(8'h1C, 32'h1);
+            repeat (6) @(negedge mbus_clk);
+            mb_rd_i(2, 8'h18, rd_val);
+            if (rd_val !== 32'h2) begin
+                $display("ERR: P18 final agg STA_PAR not quiescent (%h)", rd_val); errors++;
+            end
+            $display("P18: protocol/decode/comparator/disabled/zero-threshold stimulus done");
         end
 
         // ---- P15: mid-sim reset pulse -----------------------------------------

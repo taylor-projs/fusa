@@ -249,7 +249,7 @@ module hang_prot_regfile #(
 
     // ---- monitor domain (aclk) ---------------------------------------------
     input  logic                     aclk,
-    input  logic                     rstn,           // async, active-low
+    input  logic                     rstn,           // aclk 域复位 (top u_aclk_reg_rst 同步 mbus_rstn 下发)
 
     // ---- to monitor (aclk domain) ------------------------------------------
     output logic                     cfg_wr,         // 1-aclk-cycle load pulse
@@ -306,6 +306,7 @@ module hang_prot_regfile #(
     localparam logic [31:0] ID_VAL = 32'h4841_0001;
 
     // elaboration checks: everything must fit into 32-bit RDATA
+    // synopsys translate_off
     generate
         if (IDX > 255) begin : chk_idx
             $error("IDX must fit into addr[15:8]");
@@ -320,6 +321,7 @@ module hang_prot_regfile #(
             $error("4+3*NUM_M must be <= 32 (SCMIAFUSRC width)");
         end
     endgenerate
+    // synopsys translate_on
 
     //--------------------------------------------------------------------------
     // 寄存器记录 (GRLIB two-process, 双时钟域):
@@ -464,8 +466,8 @@ module hang_prot_regfile #(
     logic scmcntrl_key_ok;
     logic ena_codeword;
     assign scmcntrl_key_ok = (r_mb.wdata_q[7:4] == 4'b1010);
-    assign ena_codeword    = (r_mb.wdata_q[3:0] == 4'b1111)
-                             || (r_mb.wdata_q[3:0] == 4'b0000);
+    assign ena_codeword    = (r_mb.wdata_q[3:0] == 4'b1111) ||
+                             (r_mb.wdata_q[3:0] == 4'b0000) ;
 
     //--------------------------------------------------------------------------
     // Config shadow registers (aclk): each is a reg_wrap instance IN THE

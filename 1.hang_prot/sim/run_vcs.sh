@@ -32,8 +32,9 @@ $ROOT/rtl/hang_prot_mcu2main_top.sv
 $ROOT/rtl/hang_prot_main2mcu_top.sv
 EOF
 
-# 不收 cond (与 2.parity 同惯例: 大 XOR 树会让条件覆盖向量爆炸)
-CM="-cm line+fsm+tgl+branch"
+# Full five-metric coverage collection.
+CM="-cm line+cond+fsm+tgl+branch"
+CM_FSM=(-cm_fsmcfg "$SIM/hp_fsm.cfg")
 
 run_tb () {  # $1 = 短名 (a|b|gen)
     local SHORT="$1"
@@ -70,7 +71,7 @@ EOF
     vcs -full64 -sverilog +v2k \
         -timescale=1ns/1ps \
         -debug_access+all -kdb -lca \
-        $CM -cm_hier "$OUT/cov.cfg" -cm_dir "$OUT/simv.vdb" \
+        $CM "${CM_FSM[@]}" -cm_hier "$OUT/cov.cfg" -cm_dir "$OUT/simv.vdb" \
         $DEFINES \
         "${PLI[@]}" \
         -f /tmp/hp_filelist.f "$SIM/$TOP.sv" -top $TOP \
@@ -150,10 +151,15 @@ case "$1" in
             gen) TOP=tb_hang_prot_gen_wrap ;;
         esac
         OUT="$BASE/$SHORT"
-        [ -f "$OUT/$TOP.fsdb" ] || { echo "no $OUT/$TOP.fsdb, run sim first"; exit 1; }
+        [ -f "$OUT/$TOP.fsdb" ] || { echo "no $OUT/$TOP.fsdb -- 默认编译不带波形, 先: WAVES=1 bash run_vcs.sh $SHORT"; exit 1; }
         shift 2
-        exec verdi -sverilog -f /tmp/hp_filelist.f "$SIM/$TOP.sv" \
-             -top $TOP -ssf "$OUT/$TOP.fsdb" "$@"
+        # 优先载 KDB (VCS -kdb 生成, 与仿真二进制同源, 不依赖 /tmp/hp_filelist.f)
+        if [ -f "$OUT/simv.daidir/simv.kdb" ]; then
+            exec verdi -kdb "$OUT/simv.daidir/simv.kdb" -ssf "$OUT/$TOP.fsdb" "$@"
+        else
+            exec verdi -sverilog -f /tmp/hp_filelist.f "$SIM/$TOP.sv" \
+                 -top $TOP -ssf "$OUT/$TOP.fsdb" "$@"
+        fi
         ;;
     cov)
         # vdb 骨架在编译期就会生成, 必须有 testdata 才算仿真真正收集了覆盖率

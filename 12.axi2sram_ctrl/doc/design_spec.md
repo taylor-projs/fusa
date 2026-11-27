@@ -1,5 +1,19 @@
 # 12.axi2sram_ctrl — AXI 256bit 从端 SRAM 控制器 (ECC + FuSa) 设计规格
 
+> **2026-11-26 AXI 协议完备性验证 + RTL 缺陷修复**: 新增独立 TB `sim/tb_axi2sram_proto.sv`
+> (独立 AXI4 规范参考模型 + 常开协议监视器 + 随机并发压力 + 定向矩阵, 计划与结果见
+> [test_plan.md](test_plan.md)), 首跑抓到 **BUG-1: 非对齐起始 INCR 读第 2 拍起低位 lane 被
+> 清零 (RRESP 仍 OKAY 无告警) + FIXED 被当 INCR**, 根因 `beat_addr` 非首拍未对齐到 size。
+> 已修: INCR 非首拍 = `align(起始,2^size)+b·2^size`, FIXED 每拍同址; WRAP 起始非对齐时容错 (按 size 下对齐, 防前级 NIC
+> upsizer 透传非对齐 WRAP 起始丢 lane)。性能 (延迟 3/2 拍、读写稳态 1 行/拍、RMW 2 拍等) 已由周期精确的
+> `sim/tb_axi2sram_perf.sv` 测量并设基线守卫, 见 [perf_report.md](perf_report.md)。
+> **v4.2 AR/AW 仲裁改严格轮询 (RR)**: 性能诊断发现原 `rac` "读偏好仅在 AR 空闲才让出" 会使持续有效的读流
+> 饿死写 (混合负载下读 562 拍跑完写才开始, 写等待无上界); 现两侧同拍有效时每授权一次即翻转偏好, 总吞吐不变
+> (宏口仍 99.8% 忙), 8 笔写在读流持续下 41 拍完成 (改前 809), 代价是饱和时读延迟 12.3→16.8 拍; perf TB PF11
+> 为公平性守卫 (变异检查: 改回读优先即报 FAIL)。T20/T21 (无气泡流 / 交替流) 不受影响。
+> 原 TB 4037 项回归全绿 (排除后 TOGGLE/FSM 100), proto 5 配置全绿 (DEPTH=256/32768,
+> 时钟比两端, 多 SEED)。
+>
 > 版本: v2.1 (2026-11-13) · 状态: RTL v3.9 (**数据面防护**, 用户钦定
 > SIL3 诊断覆盖 1~4): FSM one-hot 合法性检查 + **cmdq 命令字/wskip
 > W 拍存储奇偶** (奇偶位随载荷推入 fifo, 头词逐拍检查) —— 这两路
@@ -100,8 +114,14 @@
 
 CDC 全部收编在 regfile 内 (规则 23, 与 audio_sram v2 逐条同构):
 ia 握手命令跨域 / 状态回程 sync_dff+reg_wrap / 在途奇偶双件
-(PERR6 命令 + PERR7 写锁存 lane) / 忙丢显性化 (STA_CDC) / 影子双门 /
-rst_sync 域复位单一源 / scan_mode 拉到 top。
+(PERR6 命令 + PERR7 写锁存 lane) / 忙丢显性化 (STA_CDC) / 影子双门。
+
+**复位** (规则 26): 同步器收编在 top, 双 `rst_sync` 分路; `mbus_rstn`
+在 mbus 域裸用。`axi_rstn` 经 `u_axi_rst` 同步到 `axi_clk`, 输出
+`axi_rstn_s` 喂 core/`mcu_sram_wrapper` 引擎; `mbus_rstn` 另经
+`u_axi_reg_rst` 同步到 `axi_clk`, 输出 `axi_reg_rstn` 喂 regfile axi 域,
+regfile 内不再例化 `rst_sync`。`axi_rstn` 单独复位时 regfile sticky/影子
+保留 (故障不丢); `scan_mode` 拉到 top (两路 DFT 旁路)。
 
 ![regfile 双域 CDC 结构](axi2sram_ctrl_regfile_cdc.svg)
 
@@ -682,6 +702,16 @@ TB 时序契约补充二 (T17/T18 沉淀): rready/bready 常高时 R 拍/B 响�
 会被**无感消费** —— 多命令在途收集类用例必须先 park (rready=0, 有
 写在途再加 bready=0) 再发命令, 收集前释放; TB 采样约定 = NBA 在 T
 拍写入的值 TB 在 T+1 拍才读得到 (保持类断言前先 settle 一拍)。
+
+**AXI 协议完备性验证 (2026-11-26, `tb_axi2sram_proto`, 详见 test_plan.md)**:
+P1 窄传输对齐矩阵 / P2 非对齐起始 INCR / P3 WRAP 矩阵 (len 1/3/7/15 x size 0..5) / P4 WSTRB 扫面 /
+P5 W 通道时序 (中途 gap, W 先行超 wskip 深度, AW 远超前) / P6 同行 RAW-WAR-WAW 冒险 / P7 独占
+变体 / P8 id+user 全值与在途保序 / P9 地址别名与边界 (DEPTH=32768 walking-1/0) / P10 FIXED /
+P11 流量中途复位 (axi 域单独 + 全局) / P12 随机并发压力 (7 相位, 背压旋钮, 非对齐, 任意 strobe) /
+P13 BYPASS 模式协议回归 / P14 单比特注入下并发压力; 常开监视器 M0 (valid 保持, 负载稳定, X,
+rlast 位置, id/user 回传, B 不早于 WLAST, 无幽灵响应)。参考模型独立于 DUT 公式 (原 TB 的
+`tbeat_addr/tlane_mask` 是 DUT 公式副本, 共模偏差不可见 —— BUG-1 即此类)。入口:
+`bash run_vcs.sh proto` (单配置) / `bash run_proto_regress.sh` (5 配置并行)。
 
 TB 地址契约补充 (T19 沉淀): **DUT 配置 DEPTH=256 (LAW=8, PAW=13,
 refmem [0:255])** —— 用例行基址必须 ≤ 0xFF; 越界行号 (`line<<5` 超

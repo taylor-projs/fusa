@@ -125,10 +125,9 @@
 //                      忙丢 | 自测位 (查询面 STA_FAULT 0x0C)
 //   reg_par_fault/_n : 寄存器面奇偶错误 (存储型 PERR 组, 不含在途)
 //
-// 复位: rstn 异步断言 (两域共源, 系统级约束: 必须同时断言以对齐握手);
-//   sram 域释放经 regfile 内 u_sram_rst (rst_sync, scan_mode 拉到 top)
-//   对齐 sram_clk, 并作为 sram_rstn 输出供 top 喂 core/macro —— 整个
-//   sram 域 (影子/粘滞/快照/计数器/引擎) 单一复位源, 无释放偏斜.
+// 复位: rstn (mbus 域) 裸复位不做同步; sram 域复位 sram_rstn 由设计 top
+//   的 u_sram_reg_rst 同步 mbus_rstn 到 sram_clk 后下发 (规则 26, 本模块
+//   不再自行例化 rst_sync) —— sram 域单独复位时 sticky/影子保留 (故障不丢).
 //   SYNC_STAGE = 全部跨域同步链级数 (2|3).
 // ============================================================================
 module audio_sram_regfile #(
@@ -137,8 +136,7 @@ module audio_sram_regfile #(
    parameter integer SYNC_STAGE = 3      // 跨域同步链级数: 2 | 3
 )(
    input  logic        clk,        // mbus 时钟 (SW 寄存器面)
-   input  logic        rstn,       // 异步低有效 (mbus + sram 两域共源)
-   input  logic        scan_mode,  // DFT: rst_sync 旁路 (拉到设计 top)
+   input  logic        rstn,       // 异步低有效 (mbus 域裸复位, 不做同步)
 
    // ---------------- mbus ----------------
    input  logic        ce,
@@ -151,7 +149,7 @@ module audio_sram_regfile #(
 
    // ---------------- SRAM 侧 (sram_clk 域) ----------------
    input  logic        sram_clk,   // SRAM 前端口/引擎时钟 (独立)
-   output logic        sram_rstn,  // sram 域复位 (rst_sync 释放, 喂 core/macro)
+   input  logic        sram_rstn,  // sram 域复位 (top u_sram_reg_rst 同步 mbus_rstn 下发)
 
    // cfg -> core (sram 域影子解码)
    output logic        mon_en,     // 监控使能 (4bit 码解码, 非法默认开)
@@ -176,11 +174,13 @@ module audio_sram_regfile #(
    //--------------------------------------------------------------------------
    // 参数约束
    //--------------------------------------------------------------------------
+   // synopsys translate_off
    initial begin
       if (AW > 24) begin
          $fatal(1, "audio_sram_regfile: AW=%0d > 24 unsupported (STA_LAT)", AW);
       end
    end
+   // synopsys translate_on
 
    //--------------------------------------------------------------------------
    // 4bit 编码使能解码 (d=4: 最近邻纠 1bit, 平局按默认方向)
@@ -224,19 +224,8 @@ module audio_sram_regfile #(
       end
    endfunction
 
-   //--------------------------------------------------------------------------
-   // sram 域复位: rstn 异步断言直通, 释放经 2FF 对齐 sram_clk;
-   // 输出同时供 top 喂 core/macro (整个 sram 域单一复位源)
-   //--------------------------------------------------------------------------
-   rst_sync #(
-      .SYNC_LVL_NUM(2   ),
-      .DEF_VAL     (1'b0)
-   ) u_sram_rst (
-      .clk      (sram_clk  ),
-      .rstn     (rstn      ),
-      .scan_mode(scan_mode ),
-      .rstn_s   (sram_rstn )
-   );
+   // sram 域复位 sram_rstn 由设计 top 的 rst_sync 下发 (规则 26: 复位同步
+   //   收编在单设计 top, 本模块只吃同步后的复位, 不再自行例化 rst_sync)
 
    //--------------------------------------------------------------------------
    // mbus 叶译码 (零等待, 无 wait/error 通道; wsel = addr[5:2])

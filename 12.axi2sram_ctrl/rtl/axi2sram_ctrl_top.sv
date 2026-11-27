@@ -15,8 +15,7 @@
 //   双时钟域: mbus (SW 寄存器面) + axi_clk (AXI 从口/引擎/宏, 单功能域).
 //   全部 CDC / 寄存器 / 事件粘滞捕获收编在 u_axi2sram_ctrl_regfile 内
 //   (规则 23), 本模块只剩端口壳 + core/macro 例化:
-//     u_axi2sram_ctrl_regfile : 双域 regfile, 输出 axi_rstn (rst_sync,
-//                               scan_mode 透传) 供整个 axi 域单一复位源
+//     u_axi2sram_ctrl_regfile : 双域 regfile (吃 top 下发的 axi_reg_rstn)
 //     u_axi2sram_ctrl_core    : AXI 从口 + 行引擎 + RMW 状态切换 + 独占
 //                               监视器 + 初始化引擎 (axi_clk 域) —— 对宏
 //                               侧只出标准 SRAM 口
@@ -25,8 +24,9 @@
 //                               下行编码, 注错与 CERR/DERR 事件/快照在内
 //                               (ASIC 换存储器编译器宏 —— 需 bit interleave)
 //
-//   复位: mbus_rstn 异步断言两域共源; axi 域释放经 regfile 内 rst_sync
-//   对齐 axi_clk (scan_mode DFT 旁路, 本顶层透传).
+//   复位: mbus_rstn (mbus 域) 裸用不做同步; axi_rstn (axi 域) 经 u_axi_rst
+//   同步到 axi_clk 给 core/macro 引擎; mbus_rstn 另经 u_axi_reg_rst 同步到
+//   axi_clk 给 regfile axi 域 (故障保留, 规则 26; scan_mode DFT 旁路).
 //
 //   地址: AXI 地址取 [LAW+4:0] 区内偏移 (NIC 已完成区译码, 高位忽略).
 //
@@ -39,11 +39,11 @@ module axi2sram_ctrl_top #(
    parameter integer SIDW       = 4,      // AXI ID 位宽
    parameter integer PAW        = 20,     // AXI 地址端口位宽 (>= LAW+5)
    parameter integer USERW      = 4,      // AXI USER 位宽 (aw/ar 入, b/r 回传)
-   parameter integer SYNC_STAGE = 3,      // 跨域同步链级数: 2 | 3
-   localparam integer LAW       = $clog2(DEPTH)
+   parameter integer SYNC_STAGE = 3       // 跨域同步链级数: 2 | 3
 )(
    input  logic            mbus_clk,     // mbus 时钟 (寄存器面)
-   input  logic            mbus_rstn,    // 异步低有效 (mbus + axi 两域共源)
+   input  logic            mbus_rstn,    // 异步低有效 (mbus 域裸复位, 不做同步)
+   input  logic            axi_rstn,     // 异步低有效 (axi 域裸复位, top 同步)
    input  logic            scan_mode,    // DFT: axi 域复位同步器旁路
 
    // ---------------- mbus ----------------
@@ -102,9 +102,13 @@ module axi2sram_ctrl_top #(
    output logic            reg_par_fault_n
 );
 
+   // 行地址位宽 (由 DEPTH 派生; 移出 #() 因 Verdi 源码解析器不认 #() 内 localparam)
+   localparam integer LAW = $clog2(DEPTH);
+
    //--------------------------------------------------------------------------
    // 参数约束
    //--------------------------------------------------------------------------
+   // synopsys translate_off
    initial begin
       if (2**LAW != DEPTH) begin
          $fatal(1, "axi2sram_ctrl_top: DEPTH=%0d must be a power of 2", DEPTH);
@@ -113,11 +117,13 @@ module axi2sram_ctrl_top #(
          $fatal(1, "axi2sram_ctrl_top: PAW=%0d < LAW+5=%0d", PAW, LAW + 5);
       end
    end
+   // synopsys translate_on
 
    //--------------------------------------------------------------------------
    // 域内连线
    //--------------------------------------------------------------------------
-   logic        axi_rstn;
+   logic        axi_rstn_s;   // axi 域同步后复位 (rst_sync 输出, 给引擎)
+   logic        axi_reg_rstn; // regfile axi 域复位 (mbus_rstn 同步, 故障保留)
    logic        mon_en;
    logic        inj1_on;
    logic [8:0]  inj1_pos;
@@ -141,6 +147,32 @@ module axi2sram_ctrl_top #(
    logic [8:0]  lat_syn;
    logic [LAW-1:0] lat_line;
 
+   //--------------------------------------------------------------------------
+   // axi 域复位同步 (规则 26): 复位同步收编在 top, 下层不再自行例化 rst_sync.
+   //   u_axi_rst    : axi_rstn 同步到 axi_clk -> axi_rstn_s, 给 core/macro 引擎
+   //   u_axi_reg_rst: mbus_rstn 同步到 axi_clk -> axi_reg_rstn, 给 regfile
+   //                  axi 域 (故障保留: axi 域单独复位时 sticky/影子不清)
+   //--------------------------------------------------------------------------
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_axi_rst (
+      .clk      (axi_clk   ),
+      .rstn     (axi_rstn  ),
+      .scan_mode(scan_mode ),
+      .rstn_s   (axi_rstn_s)
+   );
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_axi_reg_rst (
+      .clk      (axi_clk     ),
+      .rstn     (mbus_rstn   ),
+      .scan_mode(scan_mode   ),
+      .rstn_s   (axi_reg_rstn)
+   );
+
    logic        m_cen;
    logic        m_wen;
    logic [LAW-1:0] m_addr;
@@ -159,7 +191,6 @@ module axi2sram_ctrl_top #(
    ) u_axi2sram_ctrl_regfile (
       .clk      (mbus_clk  ),
       .rstn     (mbus_rstn ),
-      .scan_mode(scan_mode ),
       .ce       (ce        ),
       .wr       (wr        ),
       .addr     (addr      ),
@@ -168,7 +199,7 @@ module axi2sram_ctrl_top #(
       .rdata    (rdata     ),
       .rpar     (rpar      ),
       .axi_clk  (axi_clk   ),
-      .axi_rstn (axi_rstn  ),
+      .axi_rstn (axi_reg_rstn),
       .mon_en   (mon_en    ),
       .inj1_on  (inj1_on   ),
       .inj1_pos (inj1_pos  ),
@@ -210,7 +241,7 @@ module axi2sram_ctrl_top #(
       .USERW(USERW)
    ) u_axi2sram_ctrl_core (
       .clk       (axi_clk                ),
-      .rstn      (axi_rstn               ),
+      .rstn      (axi_rstn_s             ),
       .mon_en    (mon_en                 ),
       .init_req  (init_req               ),
       .bypass    (bypass                 ),
@@ -279,7 +310,7 @@ module axi2sram_ctrl_top #(
       .RAND_INIT(1'b0     )
    ) u_mcu_sram_wrapper (
       .clk     (axi_clk  ),
-      .rstn    (axi_rstn ),
+      .rstn    (axi_rstn_s),
       .csn     (m_cen    ),
       .wen     (m_wen    ),
       .addr    (m_addr   ),

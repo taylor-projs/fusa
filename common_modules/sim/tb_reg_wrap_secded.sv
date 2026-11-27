@@ -93,7 +93,81 @@ module tb_reg_wrap_secded;
    );
 
    //--------------------------------------------------------------------------
-   // 错误统计 + 波形
+   // Other shared cells: ordinary parity wrap, synchronizers and reset sync.
+   // They are in this same unit TB so common_modules coverage is not limited
+   // to reg_wrap_secded alone.
+   //--------------------------------------------------------------------------
+   logic [7:0] cw_wdata = '0;
+   logic       cw_wr = 1'b0;
+   logic [7:0] cw_rdata;
+   logic       cw_key = 1'b0;
+   logic       cw_flt;
+   logic       cw_w1c = 1'b0;
+
+   reg_wrap #(
+      .W    (8     ),
+      .RESET(8'hA5 )
+   ) u_reg_wrap (
+      .clk         (clk     ),
+      .rst_n       (rst_n   ),
+      .wdata       (cw_wdata),
+      .wr          (cw_wr   ),
+      .rdata       (cw_rdata),
+      .selftest_key(cw_key  ),
+      .flt         (cw_flt  ),
+      .flt_w1c     (cw_w1c  )
+   );
+
+   logic [7:0] cell_d = '0;
+   logic [7:0] cell_q2;
+   logic [7:0] cell_q3;
+   logic [7:0] cell_q1;
+
+   sync_2dff #(
+      .WIDTH  (8    ),
+      .RST_VAL(8'h00),
+      .STAGES (2    )
+   ) u_sync_2dff (
+      .clk (clk    ),
+      .rstn(rst_n  ),
+      .d   (cell_d ),
+      .q   (cell_q2)
+   );
+
+   sync_2dff #(
+      .WIDTH  (8    ),
+      .RST_VAL(8'h00),
+      .STAGES (3    )
+   ) u_sync_2dff_3stage (
+      .clk (clk    ),
+      .rstn(rst_n  ),
+      .d   (cell_d ),
+      .q   (cell_q3)
+   );
+
+   sync_dff #(
+      .WIDTH  (8    ),
+      .RST_VAL(8'h00)
+   ) u_sync_dff (
+      .clk (clk    ),
+      .rstn(rst_n  ),
+      .d   (cell_d ),
+      .q   (cell_q1)
+   );
+
+   logic cell_scan_mode = 1'b0;
+   logic cell_rstn_s;
+
+   rst_sync #(
+      .SYNC_LVL_NUM(2   ),
+      .DEF_VAL     (1'b0)
+   ) u_rst_sync (
+      .clk      (clk           ),
+      .rstn     (rst_n         ),
+      .scan_mode(cell_scan_mode),
+      .rstn_s   (cell_rstn_s   )
+   );
+
    //--------------------------------------------------------------------------
    integer errors = 0;
 
@@ -336,6 +410,227 @@ module tb_reg_wrap_secded;
       end
    endtask
 
+   // Odd-weight corruption with a syndrome outside the codeword exercises
+   // the non-correctable derr arm on the W=32 instance as well.
+   task automatic t_odd_bad_position();
+      begin
+         do_wr(P2, 1'b0);
+         w1c_pulse();
+         @(negedge clk);
+         ecc_ref = dut.r.ecc_q;
+         f_dval  = P2 ^ 32'h1;
+         f_eval  = ecc_ref ^ 7'h60;
+         force dut.r.data_q = f_dval;
+         force dut.r.ecc_q  = f_eval;
+         #1;
+         chk1 ("T5 odd bad position derr comb", dut.derr, 1'b1);
+         chk1 ("T5 odd bad position cerr quiet", dut.cerr, 1'b0);
+         chk32("T5 odd bad position no misfix", dut.rin.data_q, f_dval);
+         @(negedge clk);
+         release dut.r.data_q;
+         release dut.r.ecc_q;
+         do_wr(P2, 1'b0);
+         w1c_pulse();
+         settle(2);
+         chk1 ("T5 odd bad position healed", flt, 1'b0);
+      end
+   endtask
+
+   // W=8 stimulus helpers.  All tasks are automatic; force right-hand sides
+   // use the static temporaries above and are held across a posedge.
+   task automatic do_wr8(input logic [7:0] d,
+                         input bit         k);
+      begin
+         @(negedge clk);
+         wr8    = 1'b1;
+         wdata8 = d;
+         key8   = k;
+         @(negedge clk);
+         wr8  = 1'b0;
+         key8 = 1'b0;
+      end
+   endtask
+
+   task automatic key8_alone();
+      begin
+         @(negedge clk);
+         key8 = 1'b1;
+         @(negedge clk);
+         key8 = 1'b0;
+      end
+   endtask
+
+   task automatic w1c8_pulse();
+      begin
+         @(negedge clk);
+         w1c8 = 1'b1;
+         @(negedge clk);
+         w1c8 = 1'b0;
+      end
+   endtask
+
+   task automatic t8_single_data(input int i);
+      begin
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         @(negedge clk);
+         ecc_ref = dut8.r.ecc_q;
+         f_dval  = {24'h0, (dut8.r.data_q ^ (8'h1 << i))};
+         force dut8.r.data_q = f_dval[7:0];
+         #1;
+         chk32($sformatf("T10 w8 d[%0d] rin corrected", i),
+               {24'h0, dut8.rin.data_q}, 32'h0000_003C);
+         chk7($sformatf("T10 w8 d[%0d] rin ecc idem", i),
+              dut8.rin.ecc_q, ecc_ref);
+         @(negedge clk);
+         chk1($sformatf("T10 w8 d[%0d] flt", i), flt8, 1'b1);
+         release dut8.r.data_q;
+         @(negedge clk);
+         chk32($sformatf("T10 w8 d[%0d] clean", i),
+               {24'h0, rdata8}, 32'h0000_003C);
+         w1c8_pulse();
+         settle(2);
+         chk1($sformatf("T10 w8 d[%0d] healed", i), flt8, 1'b0);
+      end
+   endtask
+
+   task automatic t8_single_ecc(input int j);
+      begin
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         @(negedge clk);
+         ecc_ref = dut8.r.ecc_q;
+         f_eval  = ecc_ref ^ (7'h1 << j);
+         force dut8.r.ecc_q = f_eval;
+         #1;
+         chk32($sformatf("T10 w8 e[%0d] data untouched", j),
+               {24'h0, dut8.rin.data_q}, 32'h0000_003C);
+         chk7($sformatf("T10 w8 e[%0d] rin ecc healed", j),
+              dut8.rin.ecc_q, ecc_ref);
+         @(negedge clk);
+         chk1($sformatf("T10 w8 e[%0d] flt", j), flt8, 1'b1);
+         release dut8.r.ecc_q;
+         @(negedge clk);
+         w1c8_pulse();
+         settle(2);
+         chk1($sformatf("T10 w8 e[%0d] healed", j), flt8, 1'b0);
+      end
+   endtask
+
+   task automatic t8_double_de(input int a,
+                               input int j);
+      begin
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         @(negedge clk);
+         ecc_ref = dut8.r.ecc_q;
+         f_dval  = {24'h0, (8'h3C ^ (8'h1 << a))};
+         f_eval  = ecc_ref ^ (7'h1 << j);
+         force dut8.r.data_q = f_dval[7:0];
+         force dut8.r.ecc_q  = f_eval;
+         #1;
+         chk32("T10 w8 de no misfix", {24'h0, dut8.rin.data_q},
+               {24'h0, f_dval[7:0]});
+         chk7("T10 w8 de ecc untouched", dut8.rin.ecc_q, f_eval);
+         @(negedge clk);
+         chk1("T10 w8 de derr", flt8, 1'b1);
+         release dut8.r.data_q;
+         release dut8.r.ecc_q;
+         @(negedge clk);
+         chk32("T10 w8 de stays corrupted", {24'h0, rdata8},
+               {24'h0, f_dval[7:0]});
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         settle(2);
+         chk1("T10 w8 de healed", flt8, 1'b0);
+      end
+   endtask
+
+   task automatic t8_double_ee(input int ja,
+                               input int jb);
+      begin
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         @(negedge clk);
+         ecc_ref = dut8.r.ecc_q;
+         f_eval  = ecc_ref ^ (7'h1 << ja) ^ (7'h1 << jb);
+         force dut8.r.ecc_q = f_eval;
+         #1;
+         chk7("T10 w8 ee no misfix", dut8.rin.ecc_q, f_eval);
+         @(negedge clk);
+         chk1("T10 w8 ee derr", flt8, 1'b1);
+         release dut8.r.ecc_q;
+         @(negedge clk);
+         chk32("T10 w8 ee data clean", {24'h0, rdata8}, 32'h0000_003C);
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         settle(2);
+         chk1("T10 w8 ee healed", flt8, 1'b0);
+      end
+   endtask
+
+   // Three flipped physical bits produce syn_p=1 and syn_h=48.  Position 48
+   // is outside the (39,32) codeword, so this is the odd-weight derr arm.
+   task automatic t8_odd_bad_position();
+      begin
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         @(negedge clk);
+         ecc_ref = dut8.r.ecc_q;
+         f_dval  = {24'h0, (8'h3C ^ 8'h01)};
+         f_eval  = ecc_ref ^ 7'h60;
+         force dut8.r.data_q = f_dval[7:0];
+         force dut8.r.ecc_q  = f_eval;
+         #1;
+         chk1("T10 w8 odd bad position derr comb", dut8.derr, 1'b1);
+         chk1("T10 w8 odd bad position cerr quiet", dut8.cerr, 1'b0);
+         chk32("T10 w8 odd bad position no misfix", {24'h0, dut8.rin.data_q},
+               {24'h0, f_dval[7:0]});
+         @(negedge clk);
+         release dut8.r.data_q;
+         release dut8.r.ecc_q;
+         do_wr8(8'h3C, 1'b0);
+         w1c8_pulse();
+         settle(2);
+         chk1("T10 w8 odd bad position healed", flt8, 1'b0);
+      end
+   endtask
+
+   task automatic cw_write(input logic [7:0] d,
+                           input bit         k);
+      begin
+         @(negedge clk);
+         cw_wr    = 1'b1;
+         cw_wdata = d;
+         cw_key   = k;
+         @(negedge clk);
+         cw_wr  = 1'b0;
+         cw_key = 1'b0;
+      end
+   endtask
+
+   task automatic cw_clear();
+      begin
+         @(negedge clk);
+         cw_w1c = 1'b1;
+         @(negedge clk);
+         cw_w1c = 1'b0;
+         settle(2);
+         chk1("T12 reg_wrap flt clear", cw_flt, 1'b0);
+      end
+   endtask
+
+   task automatic cell_pattern(input logic [7:0] d);
+      begin
+         @(negedge clk);
+         cell_d = d;
+         repeat (4) @(negedge clk);
+         chk32($sformatf("T12 sync2 %02h", d), {24'h0, cell_q2}, {24'h0, d});
+         chk32($sformatf("T12 sync3 %02h", d), {24'h0, cell_q3}, {24'h0, d});
+         chk32($sformatf("T12 sync1 %02h", d), {24'h0, cell_q1}, {24'h0, d});
+      end
+   endtask
+
    //--------------------------------------------------------------------------
    // 主流程
    //--------------------------------------------------------------------------
@@ -392,6 +687,7 @@ module tb_reg_wrap_secded;
       t_ee(6,  5);       // h[5] + h[4]: syn_h = 32^16 = 48 (>38, 但
                          //  syn_p=0 走双比特臂, 不经 cls 的 >38 卫兵)
       t_ee(1,  4);       // h[0] + h[3]
+      t_odd_bad_position();  // syn_p=1, syn_h=48: odd-weight derr
 
       //==== T6 注错随写 (wr && key): p 存反 ====
       do_wr(P2, 1'b0);
@@ -447,42 +743,123 @@ module tb_reg_wrap_secded;
       settle(2);
       chk1 ("T9 clear after heal", flt, 1'b0);
 
-      //==== T10 W=8 参数化冒烟 ====
+      //==== T10 W=8 full stimulus matrix ====
       chk32("T10 w8 reset", {24'h0, rdata8}, 32'h0000_00A5);
-      @(negedge clk);
-      wr8    = 1'b1;
-      wdata8 = 8'h3C;
-      @(negedge clk);
-      wr8 = 1'b0;
-      chk32("T10 w8 rw", {24'h0, rdata8}, 32'h0000_003C);
-      // 数据位 3 翻转 -> 纠+写回 (禁自引用 force: 先算进静态暂存)
-      @(negedge clk);
-      f_dval = {24'h0, (dut8.r.data_q ^ 8'h08)};
-      force dut8.r.data_q = f_dval;
-      #1;
-      chk32("T10 w8 rin corrected", {24'h0, dut8.rin.data_q}, 32'h0000_003C);
-      @(negedge clk);
-      chk1 ("T10 w8 d3 flt", flt8, 1'b1);
-      release dut8.r.data_q;
-      @(negedge clk);
-      chk32("T10 w8 d3 clean", {24'h0, rdata8}, 32'h0000_003C);
-      // 汉明位 ecc[6] = h[5] (W=8 下其分组无数据位, 恒 0) 翻转 -> 纠+写回
-      @(negedge clk);
-      ecc_ref = dut8.r.ecc_q;
-      f_eval  = ecc_ref ^ 7'h40;
-      force dut8.r.ecc_q = f_eval;
-      #1;
-      chk7 ("T10 w8 ecc6 rin healed", dut8.rin.ecc_q, ecc_ref);
-      @(negedge clk);
-      chk1 ("T10 w8 ecc6 flt", flt8, 1'b1);
-      release dut8.r.ecc_q;
-      @(negedge clk);
-      w1c8 = 1'b1;
-      @(negedge clk);
-      w1c8 = 1'b0;
+      for (int i = 0; i < 8; i++) begin
+         t8_single_data(i);
+      end
+      for (int j = 0; j < 7; j++) begin
+         t8_single_ecc(j);
+      end
+      t8_double_de(3, 6);
+      t8_double_ee(5, 6);
+      t8_odd_bad_position();
+
+      // Injection with write and key-alone both exercise the W=8 wrapper.
+      do_wr8(8'hA5, 1'b1);
+      settle(1);
+      chk1 ("T10 w8 inject-with-write flt", flt8, 1'b1);
+      chk32("T10 w8 inject-with-write data", {24'h0, rdata8}, 32'h0000_00A5);
+      w1c8_pulse();
       settle(2);
-      chk1 ("T10 w8 flt clear stays", flt8, 1'b0);
-      chk32("T10 w8 final rdata", {24'h0, rdata8}, 32'h0000_003C);
+      chk1 ("T10 w8 inject-with-write healed", flt8, 1'b0);
+      do_wr8(8'h3C, 1'b0);
+      key8_alone();
+      settle(1);
+      chk1 ("T10 w8 key-alone flt", flt8, 1'b1);
+      chk32("T10 w8 key-alone data", {24'h0, rdata8}, 32'h0000_003C);
+      w1c8_pulse();
+      settle(2);
+      chk1 ("T10 w8 key-alone healed", flt8, 1'b0);
+
+      @(negedge clk);
+      force dut8.r.flt_q_n = 1'b0;
+      settle(1);
+      release dut8.r.flt_q_n;
+      chk1 ("T10 w8 duplicate self-heal", flt8, 1'b1);
+      w1c8_pulse();
+      settle(2);
+      chk1 ("T10 w8 duplicate healed", flt8, 1'b0);
+
+      // Exhaustive write-data space closes every W=8 input/storage/ECC toggle.
+      for (int k = 0; k < 256; k++) begin
+         do_wr8(k[7:0], 1'b0);
+         chk32($sformatf("T10 w8 exhaustive %02h", k[7:0]),
+               {24'h0, rdata8}, {24'h0, k[7:0]});
+      end
+      chk1 ("T10 w8 exhaustive no false fault", flt8, 1'b0);
+
+      //==== T11 reset re-assertion on both parameterizations ====
+      @(negedge clk);
+      rst_n = 1'b0;
+      #1;
+      chk32("T11 w32 async reset", rdata, PAT);
+      chk32("T11 w8 async reset", {24'h0, rdata8}, 32'h0000_00A5);
+      chk1 ("T11 w32 reset flt", flt, 1'b0);
+      chk1 ("T11 w8 reset flt", flt8, 1'b0);
+      @(negedge clk);
+      rst_n = 1'b1;
+      settle(2);
+      chk32("T11 w32 reset release", rdata, PAT);
+      chk32("T11 w8 reset release", {24'h0, rdata8}, 32'h0000_00A5);
+
+      //==== T12 other common cells: reg_wrap/sync_2dff/sync_dff/rst_sync ====
+      chk32("T12 reg_wrap reset", {24'h0, cw_rdata}, 32'h0000_00A5);
+      chk1 ("T12 rst_sync released", cell_rstn_s, 1'b1);
+      cw_write(8'h00, 1'b0);
+      chk32("T12 reg_wrap write 00", {24'h0, cw_rdata}, 32'h0000_0000);
+      cw_write(8'hFF, 1'b0);
+      chk32("T12 reg_wrap write FF", {24'h0, cw_rdata}, 32'h0000_00FF);
+      for (int i = 0; i < 8; i++) begin
+         cw_write((8'h1 << i), 1'b0);
+         chk32($sformatf("T12 reg_wrap walking1 %0d", i),
+               {24'h0, cw_rdata}, {24'h0, (8'h1 << i)});
+         cw_write(~(8'h1 << i), 1'b0);
+         chk32($sformatf("T12 reg_wrap walking0 %0d", i),
+               {24'h0, cw_rdata}, {24'h0, ~(8'h1 << i)});
+      end
+      // Parity injection with write and key-alone both require a clean rewrite.
+      cw_write(8'h3C, 1'b1);
+      settle(1);
+      chk1 ("T12 reg_wrap inject-with-write", cw_flt, 1'b1);
+      cw_write(8'h3C, 1'b0);
+      cw_clear();
+      @(negedge clk);
+      cw_key = 1'b1;
+      @(negedge clk);
+      cw_key = 1'b0;
+      settle(1);
+      chk1 ("T12 reg_wrap key-alone", cw_flt, 1'b1);
+      cw_write(8'h3C, 1'b0);
+      cw_clear();
+      @(negedge clk);
+      force u_reg_wrap.r.flt_q_n = 1'b0;
+      settle(1);
+      release u_reg_wrap.r.flt_q_n;
+      chk1 ("T12 reg_wrap duplicate heal", cw_flt, 1'b1);
+      cw_clear();
+
+      cell_pattern(8'h00);
+      cell_pattern(8'hFF);
+      for (int i = 0; i < 8; i++) begin
+         cell_pattern(8'h1 << i);
+         cell_pattern(~(8'h1 << i));
+      end
+
+      // scan_mode=1 selects raw rstn immediately in both directions.
+      @(negedge clk);
+      cell_scan_mode = 1'b1;
+      rst_n = 1'b0;
+      #1;
+      chk1 ("T12 rst_sync scan raw assert", cell_rstn_s, 1'b0);
+      @(negedge clk);
+      rst_n = 1'b1;
+      #1;
+      chk1 ("T12 rst_sync scan raw release", cell_rstn_s, 1'b1);
+      repeat (3) @(negedge clk);
+      cell_scan_mode = 1'b0;
+      #1;
+      chk1 ("T12 rst_sync functional return", cell_rstn_s, 1'b1);
 
       //==== 收尾 ====
       if (errors == 0) begin

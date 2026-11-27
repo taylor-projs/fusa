@@ -71,7 +71,7 @@
 - **两级拓扑** (集成范例 2.parity edc_core/edc_top): `ia_bus_timeo_core` = 监控核 + 自带 regfile 的单口叶端 IP, **一个被监视接口一例** (`addr[15:8]=IDX` 实例号); `ia_bus_timeo_top` 聚合器不接任何 AXI 信号, 只收各 core 的三对双轨 (§6)。
 - **双域划分**: mbus_clk 域 = regfile (SCM 寄存器模型, CDC 全部收编于内); axi_clk 域 = 监控核 (超时窗口 + FuSa 完整性层)。两钟无相位/频率关系约束。
 - **观察点 = 被监视接口的握手线上**: 12 个标量 tap (AR/AW/W/R/B 五通道 valid/ready/last), 组合采样, 监控核对总线**零干预**。
-- **复位**: mbus_rstn 与 axi_rstn 系统级同时断言 (CDC 握手对齐); 监控核内 rst_sync (3 级, 异步断言/同步释放), scan_mode 逐层拉到 top (DFT, 8.reset_checker 惯例)。
+- **复位**（规则 26）：`mbus_rstn` 与裸 `axi_rstn` 系统级同时断言（CDC 握手对齐）。`ia_bus_timeo_core` 顶层例化双 `rst_sync`（3 级，异步断言/同步释放）：`u_axi_rst` 将 `axi_rstn` 同步为 `axi_rstn_s`，供监控引擎 `ia_bus_timeo_mon`；`u_axi_reg_rst` 将 `mbus_rstn` 同步为 `axi_reg_rstn`，供 regfile 的 axi 域。下层不再自行例化 `rst_sync`；单独复位 axi 引擎时 regfile 影子/sticky 故障状态保留。`scan_mode` 逐层拉到 top（DFT，8.reset_checker 惯例）。
 
 ---
 
@@ -198,7 +198,7 @@ CDC 要点: 写跨域 = 单笔 toggle 握手 (锁存 {wsel,wdata} + req_t, aclk 
 1. **OTD_MAX ≥ 观察点真实最大 outstanding** (§3.4 量程语义): 纯观测无 room 门, 量程不足则正常流量打 OTDSAT = 假完整性告警; 成本仅计数器位宽, 出厂给宽裕常数 (16/32) 即可, 集成方零计算;
 2. r2a 阈值 > 最坏合法不被接收时间 (下级仲裁 + 正常背压窗口); r2r 阈值 > slave 最坏合法响应延迟 (含长突发逐拍回数据间隔);
 3. 阈值 0 = 禁用该检查 (keyed 显式动作); 复位值非零, 上电即监控;
-4. mbus_rstn 与 axi_rstn 系统级同时断言 (CDC 握手对齐); scan_mode 逐层拉到 top;
+4. `mbus_rstn` 与裸 `axi_rstn` 系统级同时断言（CDC 握手对齐）；`ia_bus_timeo_core` 顶层双 `rst_sync` 分别向 mon/regfile axi 域下发 `axi_rstn_s`/`axi_reg_rstn`（§2）；`scan_mode` 逐层拉到 top;
 5. 观察点选在被监视接口的握手线上, tap 采样时钟 = 该接口的 axi_clk;
 6. ESM 侧: 双端接四对轨; 单端连正轨 + 周期 PATH_SELFTEST (§6);
 7. 被监视双方 (master/slave/互连) **无需任何改动** —— 纯 tap + mbus leaf 是本 IP 的集成卖点;

@@ -15,22 +15,22 @@
   <text x="490" y="28" class="title" text-anchor="middle">复位树</text>
 
   <rect x="60" y="52" width="280" height="30" rx="6" class="box"/>
-  <text x="200" y="72" class="bt" text-anchor="middle">island rstn</text>
+  <text x="200" y="72" class="bt" text-anchor="middle">rstn → u_aclk_rst → aclk_rstn</text>
   <line x1="340" y1="67" x2="420" y2="67" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aG)"/>
-  <text x="430" y="72" class="txt">Unit A / Unit B / 岛侧监视器/寄存器 aclk 半边</text>
+  <text x="430" y="72" class="txt">core / recover / bdry_in / wskid（引擎）</text>
 
   <rect x="60" y="92" width="280" height="30" rx="6" class="box"/>
-  <text x="200" y="112" class="bt" text-anchor="middle">main rst (受控于 ESM)</text>
+  <text x="200" y="112" class="bt" text-anchor="middle">mbus_rstn → u_aclk_reg_rst</text>
   <line x1="340" y1="107" x2="420" y2="107" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aG)"/>
-  <text x="430" y="112" class="txt">main 域; ADB400 main 侧半片</text>
+  <text x="430" y="112" class="txt">aclk_reg_rstn → regfile aclk 半边；mbus 半边直连</text>
 
   <rect x="60" y="132" width="280" height="30" rx="6" class="box"/>
-  <text x="200" y="152" class="bt" text-anchor="middle">s_in_rst (受控于 ESM)</text>
+  <text x="200" y="152" class="bt" text-anchor="middle">main rst (受控于 ESM)</text>
   <line x1="340" y1="147" x2="420" y2="147" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aG)"/>
-  <text x="430" y="152" class="txt">Unit A (main 复位保持窗口的通道清洁, §8.5)</text>
+  <text x="430" y="152" class="txt">main 域; ADB400 main 侧半片</text>
 
   <rect x="60" y="172" width="280" height="30" rx="6" class="box"/>
-  <text x="200" y="192" class="bt" text-anchor="middle">presetn + rstn 同源同步释放</text>
+  <text x="200" y="192" class="bt" text-anchor="middle">sl_sw_rst_on（0x2C SCMSWRST）</text>
   <line x1="340" y1="187" x2="420" y2="187" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aG)"/>
-  <text x="430" y="192" class="txt">regfile CDC 握手对齐 (§7.6)</text>
+  <text x="430" y="192" class="txt">Unit A (main 复位保持窗口的通道清洁, §8.5)</text>
 </svg>

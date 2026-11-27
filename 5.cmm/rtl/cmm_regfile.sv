@@ -94,9 +94,9 @@
 //   Self-test: FORCE[16] masks the ack (CFG_HANG must fire), FORCE[17]
 //   freezes the window-toggle sync (REF_STALE must fire).
 //
-// RESET: mbus_rstn (async, low) and rst_ref_n must assert together at system
-// level so the toggle handshake starts aligned (same constraint as
-// hang_prot_regfile; safety peripherals reset as one block).
+// RESET: mbus_rstn (mbus domain, raw) and rst_ref_n (ref domain, cmm_top
+// u_ref_rst syncing mbus_rstn to clk_ref) keep the toggle handshake
+// aligned; safety peripherals reset as one block.
 //============================================================================
 module cmm_regfile #(
     parameter int  N_DUT          = 16,
@@ -125,7 +125,7 @@ module cmm_regfile #(
 
     // ---- monitor domain ----------------------------------------------------
     input  logic                  clk_ref,
-    input  logic                  rst_ref_n,     // async, active-low
+    input  logic                  rst_ref_n,     // ref 域复位 (top u_ref_rst 同步 mbus_rstn 下发)
 
     // ---- config -> monitor (clk_ref domain, per-channel shadow wraps) -----
     output logic [4*N_DUT-1:0]    cfg_en,        // 4-bit coded enable per ch
